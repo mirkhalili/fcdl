@@ -1,18 +1,22 @@
 #define AppName "Jacquard Studio"
-#define AppVersion "002.1.1.0-a1"
+#ifndef AppVersion
+#error Pass /DAppVersion from version.txt
+#endif
 #define AppExeName "JacquardStudio.exe"
 [Setup]
 AppId={{5C0E5A7E-DF2A-4D61-9039-B9EC80CD87AD}
 AppName={#AppName}
 AppVersion={#AppVersion}
-VersionInfoVersion=2.1.1.0
+VersionInfoVersion=3.2.0.0
 DefaultDirName={autopf}\Jacquard Studio
 DefaultGroupName=Jacquard Studio
+UsePreviousAppDir=yes
+UsePreviousGroup=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\artifacts\installer
-OutputBaseFilename=JacquardStudio-002.1.1.0-a1-Setup
+OutputBaseFilename=JacquardStudio-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

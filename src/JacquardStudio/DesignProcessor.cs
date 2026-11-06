@@ -32,6 +32,27 @@ public static class DesignProcessor
         return pixels;
     }
 
+    // Resize is a separate, lossless-in-color pipeline stage. Pixel centers use nearest-neighbor.
+    public static BitmapSource Resize(BitmapSource source, int width, int height)
+    {
+        if (width < 1 || height < 1 || (long)width * height > MaxPixels)
+            throw new ArgumentOutOfRangeException(nameof(width), "Output size must be positive and at most 4,000,000 pixels.");
+        byte[] pixels = GetPixels(source, MaxPixels);
+        for (int i = 3; i < pixels.Length; i += 4)
+            if (pixels[i] != 255) throw new InvalidDataException("Transparent pixels are not supported; flatten the image first.");
+        int stride = checked(width * 4);
+        byte[] output = new byte[checked(stride * height)];
+        for (int y = 0; y < height; y++)
+        for (int x = 0; x < width; x++)
+        {
+            int sy = (int)((long)y * source.PixelHeight / height);
+            int sx = (int)((long)x * source.PixelWidth / width);
+            Buffer.BlockCopy(pixels, (sy * source.PixelWidth + sx) * 4, output, (y * width + x) * 4, 4);
+        }
+        var result = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, output, stride);
+        result.Freeze(); return result;
+    }
+
     public static PaletteResult Prepare(BitmapSource source, int width, int height, int requestedColors)
     {
         if (width < 1 || height < 1 || (long)width * height > MaxPixels)

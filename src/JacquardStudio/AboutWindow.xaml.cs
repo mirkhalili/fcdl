@@ -7,6 +7,7 @@ public partial class AboutWindow : Window
     public AboutWindow(bool english)
     {
         InitializeComponent();
+        VersionText.Text = AppVersion.Display;
         if (english)
         {
             FlowDirection = FlowDirection.LeftToRight; Title = "About";

@@ -30,15 +30,16 @@ jobs:
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "Inno Setup 6 is not installed on this runner" }
-          & $iscc packaging/JacquardStudio.iss
+          $version = (Get-Content version.txt -Raw).Trim()
+          & $iscc "/DAppVersion=$version" packaging/JacquardStudio.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-FileHash artifacts/installer/*.exe -Algorithm SHA256 | Format-List | Out-File artifacts/installer/SHA256.txt
       - name: Download previous preview for upgrade test
         uses: actions/download-artifact@v4
         with:
-          name: JacquardStudio-001.1.0.0-a1-Windows-x64
+          name: JacquardStudio-002.1.1.0-a1-Windows-x64
           path: artifacts/previous
-          run-id: 42240660422
+          run-id: 42243860781
           github-token: ${{ github.token }}
       - name: Test per-user installer upgrade
         shell: pwsh
@@ -51,15 +52,21 @@ jobs:
           if ($oldResult.ExitCode -ne 0) { throw "Old installer failed: $($oldResult.ExitCode)" }
           $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{5C0E5A7E-DF2A-4D61-9039-B9EC80CD87AD}_is1'
           $before = Get-ItemProperty $key
-          if ($before.DisplayVersion -ne '001.1.0.0-a1') { throw "Old version not found: $($before.DisplayVersion)" }
+          if ($before.DisplayVersion -ne '002.1.1.0-a1') { throw "Old version not found: $($before.DisplayVersion)" }
           $new = (Get-ChildItem artifacts/installer/*Setup.exe | Select-Object -First 1).FullName
           $newResult = Start-Process -FilePath $new -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-') -Wait -PassThru
           if ($newResult.ExitCode -ne 0) { throw "New installer failed: $($newResult.ExitCode)" }
           $after = Get-ItemProperty $key
-          if ($after.DisplayVersion -ne '002.1.1.0-a1') { throw "Upgrade version incorrect: $($after.DisplayVersion)" }
+          if ($after.DisplayVersion -ne (Get-Content version.txt -Raw).Trim()) { throw "Upgrade version incorrect: $($after.DisplayVersion)" }
           if ($after.InstallLocation.TrimEnd('\') -ne $dir.TrimEnd('\')) { throw 'Upgrade did not retain install directory' }
+          $productEntries = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -eq 'Jacquard Studio' })
+          if ($productEntries.Count -ne 1) { throw "Expected one installed product, found $($productEntries.Count)" }
+          $repeat = Start-Process -FilePath $new -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-') -Wait -PassThru
+          if ($repeat.ExitCode -ne 0) { throw "Repeat install failed: $($repeat.ExitCode)" }
+          $productEntries = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -eq 'Jacquard Studio' })
+          if ($productEntries.Count -ne 1) { throw "Repeat install created a second product entry" }
           $fileVersion = (Get-Item (Join-Path $dir 'JacquardStudio.exe')).VersionInfo.FileVersion
-          if ($fileVersion -ne '2.1.1.0') { throw "Executable not updated: $fileVersion" }
+          if ($fileVersion -ne '3.2.0.0') { throw "Executable not updated: $fileVersion" }
           $uninstaller = Join-Path $dir 'unins000.exe'
           $uninstallResult = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
           if ($uninstallResult.ExitCode -ne 0) { throw "Uninstall failed: $($uninstallResult.ExitCode)" }
@@ -67,7 +74,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: JacquardStudio-002.1.1.0-a1-Windows-x64
+          name: JacquardStudio-Windows-x64
           path: artifacts/installer/*
           if-no-files-found: error
           retention-days: 30

@@ -1,94 +1,68 @@
 <Window FontFamily="{StaticResource VazirFont}" x:Class="JacquardStudio.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Jacquard Studio" Width="1320" Height="820" MinWidth="900" MinHeight="620"
+        Title="Jacquard Studio" Width="1320" Height="820" MinWidth="920" MinHeight="650"
         WindowStartupLocation="CenterScreen" Background="#0C1420" FontSize="14" Icon="Assets/app.ico"
         FlowDirection="RightToLeft" AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver">
     <Grid>
-        <Grid.RowDefinitions><RowDefinition Height="72"/><RowDefinition Height="*"/><RowDefinition Height="38"/></Grid.RowDefinitions>
-        <Border Grid.Row="0" Background="#111B29" BorderBrush="#27384B" BorderThickness="0,0,0,1">
-            <Grid Margin="28,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="JACQUARD STUDIO" FontSize="16" FontWeight="Bold" FlowDirection="LeftToRight" HorizontalAlignment="Right"/>
-                    <TextBlock x:Name="SubtitleText" Text="فضای کار طراحی و بازرسی ژاکارد" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,3,0,0"/>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Background="#1C3A38" CornerRadius="12" Padding="10,5" Margin="12,0"><TextBlock x:Name="BadgeText" Text="نسخه آزمایشی" Foreground="#69E4C7" FontSize="11"/></Border>
-                    <Button x:Name="AboutButton" Content="درباره" Click="About_Click" Padding="12,7" Margin="0,0,8,0"/>
-                    <Button x:Name="LanguageButton" Content="English" Click="Language_Click" Padding="12,7" AutomationProperties.Name="Switch language"/>
-                </StackPanel>
+        <Grid.RowDefinitions><RowDefinition Height="70"/><RowDefinition Height="*"/><RowDefinition Height="38"/></Grid.RowDefinitions>
+        <Border Background="#111B29" BorderBrush="#27384B" BorderThickness="0,0,0,1">
+            <Grid Margin="24,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center"><TextBlock Text="JACQUARD STUDIO" FontSize="16" FontWeight="Bold" FlowDirection="LeftToRight" HorizontalAlignment="Right"/><TextBlock x:Name="SubtitleText" Text="فضای کار طراحی و بازرسی ژاکارد" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,3,0,0"/></StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><Border Background="#1C3A38" CornerRadius="12" Padding="10,5" Margin="12,0"><TextBlock x:Name="BadgeText" Text="نسخه آزمایشی" Foreground="#69E4C7" FontSize="11"/></Border><Button x:Name="AboutButton" Content="درباره" Click="About_Click" Padding="12,7" Margin="0,0,8,0"/><Button x:Name="LanguageButton" Content="English" Click="Language_Click" Padding="12,7"/></StackPanel>
             </Grid>
         </Border>
-        <Grid Grid.Row="1" Margin="24">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="250"/><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="18"/><ColumnDefinition Width="250"/></Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="12" Padding="20">
-                <StackPanel>
-                    <TextBlock x:Name="WorkspaceTitle" Text="فضای کاری" Foreground="{StaticResource Muted}" FontSize="12"/>
-                    <TextBlock x:Name="WorkspaceHeading" Text="شروع پروژه" FontSize="20" FontWeight="SemiBold" Margin="0,8,0,18"/>
-                    <Button x:Name="OpenButton" Content="+  باز کردن تصویر" Click="Open_Click" Background="#36C9AB" BorderBrush="#36C9AB" Foreground="#082621" FontWeight="Bold"/>
-                    <Button x:Name="PrepareButton" Content="ابعاد، رنگ و پترن  ←" Click="Prepare_Click" IsEnabled="False" Margin="0,10,0,0"/>
-                    <TextBlock x:Name="OpenHint" Text="یا فایل BMP / TIFF را اینجا رها کنید" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,12,0,24"/>
-                    <Border Background="#202D3C" Height="1"/>
-                    <TextBlock x:Name="WorkflowTitle" Text="مراحل کار" FontWeight="SemiBold" Margin="0,22,0,14"/>
-                    <TextBlock x:Name="StepOne" Text="۱   باز کردن و پیش‌نمایش" Foreground="#65E0C6" Margin="0,0,0,18"/>
-                    <TextBlock x:Name="StepTwo" Text="۲   تنظیمات و پروفایل ماشین" Foreground="#73879B" Margin="0,0,0,18"/>
-                    <TextBlock x:Name="StepThree" Text="۳   تبدیل و بررسی خروجی" Foreground="#73879B"/>
-                </StackPanel>
-            </Border>
-            <Grid Grid.Column="2">
-                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                <Grid Margin="0,0,0,16">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                    <StackPanel><TextBlock x:Name="CanvasTitle" Text="پیش‌نمایش طرح" FontSize="22" FontWeight="SemiBold"/><TextBlock x:Name="CanvasSubtitle" Text="بررسی دقیق تصویر پیش از آماده‌سازی" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0"/></StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" FlowDirection="LeftToRight">
-                        <Button x:Name="ZoomOutButton" Content="−" Click="ZoomOut_Click" Width="40" Padding="6" Margin="0,0,5,0" ToolTip="Zoom out"/>
-                        <TextBlock x:Name="ZoomText" Text="100%" Width="55" TextAlignment="Center" VerticalAlignment="Center"/>
-                        <Button x:Name="ZoomInButton" Content="+" Click="ZoomIn_Click" Width="40" Padding="6" Margin="5,0" ToolTip="Zoom in"/>
-                        <Button x:Name="ZoomResetButton" Content="100%" Click="ZoomReset_Click" Padding="10,6"/>
-                    </StackPanel>
-                </Grid>
-                <Border Grid.Row="1" Background="#0B121D" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="12" ClipToBounds="True">
-                    <Grid>
-                        <ScrollViewer x:Name="ImageScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" FlowDirection="LeftToRight" Visibility="Collapsed">
-                            <Image x:Name="PreviewImage" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="None" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
-                        </ScrollViewer>
-                        <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Width="350">
-                            <Border Width="72" Height="72" Background="#172A36" BorderBrush="#2E5C5C" BorderThickness="1" CornerRadius="22"><TextBlock Text="▦" Foreground="#59DBBF" FontSize="40" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-                            <TextBlock x:Name="EmptyTitle" Text="طرح خود را وارد کنید" FontSize="20" FontWeight="SemiBold" TextAlignment="Center" Margin="0,22,0,8"/>
-                            <TextBlock x:Name="EmptyHint" Text="یک تصویر BMP یا TIFF انتخاب کنید تا آن را با جزئیات بررسی کنید." TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource Muted}" LineHeight="22"/>
-                            <Button x:Name="EmptyButton" Content="انتخاب تصویر" Click="Open_Click" HorizontalAlignment="Center" Margin="0,20,0,0"/>
-                        </StackPanel>
+        <Grid Grid.Row="1" Margin="22">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <Grid x:Name="Navigation" Margin="0,0,0,16" FlowDirection="LeftToRight">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Button x:Name="OpenButton" Grid.Column="0" Content="+  باز کردن تصویر" Click="Open_Click" Margin="0,0,8,0" Background="#36C9AB" BorderBrush="#36C9AB" Foreground="#082621" FontWeight="Bold"/>
+                <Button x:Name="SizeStepButton" Grid.Column="1" Content="۱  تغییر اندازه" Click="SizeStep_Click" Margin="0,0,8,0" IsEnabled="False"/>
+                <Button x:Name="ColorStepButton" Grid.Column="2" Content="۲  کاهش رنگ" Click="ColorStep_Click" Margin="0,0,8,0" IsEnabled="False"/>
+                <Button x:Name="PatternStepButton" Grid.Column="3" Content="۳  اختصاص بافت" Click="PatternStep_Click" IsEnabled="False"/>
+            </Grid>
+            <!-- LTR grid order intentionally keeps the preview to the physical right for both languages. -->
+            <Grid Grid.Row="1" FlowDirection="LeftToRight">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="355"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Grid.Column="0" x:Name="SettingsBorder" FlowDirection="RightToLeft" Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="12" Padding="18">
+                    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <StackPanel><TextBlock x:Name="FileCaption" Text="فایل ورودی" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="FileValue" Text="—" FlowDirection="LeftToRight" TextTrimming="CharacterEllipsis" Margin="0,6,0,6"/><StackPanel Orientation="Horizontal" FlowDirection="LeftToRight" Margin="0,0,0,12"><Button x:Name="PreviousPage" Content="‹" Click="PreviousPage_Click" Width="36" Padding="6" IsEnabled="False"/><TextBlock x:Name="PageValue" Text="—" Width="78" TextAlignment="Center" VerticalAlignment="Center"/><Button x:Name="NextPage" Content="›" Click="NextPage_Click" Width="36" Padding="6" IsEnabled="False"/><TextBlock x:Name="FormatValue" Text="" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="12,0,0,0"/></StackPanel><Border Height="1" Background="#2B3A4E"/></StackPanel>
+                        <Grid Grid.Row="1" Margin="0,16,0,0">
+                            <StackPanel x:Name="NoFilePanel"><TextBlock x:Name="NoFileTitle" Text="شروع کار" FontSize="18" FontWeight="SemiBold"/><TextBlock x:Name="NoFileHint" Text="ابتدا یک تصویر BMP یا TIFF باز کنید یا در پنجره رها کنید." TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,10,0,0"/></StackPanel>
+                            <StackPanel x:Name="SizePanel" Visibility="Collapsed">
+                                <TextBlock x:Name="SizeTitle" Text="مرحله ۱ · تغییر اندازه" FontSize="18" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="SizeHint" Text="ابعاد خروجی را وارد و اعمال کنید. تصویر سمت راست نتیجه همین مرحله است." TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,8,0,18"/>
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><StackPanel><TextBlock x:Name="WidthLabel" Text="عرض (پیکسل)"/><TextBox x:Name="WidthInput" TextChanged="Inputs_Changed" FlowDirection="LeftToRight" Margin="0,6,5,0" Padding="7"/></StackPanel><StackPanel Grid.Column="1"><TextBlock x:Name="HeightLabel" Text="ارتفاع (پیکسل)"/><TextBox x:Name="HeightInput" TextChanged="Inputs_Changed" FlowDirection="LeftToRight" Margin="0,6,0,0" Padding="7"/></StackPanel></Grid>
+                                <Button x:Name="ApplySizeButton" Content="اعمال اندازه" Click="ApplySize_Click" Margin="0,16,0,0"/>
+                                <Button x:Name="ToColorButton" Content="مرحله بعد: رنگ ←" Click="ColorStep_Click" Margin="0,10,0,0" IsEnabled="False"/>
+                                <TextBlock x:Name="SizeNotice" Text="روش تغییر اندازه نزدیک‌ترین همسایه است؛ نسبت تصویر خودکار حفظ نمی‌شود." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,18,0,0" FontSize="12"/>
+                            </StackPanel>
+                            <StackPanel x:Name="ColorPanel" Visibility="Collapsed">
+                                <TextBlock x:Name="ColorTitle" Text="مرحله ۲ · کاهش رنگ" FontSize="18" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="ColorHint" Text="ورودی این مرحله تصویر تغییراندازه‌یافته است؛ بیش از ۵۰ رنگ به‌طور خودکار کاهش می‌یابد." TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,8,0,16"/>
+                                <TextBlock x:Name="ColorLimitLabel" Text="حداکثر تعداد رنگ (۱ تا ۵۰)"/><TextBox x:Name="ColorInput" Text="50" TextChanged="Inputs_Changed" FlowDirection="LeftToRight" Margin="0,6,0,0" Padding="7"/>
+                                <Button x:Name="ApplyColorButton" Content="اعمال تعداد رنگ" Click="ApplyColor_Click" Margin="0,14,0,0"/>
+                                <TextBlock x:Name="ColorSummary" Foreground="#75DFC7" TextWrapping="Wrap" Margin="0,14,0,8"/>
+                                <ListBox x:Name="ColorPaletteList" MaxHeight="190" Background="#111B29" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"><ListBox.ItemTemplate><DataTemplate><StackPanel Orientation="Horizontal" Margin="4"><Border Width="22" Height="22" Background="{Binding Brush}" BorderBrush="#A0A0A0" BorderThickness="1" CornerRadius="3"/><TextBlock Text="{Binding ColorLabel}" FlowDirection="LeftToRight" Margin="8,0" VerticalAlignment="Center"/></StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox>
+                                <Button x:Name="ToPatternButton" Content="مرحله بعد: بافت ←" Click="PatternStep_Click" Margin="0,14,0,0" IsEnabled="False"/>
+                            </StackPanel>
+                            <Grid x:Name="PatternPanel" Visibility="Collapsed"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                                <StackPanel><TextBlock x:Name="PatternTitle" Text="مرحله ۳ · اختصاص بافت" FontSize="18" FontWeight="SemiBold"/><TextBlock x:Name="PatternHint" Text="برای هر رنگ یک پترن سیاه‌وسفید انتخاب کنید؛ بافت در تمام نقاط آن رنگ تکرار می‌شود." TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,8,0,12"/><TextBlock x:Name="AssignedText" Foreground="#75DFC7" Margin="0,0,0,12"/></StackPanel>
+                                <Button Grid.Row="1" x:Name="SaveButton" Content="ذخیره تصویر نهایی" Click="Save_Click" IsEnabled="False" Background="#36C9AB" BorderBrush="#36C9AB" Foreground="#082621" FontWeight="Bold" Margin="0,0,0,12"/>
+                                <ListBox Grid.Row="2" x:Name="PaletteList" Background="#111B29" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"><ListBox.ItemTemplate><DataTemplate><Border Background="#1D2B3B" CornerRadius="6" Padding="8" Margin="0,0,0,5"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Border Width="24" Height="24" Background="{Binding Brush}" BorderBrush="#A0A0A0" BorderThickness="1" CornerRadius="4"/><StackPanel Grid.Column="1" Margin="8,0"><TextBlock Text="{Binding ColorLabel}" FlowDirection="LeftToRight" FontWeight="SemiBold"/><TextBlock Text="{Binding PatternLabel}" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis" MaxWidth="140" FontSize="11"/></StackPanel><Button Grid.Column="2" Content="..." ToolTip="Choose pattern" Padding="8,3" Click="Pattern_Click"/></Grid></Border></DataTemplate></ListBox.ItemTemplate></ListBox>
+                            </Grid>
+                        </Grid>
+                        <TextBlock Grid.Row="2" x:Name="SafetyText" Text="خروجی تصویر است، نه فایل دستگاه بافندگی." Foreground="#B4E5D7" TextWrapping="Wrap" FontSize="12" Margin="0,12,0,0"/>
                     </Grid>
                 </Border>
-                <Border Grid.Row="2" Background="#1B302D" CornerRadius="8" Padding="14,10" Margin="0,14,0,0">
-                    <TextBlock x:Name="SafetyText" Text="تبدیل به فایل ماشین هنوز فعال نیست. از این نسخه برای تولید استفاده نکنید." Foreground="#B4E5D7" TextWrapping="Wrap" FontSize="12"/>
-                </Border>
+                <Grid Grid.Column="2" FlowDirection="RightToLeft">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock x:Name="CanvasTitle" Text="پیش‌نمایش طرح" FontSize="21" FontWeight="SemiBold"/><TextBlock x:Name="CanvasSubtitle" Text="خروجی هر مرحله در این قسمت نمایش داده می‌شود" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0"/></StackPanel><StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" FlowDirection="LeftToRight"><Button Content="−" Click="ZoomOut_Click" Width="40" Padding="6"/><TextBlock x:Name="ZoomText" Text="100%" Width="58" TextAlignment="Center" VerticalAlignment="Center"/><Button Content="+" Click="ZoomIn_Click" Width="40" Padding="6"/><Button Content="100%" Click="ZoomReset_Click" Padding="10,6" Margin="6,0,0,0"/></StackPanel></Grid>
+                    <Border Grid.Row="1" Background="#0B121D" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="12" ClipToBounds="True"><Grid><ScrollViewer x:Name="ImageScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" FlowDirection="LeftToRight" Visibility="Collapsed"><Image x:Name="PreviewImage" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="None" RenderOptions.BitmapScalingMode="NearestNeighbor"/></ScrollViewer><StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Width="350"><Border Width="72" Height="72" Background="#172A36" BorderBrush="#2E5C5C" BorderThickness="1" CornerRadius="22"><TextBlock Text="▦" Foreground="#59DBBF" FontSize="40" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="EmptyTitle" Text="طرح خود را وارد کنید" FontSize="20" FontWeight="SemiBold" TextAlignment="Center" Margin="0,22,0,8"/><TextBlock x:Name="EmptyHint" Text="یک تصویر BMP یا TIFF انتخاب کنید." TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource Muted}"/><Button x:Name="EmptyButton" Content="انتخاب تصویر" Click="Open_Click" HorizontalAlignment="Center" Margin="0,20,0,0"/></StackPanel></Grid></Border>
+                    <TextBlock Grid.Row="2" x:Name="PreviewDetails" Foreground="{StaticResource Muted}" FontSize="12" Margin="2,10,2,0" FlowDirection="LeftToRight"/>
+                </Grid>
             </Grid>
-            <Border Grid.Column="4" Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="12" Padding="20">
-                <StackPanel>
-                    <TextBlock x:Name="InfoCaption" Text="جزئیات فایل" Foreground="{StaticResource Muted}" FontSize="12"/>
-                    <TextBlock x:Name="InfoTitle" Text="اطلاعات تصویر" FontSize="20" FontWeight="SemiBold" Margin="0,8,0,20"/>
-                    <TextBlock x:Name="FileLabel" Text="نام فایل" Foreground="{StaticResource Muted}" FontSize="12"/>
-                    <TextBlock x:Name="FileValue" Text="—" TextWrapping="Wrap" FlowDirection="LeftToRight" Margin="0,6,0,18"/>
-                    <TextBlock x:Name="DimensionsLabel" Text="ابعاد" Foreground="{StaticResource Muted}" FontSize="12"/>
-                    <TextBlock x:Name="DimensionsValue" Text="—" FlowDirection="LeftToRight" Margin="0,6,0,18"/>
-                    <TextBlock x:Name="FormatLabel" Text="نوع تصویر" Foreground="{StaticResource Muted}" FontSize="12"/>
-                    <TextBlock x:Name="FormatValue" Text="—" FlowDirection="LeftToRight" Margin="0,6,0,18"/>
-                    <TextBlock x:Name="PageLabel" Text="صفحه تصویر" Foreground="{StaticResource Muted}" FontSize="12"/>
-                    <StackPanel Orientation="Horizontal" FlowDirection="LeftToRight" Margin="0,8,0,18">
-                        <Button x:Name="PreviousPage" Content="‹" Width="40" Padding="6" Click="PreviousPage_Click" IsEnabled="False"/>
-                        <TextBlock x:Name="PageValue" Text="—" Width="70" TextAlignment="Center" VerticalAlignment="Center"/>
-                        <Button x:Name="NextPage" Content="›" Width="40" Padding="6" Click="NextPage_Click" IsEnabled="False"/>
-                    </StackPanel>
-                    <Border Background="#202D3C" Height="1"/>
-                    <TextBlock x:Name="NoticeTitle" Text="وضعیت پشتیبانی" FontWeight="SemiBold" Margin="0,20,0,8"/>
-                    <TextBlock x:Name="NoticeText" Text="خواندن و نوشتن فایل دستگاه در این مرحله پیاده‌سازی نشده است." TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="12" LineHeight="20"/>
-                </StackPanel>
-            </Border>
         </Grid>
-        <Border Grid.Row="2" Background="#111B29" BorderBrush="#27384B" BorderThickness="0,1,0,0">
-            <Grid Margin="28,0"><TextBlock x:Name="StatusText" Text="آماده برای باز کردن تصویر" VerticalAlignment="Center" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock Text="002.1.1.0-a1" FlowDirection="LeftToRight" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="#73879B" FontSize="11"/></Grid>
-        </Border>
+        <Border Grid.Row="2" Background="#111B29" BorderBrush="#27384B" BorderThickness="0,1,0,0"><Grid Margin="24,0"><TextBlock x:Name="StatusText" Text="آماده برای باز کردن تصویر" VerticalAlignment="Center" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="VersionText" FlowDirection="LeftToRight" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="#73879B" FontSize="11"/></Grid></Border>
     </Grid>
 </Window>

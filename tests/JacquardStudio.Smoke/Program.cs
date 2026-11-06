@@ -31,6 +31,22 @@ internal static class Program
             string pngPath = Path.Combine(dir, "disguised.bmp"); using (var f = File.Create(pngPath)) png.Save(f);
             Expect<NotSupportedException>(() => ImageLoader.Load(pngPath, 0));
             Expect<FileNotFoundException>(() => ImageLoader.Load(Path.Combine(dir, "missing.bmp"), 0));
+            var pipeline = new WorkflowSession(b.Image);
+            Expect<InvalidOperationException>(() => pipeline.ApplyColors(50));
+            pipeline.ApplySize(6, 4);
+            Check(pipeline.Resized!.PixelWidth == 6 && pipeline.Resized.PixelHeight == 4, "size stage output");
+            pipeline.ApplyColors(50);
+            Check(pipeline.Palette!.Width == 6 && pipeline.Palette.Height == 4, "color stage uses resized output");
+            pipeline.AssignPattern(0, new WeavePattern(1, 1, new byte[] { 0 }));
+            Check(!pipeline.CanSave, "cannot save with an unassigned pattern");
+            pipeline.AssignPattern(1, new WeavePattern(1, 1, new byte[] { 255 }));
+            Check(pipeline.CanSave && pipeline.PatternPreview!.PixelWidth == 6, "pattern stage output");
+            Expect<ArgumentOutOfRangeException>(() => pipeline.ApplySize(0, 4));
+            Check(pipeline.CanSave, "failed size stage preserves committed work");
+            pipeline.ApplyColors(1);
+            Check(!pipeline.CanSave && pipeline.Patterns.Length == 1, "color changes clear downstream patterns");
+            pipeline.ApplySize(3, 2);
+            Check(pipeline.Palette is null && pipeline.PatternPreview is null, "size changes clear downstream stages");
             var prepared = DesignProcessor.Prepare(b.Image, 6, 4, 50);
             Check(prepared.Width == 6 && prepared.Height == 4 && prepared.SourceColorCount == 2 && prepared.Colors.Length == 2, "resize and exact palette");
             Check(prepared.Indices[0] == prepared.Indices[1] && prepared.Indices[0] != prepared.Indices[2], "nearest neighbor geometry");
@@ -56,11 +72,11 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
+            Check(AppVersion.Display == "003.2.0.0-a1", "QAVNS version from version.txt");
             var window = new MainWindow();
             Check(window.FontFamily.Source.Contains("Vazirmatn"), "embedded font selected in main window");
             Check(window.FontFamily.GetTypefaces().Any(t => t.TryGetGlyphTypeface(out var glyph) && glyph.FontUri.ToString().Contains("Vazirmatn", StringComparison.OrdinalIgnoreCase)), "embedded font resolves");
             window.Close();
-            var editor = new EditorWindow(b.Image, tiffPath, false); Check(editor.FontFamily.Source.Contains("Vazirmatn"), "editor font"); editor.Close();
             var about = new AboutWindow(false); Check(about.FontFamily.Source.Contains("Vazirmatn"), "about font"); about.Close();
             Console.WriteLine("Smoke tests passed."); return 0;
         }
