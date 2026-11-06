@@ -13,6 +13,9 @@ public partial class MainWindow : Window
     private Stage stage = Stage.Size;
     private bool english, busy;
     private string? path;
+    private string? projectPath;
+    private string sourceName = "";
+    private int machineFormatIndex;
     private ImageResult? current;
     private WorkflowSession? session;
     private List<PaletteEntry> entries = new();
@@ -41,7 +44,7 @@ public partial class MainWindow : Window
         try
         {
             var result = await Task.Run(() => ImageLoader.Load(filename, page));
-            path = filename; current = result; session = new WorkflowSession(result.Image); entries.Clear(); PaletteList.ItemsSource = null; ColorPaletteList.ItemsSource = null;
+            path = filename; projectPath = null; sourceName = Path.GetFileName(filename); current = result; session = new WorkflowSession(result.Image); entries.Clear(); PaletteList.ItemsSource = null; ColorPaletteList.ItemsSource = null;
             WidthInput.Text = result.Image.PixelWidth.ToString(); HeightInput.Text = result.Image.PixelHeight.ToString(); ColorInput.Text = "50";
             FileValue.Text = Path.GetFileName(filename); FormatValue.Text = $"{result.Format} · {result.Image.Format.BitsPerPixel} bpp";
             zoom = 1; SetZoom(1); stage = Stage.Size; ShowStage();
@@ -54,13 +57,18 @@ public partial class MainWindow : Window
     private void PreviousPage_Click(object sender, RoutedEventArgs e) { if (!busy && path is not null && current is not null && current.PageIndex > 0 && ConfirmDiscard()) _ = LoadAsync(path, current.PageIndex - 1); }
     private void NextPage_Click(object sender, RoutedEventArgs e) { if (!busy && path is not null && current is not null && current.PageIndex + 1 < current.PageCount && ConfirmDiscard()) _ = LoadAsync(path, current.PageIndex + 1); }
     private void Window_DragOver(object sender, DragEventArgs e) { e.Effects = !busy && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; }
-    private void Window_Drop(object sender, DragEventArgs e) { if (!busy && e.Data.GetData(DataFormats.FileDrop) is string[] { Length: 1 } files && ConfirmDiscard()) _ = LoadAsync(files[0], 0); }
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        if (busy || e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files || !ConfirmDiscard()) return;
+        if (Path.GetExtension(files[0]).Equals(".sam", StringComparison.OrdinalIgnoreCase)) _ = LoadProjectAsync(files[0]);
+        else _ = LoadAsync(files[0], 0);
+    }
     private void Inputs_Changed(object sender, TextChangedEventArgs e) { if (IsInitialized) RefreshControls(); }
     private void SetBusy(bool value) { busy = value; RefreshControls(); }
     private void RefreshControls()
     {
         if (!IsInitialized) return;
-        OpenButton.IsEnabled = !busy; EmptyButton.IsEnabled = !busy; SettingsBorder.IsEnabled = !busy;
+        OpenButton.IsEnabled = !busy; OpenProjectButton.IsEnabled = !busy; SaveProjectButton.IsEnabled = !busy && session is not null; EmptyButton.IsEnabled = !busy; SettingsBorder.IsEnabled = !busy;
         SizeStepButton.IsEnabled = !busy && session is not null;
         ColorStepButton.IsEnabled = !busy && session?.Resized is not null && !SizeDirty;
         PatternStepButton.IsEnabled = !busy && session?.Palette is not null && !SizeDirty && !ColorsDirty;
@@ -78,6 +86,64 @@ public partial class MainWindow : Window
             pair.Item1.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString((session is not null || stage == Stage.Machine) && pair.Item2 == stage ? "#54E0C2" : "#374C60"));
         }
     }
+    private void OpenProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy) return;
+        var dialog = new OpenFileDialog { Filter = "SAM project (*.sam)|*.sam", CheckFileExists = true };
+        if (dialog.ShowDialog(this) == true && ConfirmDiscard()) _ = LoadProjectAsync(dialog.FileName);
+    }
+    private async Task LoadProjectAsync(string filename)
+    {
+        SetBusy(true); StatusText.Text = T("در حال باز کردن پروژه…", "Opening project…");
+        try
+        {
+            var state = await Task.Run(() => ProjectFile.Load(filename));
+            // Only replace current work after the complete archive has been checked.
+            session = state.Session; path = filename; projectPath = filename; sourceName = state.SourceName;
+            current = new ImageResult(session.Source, 1, 0, "SAM");
+            WidthInput.Text = state.WidthInput; HeightInput.Text = state.HeightInput; ColorInput.Text = state.ColorInput;
+            english = state.English; stage = Enum.Parse<Stage>(state.Stage); machineFormatIndex = state.MachineFormatIndex;
+            switch (machineFormatIndex) { case 0: FormatJC4.IsChecked = true; break; case 1: FormatJC5.IsChecked = true; break; case 2: FormatZC5.IsChecked = true; break; case 3: FormatEP.IsChecked = true; break; }
+            entries = new List<PaletteEntry>();
+            if (session.Palette is { } palette)
+            {
+                for (int i = 0; i < palette.Colors.Length; i++)
+                {
+                    int c = palette.Colors[i];
+                    var entry = new PaletteEntry { Index = i, ColorLabel = $"#{c:X6} · {palette.Counts[i]:N0} px", Brush = new SolidColorBrush(Color.FromRgb((byte)(c >> 16), (byte)(c >> 8), (byte)c)) };
+                    if (session.Patterns[i] is { } pattern) entry.Restore(state.PatternNames[i] ?? "pattern", pattern);
+                    entries.Add(entry);
+                }
+            }
+            PaletteList.ItemsSource = entries; ColorPaletteList.ItemsSource = entries;
+            FileValue.Text = Path.GetFileName(filename); FormatValue.Text = "SAM"; SetZoom(1); UpdateLabels(); ShowStage();
+            StatusText.Text = T("پروژه باز شد؛ تصویر و پترن‌ها در پروژه قرار دارند.", "Project opened; the image and patterns are embedded.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException or System.Text.Json.JsonException or OverflowException or FormatException)
+        { MessageBox.Show(this, T("باز کردن پروژه ممکن نشد: ", "Could not open project: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("باز کردن پروژه ناموفق بود.", "Could not open project."); }
+        finally { SetBusy(false); }
+    }
+    private async void SaveProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || session is null || path is null) return;
+        var dialog = new SaveFileDialog { Filter = "SAM project (*.sam)|*.sam", AddExtension = true, DefaultExt = ".sam", OverwritePrompt = true, FileName = projectPath is null ? Path.GetFileNameWithoutExtension(sourceName) + ".sam" : Path.GetFileName(projectPath) };
+        if (dialog.ShowDialog(this) != true) return;
+        var names = session.Patterns.Select((p, i) => p is null ? null : entries[i].PatternLabel).ToArray();
+        var state = new ProjectState(session, sourceName, WidthInput.Text, HeightInput.Text, ColorInput.Text, stage.ToString(), english, machineFormatIndex, names);
+        var protectedPaths = entries.Select(x => x.PatternPath).OfType<string>().ToList();
+        if (!string.Equals(path, projectPath, StringComparison.OrdinalIgnoreCase)) protectedPaths.Add(path);
+        SetBusy(true); StatusText.Text = T("در حال ذخیره پروژه…", "Saving project…");
+        try
+        {
+            await Task.Run(() => ProjectFile.Save(dialog.FileName, state, protectedPaths));
+            projectPath = dialog.FileName; StatusText.Text = T("پروژه ذخیره شد.", "Project saved.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException)
+        { MessageBox.Show(this, T("ذخیره پروژه ممکن نشد: ", "Could not save project: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("ذخیره پروژه ناموفق بود.", "Project save failed."); }
+        finally { SetBusy(false); }
+    }
+    private void MachineFormat_Checked(object sender, RoutedEventArgs e)
+    { if ((sender as RadioButton)?.Tag is string tag && int.TryParse(tag, out int selected)) machineFormatIndex = selected; }
     private void SizeStep_Click(object sender, RoutedEventArgs e) { if (!busy && session is not null) { stage = Stage.Size; ShowStage(); } }
     private async void ColorStep_Click(object sender, RoutedEventArgs e)
     {
@@ -233,7 +299,7 @@ public partial class MainWindow : Window
     {
         FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
         SettingsBorder.FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
-        LanguageButton.Content = english ? "فارسی" : "English"; AboutButton.Content = T("درباره", "About");
+        LanguageButton.Content = english ? "فارسی" : "English"; AboutButton.Content = T("درباره", "About"); OpenProjectButton.Content = T("باز کردن پروژه", "Open project"); SaveProjectButton.Content = T("ذخیره پروژه", "Save project"); ColorColumn.Header = T("رنگ", "Color"); PatternColumn.Header = T("بافت", "Pattern");
         SubtitleText.Text = T("فضای کار طراحی و بازرسی ژاکارد", "Jacquard design workspace"); BadgeText.Text = T("نسخه آزمایشی", "EXPERIMENTAL");
         OpenButton.Content = T("+  باز کردن تصویر", "+  Open image"); SizeStepButton.Content = T("۱  تغییر اندازه", "1  Resize"); ColorStepButton.Content = T("۲  کاهش رنگ", "2  Colors"); PatternStepButton.Content = T("۳  اختصاص بافت", "3  Patterns"); MachineStepButton.Content = T("۴  فایل ماشین", "4  Loom file");
         FileCaption.Text = T("فایل ورودی", "INPUT FILE"); NoFileTitle.Text = T("شروع کار", "Get started"); NoFileHint.Text = T("ابتدا یک تصویر BMP یا TIFF باز کنید یا در پنجره رها کنید.", "Open or drop a BMP or TIFF image to start.");

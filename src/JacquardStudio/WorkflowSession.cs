@@ -37,5 +37,15 @@ public sealed class WorkflowSession
         var preview = DesignProcessor.Render(palette, next);
         Patterns = next; PatternPreview = preview;
     }
+    internal static WorkflowSession Restore(BitmapSource source, BitmapSource? resized, PaletteResult? palette, int? limit, WeavePattern?[] patterns)
+    {
+        var session = new WorkflowSession(source) { Resized = resized, Palette = palette, AppliedColorLimit = limit, Patterns = patterns };
+        if (palette is not null)
+        {
+            session.ColorPreview = DesignProcessor.Render(palette, new WeavePattern?[palette.Colors.Length]);
+            session.PatternPreview = DesignProcessor.Render(palette, patterns);
+        }
+        return session;
+    }
     public bool CanSave => Palette is not null && Patterns.Length > 0 && Patterns.All(p => p is not null);
 }

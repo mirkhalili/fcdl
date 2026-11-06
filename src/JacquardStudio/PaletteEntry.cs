@@ -11,13 +11,16 @@ public sealed class PaletteEntry : INotifyPropertyChanged
     public Brush Brush { get; init; } = Brushes.Black;
     public string? PatternPath { get; private set; }
     public BitmapSource? PatternPreview { get; private set; }
-    public string PatternLabel => PatternPath is null ? "—" : Path.GetFileName(PatternPath);
+    private string? patternName;
+    public string PatternLabel => patternName ?? "—";
     public event PropertyChangedEventHandler? PropertyChanged;
-    public void Assign(string path, WeavePattern pattern)
+    public void Assign(string path, WeavePattern pattern) => SetPattern(Path.GetFileName(path), path, pattern);
+    public void Restore(string name, WeavePattern pattern) => SetPattern(name, null, pattern);
+    private void SetPattern(string name, string? path, WeavePattern pattern)
     {
         var preview = BitmapSource.Create(pattern.Width, pattern.Height, 96, 96, PixelFormats.Gray8, null, pattern.Values, pattern.Width);
         preview.Freeze();
-        PatternPath = path; PatternPreview = preview;
+        patternName = name; PatternPath = path; PatternPreview = preview;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PatternLabel)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PatternPreview)));
     }
