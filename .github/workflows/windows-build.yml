@@ -1,0 +1,41 @@
+name: Windows preview and installer
+on:
+  push:
+    branches: ["arena/d188298f-fcdl"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build and smoke-test on Windows
+        run: |
+          dotnet build src/JacquardStudio/JacquardStudio.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project tests/JacquardStudio.Smoke/JacquardStudio.Smoke.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish self-contained Windows x64 application
+        run: |
+          dotnet publish src/JacquardStudio/JacquardStudio.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Inno Setup 6 is not installed on this runner" }
+          & $iscc packaging/JacquardStudio.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-FileHash artifacts/installer/*.exe -Algorithm SHA256 | Format-List | Out-File artifacts/installer/SHA256.txt
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: JacquardStudio-001.1.0.0-a1-Windows-x64
+          path: artifacts/installer/*
+          if-no-files-found: error
+          retention-days: 30
