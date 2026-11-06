@@ -56,9 +56,12 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            var window = new MainWindow(); window.Close();
-            var editor = new EditorWindow(b.Image, tiffPath, false); editor.Close();
-            var about = new AboutWindow(false); about.Close();
+            var window = new MainWindow();
+            Check(window.FontFamily.Source.Contains("Vazirmatn"), "embedded font selected in main window");
+            Check(window.FontFamily.GetTypefaces().Any(t => t.TryGetGlyphTypeface(out var glyph) && glyph.FontUri.ToString().Contains("Vazirmatn", StringComparison.OrdinalIgnoreCase)), "embedded font resolves");
+            window.Close();
+            var editor = new EditorWindow(b.Image, tiffPath, false); Check(editor.FontFamily.Source.Contains("Vazirmatn"), "editor font"); editor.Close();
+            var about = new AboutWindow(false); Check(about.FontFamily.Source.Contains("Vazirmatn"), "about font"); about.Close();
             Console.WriteLine("Smoke tests passed."); return 0;
         }
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }

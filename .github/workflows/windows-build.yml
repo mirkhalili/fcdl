@@ -40,12 +40,11 @@ jobs:
           path: artifacts/previous
           run-id: 42240660422
           github-token: ${{ github.token }}
-        continue-on-error: true
       - name: Test per-user installer upgrade
         shell: pwsh
         run: |
           $old = Get-ChildItem artifacts/previous/*Setup.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $old) { Write-Warning "Previous artifact unavailable; upgrade test skipped."; exit 0 }
+          if (-not $old) { throw "Previous artifact unavailable; cannot verify upgrade." }
           $dir = Join-Path $env:RUNNER_TEMP "JacquardUpgradeTest"
           $params = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=$dir")
           $oldResult = Start-Process -FilePath $old.FullName -ArgumentList $params -Wait -PassThru
