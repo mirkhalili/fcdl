@@ -15,7 +15,7 @@ public partial class MainWindow : Window
     private string? path;
     private string? projectPath;
     private string sourceName = "";
-    private int machineFormatIndex;
+    private int machineFormatIndex = 1;
     private ImageResult? current;
     private WorkflowSession? session;
     private List<PaletteEntry> entries = new();
@@ -73,6 +73,8 @@ public partial class MainWindow : Window
         ColorStepButton.IsEnabled = !busy && session?.Resized is not null && !SizeDirty;
         PatternStepButton.IsEnabled = !busy && session?.Palette is not null && !SizeDirty && !ColorsDirty;
         MachineStepButton.IsEnabled = !busy;
+        MachineExportButton.IsEnabled = !busy && stage == Stage.Machine && machineFormatIndex == 1 && session is not null &&
+            (MachineUseSource.IsChecked == true || (session.CanSave && !SizeDirty && !ColorsDirty));
         SaveSizeButton.IsEnabled = !busy && stage == Stage.Size && session?.Resized is not null && !SizeDirty;
         SaveColorButton.IsEnabled = !busy && stage == Stage.Colors && session?.ColorPreview is not null && !SizeDirty && !ColorsDirty;
         ToColorButton.IsEnabled = ColorStepButton.IsEnabled; ToPatternButton.IsEnabled = PatternStepButton.IsEnabled;
@@ -143,7 +145,11 @@ public partial class MainWindow : Window
         finally { SetBusy(false); }
     }
     private void MachineFormat_Checked(object sender, RoutedEventArgs e)
-    { if ((sender as RadioButton)?.Tag is string tag && int.TryParse(tag, out int selected)) machineFormatIndex = selected; }
+    {
+        if ((sender as RadioButton)?.Tag is string tag && int.TryParse(tag, out int selected)) machineFormatIndex = selected;
+        if (IsInitialized) RefreshControls();
+    }
+    private void MachineSource_Changed(object sender, RoutedEventArgs e) { if (IsInitialized) ShowStage(); }
     private void SizeStep_Click(object sender, RoutedEventArgs e) { if (!busy && session is not null) { stage = Stage.Size; ShowStage(); } }
     private async void ColorStep_Click(object sender, RoutedEventArgs e)
     {
@@ -173,7 +179,7 @@ public partial class MainWindow : Window
                 Stage.Size => session.Resized ?? session.Source,
                 Stage.Colors => session.ColorPreview ?? session.Resized ?? session.Source,
                 Stage.Patterns => session.PatternPreview ?? session.ColorPreview ?? session.Source,
-                Stage.Machine => session.PatternPreview ?? session.ColorPreview ?? session.Resized ?? session.Source,
+                Stage.Machine => MachineUseSource.IsChecked == true ? session.Source : session.PatternPreview ?? session.ColorPreview ?? session.Resized ?? session.Source,
                 _ => session.Source
             };
             PreviewImage.Source = view; ImageScroll.Visibility = Visibility.Visible; EmptyState.Visibility = Visibility.Collapsed;
@@ -185,6 +191,9 @@ public partial class MainWindow : Window
             Stage.Colors => T("پیش‌نمایش رنگ‌ها", "Color preview"),
             _ => T("پیش‌نمایش بافت", "Pattern preview")
         };
+        SafetyText.Text = stage == Stage.Machine
+            ? T("فایل JC5 آزمایشی است؛ قبل از تولید مستقل بررسی شود.", "JC5 is experimental; verify independently before production.")
+            : T("خروجی این مرحله تصویر است، نه فایل دستگاه بافندگی.", "This stage outputs an image, not a loom file.");
         UpdateSummary(); RefreshControls();
     }
     private bool ConfirmPatternLoss()
@@ -280,14 +289,47 @@ public partial class MainWindow : Window
         { MessageBox.Show(this, T("ذخیره ناموفق بود: ", "Save failed: ") + ex.Message); }
         finally { SetBusy(false); }
     }
-    private void MachineImport_Click(object sender, RoutedEventArgs e)
+    private async void MachineExport_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || machineFormatIndex != 1 || session is null || path is null) return;
+        BitmapSource? frame = MachineUseSource.IsChecked == true ? session.Source :
+            session.CanSave && !SizeDirty && !ColorsDirty ? session.PatternPreview : null;
+        if (frame is null) return;
+        string warning = T($"خروجی JC5 آزمایشی و تک‌ناحیه‌ای است: {frame.PixelWidth} قلاب و {frame.PixelHeight} رج، سیاه = بیت ۱. نگاشت یا لبه دستگاه به آن اضافه نمی‌شود. ابتدا با DesignScope و بدون تولید بررسی کنید. ادامه می‌دهید؟",
+            $"Experimental single-area JC5: {frame.PixelWidth} hooks and {frame.PixelHeight} picks, black = bit 1. No machine mapping or selvedges are added. Verify in DesignScope before production. Continue?");
+        if (MessageBox.Show(this, warning, Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        var dialog = new SaveFileDialog { Filter = "JC5 (*.jc5)|*.jc5", DefaultExt = ".jc5", AddExtension = true, OverwritePrompt = true, FileName = "design.jc5" };
+        if (dialog.ShowDialog(this) != true) return;
+        var protectedPaths = new[] { path }.Concat(projectPath is null ? Array.Empty<string>() : new[] { projectPath }).Concat(entries.Select(x => x.PatternPath).OfType<string>()).ToArray();
+        SetBusy(true);
+        try
+        {
+            await Task.Run(() => Jc5Codec.Save(frame, dialog.FileName, protectedPaths));
+            StatusText.Text = T("JC5 آزمایشی ذخیره شد؛ پیش از تولید آن را در DesignScope بررسی کنید.", "Experimental JC5 saved; verify it in DesignScope before production.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException)
+        { MessageBox.Show(this, T("ذخیره JC5 ناموفق بود: ", "JC5 save failed: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        finally { SetBusy(false); }
+    }
+    private async void MachineImport_Click(object sender, RoutedEventArgs e)
     {
         if (busy) return;
-        var dialog = new OpenFileDialog { Filter = "Jacquard files (*.jc4;*.jc5;*.zc5;*.ep)|*.jc4;*.jc5;*.zc5;*.ep|All files|*.*", CheckFileExists = true };
-        if (dialog.ShowDialog(this) != true) return;
-        MessageBox.Show(this, T("هنوز کدک تأییدشده‌ای برای خواندن فایل ماشین وجود ندارد. هیچ فایلی خوانده یا تصویری تولید نشد. مدل کنترلر و نمونه فایل معتبر را ارائه کنید.",
-            "No verified machine-file decoder is available yet. No file was read and no image was generated. Please provide the controller model and a valid sample."),
-            Title, MessageBoxButton.OK, MessageBoxImage.Information);
+        var dialog = new OpenFileDialog { Filter = "JC5 (*.jc5)|*.jc5", CheckFileExists = true };
+        if (dialog.ShowDialog(this) != true || !ConfirmDiscard()) return;
+        SetBusy(true);
+        try
+        {
+            var image = await Task.Run(() => Jc5Codec.Load(dialog.FileName));
+            var next = new WorkflowSession(image); next.ApplySize(image.PixelWidth, image.PixelHeight);
+            session = next; path = dialog.FileName; projectPath = null; sourceName = Path.GetFileName(path);
+            current = new ImageResult(image, 1, 0, "JC5 (experimental)"); entries.Clear(); PaletteList.ItemsSource = null; ColorPaletteList.ItemsSource = null;
+            WidthInput.Text = image.PixelWidth.ToString(); HeightInput.Text = image.PixelHeight.ToString(); ColorInput.Text = "50";
+            FileValue.Text = sourceName; FormatValue.Text = "JC5 · experimental"; stage = Stage.Size; SetZoom(1); ShowStage();
+            StatusText.Text = T("JC5 باز شد؛ از مرحله اندازه می‌توانید نقشه را BMP یا TIFF ذخیره کنید. داده‌های غیرتصویری و بیت‌های اضافی حفظ نمی‌شوند.", "JC5 opened; save the hook map as BMP or TIFF from the size stage. Non-image data and padding bits are not preserved.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException or OverflowException)
+        { MessageBox.Show(this, T("خواندن JC5 ممکن نشد: ", "Could not read JC5: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        finally { SetBusy(false); }
     }
     private void SetZoom(double value) { zoom = Math.Clamp(value, 0.125, 8); PreviewImage.LayoutTransform = new ScaleTransform(zoom, zoom); ZoomText.Text = $"{zoom * 100:0}%"; }
     private void ZoomIn_Click(object sender, RoutedEventArgs e) => SetZoom(zoom * 2);
@@ -309,9 +351,9 @@ public partial class MainWindow : Window
         ColorTitle.Text = T("مرحله ۲ · کاهش رنگ", "Stage 2 · Colors"); ColorHint.Text = T("ورودی این مرحله تصویر تغییراندازه‌یافته است؛ بیش از ۵۰ رنگ به‌طور خودکار کاهش می‌یابد.", "Input is the resized image; over 50 colors are reduced automatically.");
         ColorLimitLabel.Text = T("حداکثر تعداد رنگ (۱ تا ۵۰)", "Maximum colors (1–50)"); ApplyColorButton.Content = T("اعمال تعداد رنگ", "Apply color limit"); SaveColorButton.Content = T("ذخیره خروجی رنگ", "Save color image"); ToPatternButton.Content = T("مرحله بعد: بافت ←", "Next: patterns →");
         PatternTitle.Text = T("مرحله ۳ · اختصاص بافت", "Stage 3 · Patterns"); PatternHint.Text = T("برای هر رنگ یک پترن سیاه‌وسفید انتخاب کنید؛ بافت در تمام نقاط آن رنگ تکرار می‌شود.", "Choose a black-and-white pattern per color; it repeats wherever the color occurs."); SaveButton.Content = T("ذخیره خروجی بافت", "Save pattern image");
-        MachineTitle.Text = T("مرحله ۴ · فایل ماشین", "Stage 4 · Loom file"); MachineHint.Text = T("خواندن و نوشتن قالب‌های زیر هنوز تأیید و پیاده‌سازی نشده است. تغییر پسوند، تبدیل فایل نیست.", "The formats below are not yet verified or implemented. Renaming a file is not conversion.");
-        MachineFormatLabel.Text = T("قالب هدف (پشتیبانی‌نشده)", "Target format (unsupported)"); MachineExportButton.Content = T("تبدیل و ذخیره فایل ماشین", "Convert and save loom file"); MachineImportButton.Content = T("انتخاب فایل ماشین", "Select loom file");
-        MachineNotice.Text = T("برای فعال شدن تبدیل یا خواندن، نمونه فایل واقعی، مدل کنترلر و مشخصات معتبر لازم است.", "A real sample, controller model, and verified specifications are needed before conversion or reading can be enabled.");
+        MachineTitle.Text = T("مرحله ۴ · فایل ماشین", "Stage 4 · Loom file"); MachineHint.Text = T("JC5 تک‌ناحیه‌ای بر اساس نمونه DesignScope به‌صورت آزمایشی فعال است؛ سایر قالب‌ها هنوز پشتیبانی نمی‌شوند.", "Experimental single-area JC5 based on DesignScope samples; other formats are not supported.");
+        MachineFormatLabel.Text = T("قالب هدف", "Target format"); MachineUseSource.Content = T("استفاده از تصویر اصلی سیاه‌وسفید به جای نتیجه بافت", "Use original black-and-white image instead of pattern result"); MachineExportButton.Content = T("تبدیل و ذخیره فایل ماشین", "Convert and save loom file"); MachineImportButton.Content = T("انتخاب فایل ماشین", "Select loom file");
+        MachineNotice.Text = T("عرض تصویر = تعداد قلاب و ارتفاع = تعداد رج. رنگ سیاه بیت ۱ است. لبه، ناحیه اضافی و تنظیمات دستگاه اضافه نمی‌شوند. قبل از تولید در DesignScope و روی دستگاه آزمایش کنید.", "Image width = hooks and height = picks; black is bit 1. No selvedge, extra areas or machine settings are added. Verify in DesignScope and on the controller before production.");
         SafetyText.Text = T("خروجی تصویر است، نه فایل دستگاه بافندگی.", "Output is an image, not a loom file."); CanvasSubtitle.Text = T("خروجی هر مرحله در این قسمت نمایش داده می‌شود", "The result of each stage appears here");
         EmptyTitle.Text = T("طرح خود را وارد کنید", "Bring in your design"); EmptyHint.Text = T("یک تصویر BMP یا TIFF انتخاب کنید.", "Choose a BMP or TIFF image."); EmptyButton.Content = T("انتخاب تصویر", "Choose image");
         if (session is null) StatusText.Text = T("آماده برای باز کردن تصویر", "Ready to open an image");

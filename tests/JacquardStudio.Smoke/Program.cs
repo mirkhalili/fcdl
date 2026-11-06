@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using JacquardStudio;
@@ -70,6 +71,36 @@ internal static class Program
             Expect<IOException>(() => ImageExporter.Save(pipeline.PatternPreview!, bmpPath, false, new[] { bmpPath }));
             Expect<ArgumentException>(() => ImageExporter.Save(pipeline.PatternPreview!, Path.Combine(dir, "fake.jc5"), false, new[] { bmpPath }));
             Check(!File.Exists(Path.Combine(dir, "fake.jc5")), "machine extension not created");
+            // Small asymmetric raster exercises bit order, vertical direction and non-byte-aligned width.
+            byte[] encoded = Jc5Codec.Encode(image, "test.jc5");
+            var decoded = Jc5Codec.Decode(encoded); var roundTrip = new byte[6]; decoded.CopyPixels(roundTrip, 3, 0);
+            Check(roundTrip.SequenceEqual(pixels), "JC5 lossless hook-map roundtrip");
+            Check(encoded[^2] == 0x60 && encoded[^1] == 0x80, "JC5 bottom-up MSB-first black bits and zero padding");
+            Expect<InvalidDataException>(() => Jc5Codec.Decode(encoded[..^1]));
+            Expect<ArgumentException>(() => Jc5Codec.Encode(image, "نام"));
+            string jcPath = Path.Combine(dir, "test.jc5"); Jc5Codec.Save(image, jcPath, new[] { bmpPath });
+            Check(Jc5Codec.Load(jcPath).PixelWidth == 3, "JC5 file load and save");
+            Expect<IOException>(() => Jc5Codec.Save(image, jcPath, new[] { jcPath }));
+            Expect<ArgumentException>(() => Jc5Codec.Save(image, Path.Combine(dir, "test.zc5"), Array.Empty<string>()));
+            // User-provided DesignScope exports in the repository: validate raster independently of our header.
+            string repository = Directory.GetCurrentDirectory();
+            while (!File.Exists(Path.Combine(repository, "baft.zip"))) repository = Path.GetDirectoryName(repository) ?? throw new Exception("Reference archive missing");
+            using (var archive = ZipFile.OpenRead(Path.Combine(repository, "baft.zip")))
+            foreach (var sample in new[] { ("PP1-02.jc5.jc5", 1344), ("PP1-02.jc6.jc5", 1204) })
+            {
+                var fixture = archive.GetEntry(sample.Item1) ?? throw new Exception("Reference sample missing");
+                using var input = fixture.Open(); using var memory = new MemoryStream(); input.CopyTo(memory); byte[] reference = memory.ToArray();
+                var map = Jc5Codec.Decode(reference);
+                Check(map.PixelWidth == sample.Item2 && map.PixelHeight == 1203, "DesignScope JC5 dimensions");
+                byte[] regenerated = Jc5Codec.Encode(map, "test.jc5"); int stride = (sample.Item2 + 7) / 8, rasterLength = stride * map.PixelHeight;
+                int oldOffset = reference.Length - rasterLength, newOffset = regenerated.Length - rasterLength;
+                for (int y = 0; y < map.PixelHeight; y++)
+                for (int x = 0; x < sample.Item2; x++)
+                {
+                    int index = y * stride + x / 8, mask = 0x80 >> (x % 8);
+                    Check((reference[oldOffset + index] & mask) == (regenerated[newOffset + index] & mask), "DesignScope declared hook bits");
+                }
+            }
             var entry = new PaletteEntry(); entry.Assign("weave.bmp", new WeavePattern(2, 1, new byte[] { 0, 255 }));
             var thumbnail = new byte[2]; entry.PatternPreview!.CopyPixels(thumbnail, 2, 0);
             Check(entry.PatternLabel == "weave.bmp" && thumbnail.SequenceEqual(new byte[] {0, 255}), "pattern thumbnail");
@@ -104,7 +135,7 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            Check(AppVersion.Display == "005.2.2.0-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "006.2.3.0-a1", "QAVNS version from version.txt");
             var window = new MainWindow();
             Check(window.FontFamily.Source.Contains("Vazirmatn"), "embedded font selected in main window");
             var nav = (System.Windows.Controls.Grid)window.FindName("Navigation");
@@ -113,7 +144,7 @@ internal static class Program
             var list = (System.Windows.Controls.ListView)window.FindName("PaletteList");
             Check(list.View is System.Windows.Controls.GridView grid && grid.Columns.Count == 2, "two-column color and pattern table");
             var machineExport = (System.Windows.Controls.Button)window.FindName("MachineExportButton");
-            Check(!machineExport.IsEnabled, "unsupported machine export remains disabled");
+            Check(!machineExport.IsEnabled, "machine export disabled until a valid input is selected");
             Check(window.FontFamily.GetTypefaces().Any(t => t.TryGetGlyphTypeface(out var glyph) && glyph.FontUri.ToString().Contains("Vazirmatn", StringComparison.OrdinalIgnoreCase)), "embedded font resolves");
             window.Close();
             var about = new AboutWindow(false); Check(about.FontFamily.Source.Contains("Vazirmatn"), "about font"); about.Close();
