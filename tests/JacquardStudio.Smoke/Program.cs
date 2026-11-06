@@ -1,5 +1,4 @@
 using System.IO;
-using System.IO.Compression;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using JacquardStudio;
@@ -82,14 +81,12 @@ internal static class Program
             Check(Jc5Codec.Load(jcPath).PixelWidth == 3, "JC5 file load and save");
             Expect<IOException>(() => Jc5Codec.Save(image, jcPath, new[] { jcPath }));
             Expect<ArgumentException>(() => Jc5Codec.Save(image, Path.Combine(dir, "test.zc5"), Array.Empty<string>()));
-            // User-provided DesignScope exports in the repository: validate raster independently of our header.
+            // User-provided DesignScope exports, retained independently of the mutable uploaded archive.
             string repository = Directory.GetCurrentDirectory();
-            while (!File.Exists(Path.Combine(repository, "baft.zip"))) repository = Path.GetDirectoryName(repository) ?? throw new Exception("Reference archive missing");
-            using (var archive = ZipFile.OpenRead(Path.Combine(repository, "baft.zip")))
-            foreach (var sample in new[] { ("PP1-02.jc5.jc5", 1344), ("PP1-02.jc6.jc5", 1204) })
+            while (!Directory.Exists(Path.Combine(repository, "tests", "fixtures"))) repository = Path.GetDirectoryName(repository) ?? throw new Exception("Reference fixtures missing");
+            foreach (var sample in new[] { ("sample-1344.jc5", 1344), ("sample-1204.jc5", 1204) })
             {
-                var fixture = archive.GetEntry(sample.Item1) ?? throw new Exception("Reference sample missing");
-                using var input = fixture.Open(); using var memory = new MemoryStream(); input.CopyTo(memory); byte[] reference = memory.ToArray();
+                byte[] reference = File.ReadAllBytes(Path.Combine(repository, "tests", "fixtures", sample.Item1));
                 var map = Jc5Codec.Decode(reference);
                 Check(map.PixelWidth == sample.Item2 && map.PixelHeight == 1203, "DesignScope JC5 dimensions");
                 byte[] regenerated = Jc5Codec.Encode(map, "test.jc5"); int stride = (sample.Item2 + 7) / 8, rasterLength = stride * map.PixelHeight;
