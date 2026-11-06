@@ -9,7 +9,7 @@ namespace JacquardStudio;
 
 public partial class MainWindow : Window
 {
-    private enum Stage { Size, Colors, Patterns }
+    private enum Stage { Size, Colors, Patterns, Machine }
     private Stage stage = Stage.Size;
     private bool english, busy;
     private string? path;
@@ -64,15 +64,18 @@ public partial class MainWindow : Window
         SizeStepButton.IsEnabled = !busy && session is not null;
         ColorStepButton.IsEnabled = !busy && session?.Resized is not null && !SizeDirty;
         PatternStepButton.IsEnabled = !busy && session?.Palette is not null && !SizeDirty && !ColorsDirty;
+        MachineStepButton.IsEnabled = !busy;
+        SaveSizeButton.IsEnabled = !busy && stage == Stage.Size && session?.Resized is not null && !SizeDirty;
+        SaveColorButton.IsEnabled = !busy && stage == Stage.Colors && session?.ColorPreview is not null && !SizeDirty && !ColorsDirty;
         ToColorButton.IsEnabled = ColorStepButton.IsEnabled; ToPatternButton.IsEnabled = PatternStepButton.IsEnabled;
-        SaveButton.IsEnabled = !busy && stage == Stage.Patterns && session?.CanSave == true && !SizeDirty && !ColorsDirty;
+        SaveButton.IsEnabled = !busy && stage == Stage.Patterns && session?.PatternPreview is not null && !SizeDirty && !ColorsDirty;
         PreviousPage.IsEnabled = !busy && current is not null && current.PageIndex > 0;
         NextPage.IsEnabled = !busy && current is not null && current.PageIndex + 1 < current.PageCount;
         PageValue.Text = current is null ? "—" : $"{current.PageIndex + 1} / {current.PageCount}";
-        foreach (var pair in new[] { (SizeStepButton, Stage.Size), (ColorStepButton, Stage.Colors), (PatternStepButton, Stage.Patterns) })
+        foreach (var pair in new[] { (SizeStepButton, Stage.Size), (ColorStepButton, Stage.Colors), (PatternStepButton, Stage.Patterns), (MachineStepButton, Stage.Machine) })
         {
-            pair.Item1.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(session is not null && pair.Item2 == stage ? "#31574F" : "#263749"));
-            pair.Item1.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(session is not null && pair.Item2 == stage ? "#54E0C2" : "#374C60"));
+            pair.Item1.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString((session is not null || stage == Stage.Machine) && pair.Item2 == stage ? "#31574F" : "#263749"));
+            pair.Item1.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString((session is not null || stage == Stage.Machine) && pair.Item2 == stage ? "#54E0C2" : "#374C60"));
         }
     }
     private void SizeStep_Click(object sender, RoutedEventArgs e) { if (!busy && session is not null) { stage = Stage.Size; ShowStage(); } }
@@ -87,10 +90,12 @@ public partial class MainWindow : Window
         if (busy || session?.Palette is null || SizeDirty || ColorsDirty) return;
         stage = Stage.Patterns; ShowStage();
     }
+    private void MachineStep_Click(object sender, RoutedEventArgs e) { if (!busy) { stage = Stage.Machine; ShowStage(); } }
     private void ShowStage()
     {
         bool hasFile = session is not null;
-        NoFilePanel.Visibility = hasFile ? Visibility.Collapsed : Visibility.Visible;
+        NoFilePanel.Visibility = !hasFile && stage != Stage.Machine ? Visibility.Visible : Visibility.Collapsed;
+        MachinePanel.Visibility = stage == Stage.Machine ? Visibility.Visible : Visibility.Collapsed;
         SizePanel.Visibility = hasFile && stage == Stage.Size ? Visibility.Visible : Visibility.Collapsed;
         ColorPanel.Visibility = hasFile && stage == Stage.Colors ? Visibility.Visible : Visibility.Collapsed;
         PatternPanel.Visibility = hasFile && stage == Stage.Patterns ? Visibility.Visible : Visibility.Collapsed;
@@ -102,12 +107,13 @@ public partial class MainWindow : Window
                 Stage.Size => session.Resized ?? session.Source,
                 Stage.Colors => session.ColorPreview ?? session.Resized ?? session.Source,
                 Stage.Patterns => session.PatternPreview ?? session.ColorPreview ?? session.Source,
+                Stage.Machine => session.PatternPreview ?? session.ColorPreview ?? session.Resized ?? session.Source,
                 _ => session.Source
             };
             PreviewImage.Source = view; ImageScroll.Visibility = Visibility.Visible; EmptyState.Visibility = Visibility.Collapsed;
             PreviewDetails.Text = $"{view.PixelWidth:N0} × {view.PixelHeight:N0} px";
         }
-        CanvasTitle.Text = !hasFile ? T("پیش‌نمایش طرح", "Design preview") : stage switch
+        CanvasTitle.Text = stage == Stage.Machine ? T("پیش‌نمایش طرح فعلی", "Current design preview") : !hasFile ? T("پیش‌نمایش طرح", "Design preview") : stage switch
         {
             Stage.Size => T("پیش‌نمایش اندازه", "Size preview"),
             Stage.Colors => T("پیش‌نمایش رنگ‌ها", "Color preview"),
@@ -165,8 +171,8 @@ public partial class MainWindow : Window
         SetBusy(true); StatusText.Text = T("در حال اعمال پترن…", "Applying pattern…");
         try
         {
-            await Task.Run(() => { var input = ImageLoader.Load(dialog.FileName, 0); if (input.PageCount != 1) throw new InvalidDataException("Multi-page pattern files are not supported."); session.AssignPattern(entry.Index, DesignProcessor.ReadPattern(input.Image)); });
-            entry.Assign(dialog.FileName); ShowStage(); StatusText.Text = T("پترن روی همه نقاط این رنگ اعمال شد.", "Pattern applied to every pixel of this color.");
+            var pattern = await Task.Run(() => { var input = ImageLoader.Load(dialog.FileName, 0); if (input.PageCount != 1) throw new InvalidDataException("Multi-page pattern files are not supported."); var p = DesignProcessor.ReadPattern(input.Image); session.AssignPattern(entry.Index, p); return p; });
+            entry.Assign(dialog.FileName, pattern); ShowStage(); StatusText.Text = T("پترن روی همه نقاط این رنگ اعمال شد.", "Pattern applied to every pixel of this color.");
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or System.Runtime.InteropServices.COMException)
         { MessageBox.Show(this, T("پترن باید تک‌صفحه‌ای، مات و فقط سیاه‌وسفید خالص باشد.\n", "Pattern must be single-page, opaque and pure black and white.\n") + ex.Message); StatusText.Text = T("اعمال پترن ناموفق بود.", "Pattern could not be applied."); }
@@ -181,26 +187,41 @@ public partial class MainWindow : Window
     }
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
-        if (busy || session?.CanSave != true || session.PatternPreview is null || path is null) return;
-        var dialog = new SaveFileDialog { Filter = "Bitmap (*.bmp)|*.bmp|TIFF (*.tif)|*.tif", AddExtension = true, OverwritePrompt = true, FileName = "prepared-design.bmp" };
+        if (busy || session is null || path is null) return;
+        BitmapSource? frame = stage switch
+        {
+            Stage.Size when !SizeDirty => session.Resized,
+            Stage.Colors when !SizeDirty && !ColorsDirty => session.ColorPreview,
+            Stage.Patterns when !SizeDirty && !ColorsDirty => session.PatternPreview,
+            _ => null
+        };
+        if (frame is null) return;
+        if (stage == Stage.Patterns && !session.CanSave && MessageBox.Show(this,
+            T("همه رنگ‌ها بافت ندارند. در تصویر ذخیره‌شده رنگ‌های بدون بافت بدون تغییر باقی می‌مانند. ادامه می‌دهید؟", "Not all colors have patterns. Unassigned colors remain unchanged in the saved image. Continue?"),
+            Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        var defaultName = stage switch { Stage.Size => "resized.bmp", Stage.Colors => "colors.bmp", _ => "prepared-design.bmp" };
+        var dialog = new SaveFileDialog { Filter = "Bitmap (*.bmp)|*.bmp|TIFF (*.tif)|*.tif", AddExtension = true, OverwritePrompt = true, FileName = defaultName };
         if (dialog.ShowDialog(this) != true) return;
-        string target = Path.GetFullPath(dialog.FileName);
-        string ext = Path.GetExtension(target).ToLowerInvariant();
-        if ((dialog.FilterIndex == 1 && ext != ".bmp") || (dialog.FilterIndex == 2 && ext is not (".tif" or ".tiff")))
-        { MessageBox.Show(this, T("پسوند فایل باید با قالب انتخاب‌شده مطابقت داشته باشد.", "The file extension must match the selected format.")); return; }
-        if (new[] { path }.Concat(entries.Select(x => x.PatternPath!)).Any(p => string.Equals(Path.GetFullPath(p), target, StringComparison.OrdinalIgnoreCase)))
-        { MessageBox.Show(this, T("خروجی نباید روی فایل اصلی یا پترن ذخیره شود.", "Output must not overwrite the source or a pattern.")); return; }
+        var protectedPaths = new[] { path }.Concat(entries.Select(x => x.PatternPath).OfType<string>()).ToArray();
         SetBusy(true);
-        try { var frame = session.PatternPreview; await Task.Run(() => SaveImage(frame, target, dialog.FilterIndex == 2)); StatusText.Text = T("تصویر ذخیره شد؛ این فایل ماشین نیست.", "Image saved; this is not a loom file."); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        try
+        {
+            bool tiff = dialog.FilterIndex == 2;
+            await Task.Run(() => ImageExporter.Save(frame, dialog.FileName, tiff, protectedPaths));
+            StatusText.Text = T("تصویر این مرحله ذخیره شد؛ این فایل ماشین نیست.", "Stage image saved; this is not a loom file.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
         { MessageBox.Show(this, T("ذخیره ناموفق بود: ", "Save failed: ") + ex.Message); }
         finally { SetBusy(false); }
     }
-    private static void SaveImage(BitmapSource frame, string target, bool isTiff)
+    private void MachineImport_Click(object sender, RoutedEventArgs e)
     {
-        string tmp = Path.Combine(Path.GetDirectoryName(target)!, ".jacquard-" + Guid.NewGuid().ToString("N") + ".tmp");
-        try { BitmapEncoder encoder = isTiff ? new TiffBitmapEncoder() : new BmpBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(frame)); using (var file = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) encoder.Save(file); File.Move(tmp, target, true); }
-        finally { if (File.Exists(tmp)) File.Delete(tmp); }
+        if (busy) return;
+        var dialog = new OpenFileDialog { Filter = "Jacquard files (*.jc4;*.jc5;*.zc5;*.ep)|*.jc4;*.jc5;*.zc5;*.ep|All files|*.*", CheckFileExists = true };
+        if (dialog.ShowDialog(this) != true) return;
+        MessageBox.Show(this, T("هنوز کدک تأییدشده‌ای برای خواندن فایل ماشین وجود ندارد. هیچ فایلی خوانده یا تصویری تولید نشد. مدل کنترلر و نمونه فایل معتبر را ارائه کنید.",
+            "No verified machine-file decoder is available yet. No file was read and no image was generated. Please provide the controller model and a valid sample."),
+            Title, MessageBoxButton.OK, MessageBoxImage.Information);
     }
     private void SetZoom(double value) { zoom = Math.Clamp(value, 0.125, 8); PreviewImage.LayoutTransform = new ScaleTransform(zoom, zoom); ZoomText.Text = $"{zoom * 100:0}%"; }
     private void ZoomIn_Click(object sender, RoutedEventArgs e) => SetZoom(zoom * 2);
@@ -214,14 +235,17 @@ public partial class MainWindow : Window
         SettingsBorder.FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
         LanguageButton.Content = english ? "فارسی" : "English"; AboutButton.Content = T("درباره", "About");
         SubtitleText.Text = T("فضای کار طراحی و بازرسی ژاکارد", "Jacquard design workspace"); BadgeText.Text = T("نسخه آزمایشی", "EXPERIMENTAL");
-        OpenButton.Content = T("+  باز کردن تصویر", "+  Open image"); SizeStepButton.Content = T("۱  تغییر اندازه", "1  Resize"); ColorStepButton.Content = T("۲  کاهش رنگ", "2  Colors"); PatternStepButton.Content = T("۳  اختصاص بافت", "3  Patterns");
+        OpenButton.Content = T("+  باز کردن تصویر", "+  Open image"); SizeStepButton.Content = T("۱  تغییر اندازه", "1  Resize"); ColorStepButton.Content = T("۲  کاهش رنگ", "2  Colors"); PatternStepButton.Content = T("۳  اختصاص بافت", "3  Patterns"); MachineStepButton.Content = T("۴  فایل ماشین", "4  Loom file");
         FileCaption.Text = T("فایل ورودی", "INPUT FILE"); NoFileTitle.Text = T("شروع کار", "Get started"); NoFileHint.Text = T("ابتدا یک تصویر BMP یا TIFF باز کنید یا در پنجره رها کنید.", "Open or drop a BMP or TIFF image to start.");
-        SizeTitle.Text = T("مرحله ۱ · تغییر اندازه", "Stage 1 · Resize"); SizeHint.Text = T("ابعاد خروجی را وارد و اعمال کنید. تصویر سمت راست نتیجه همین مرحله است.", "Set and apply the output dimensions; the preview shows the result.");
-        WidthLabel.Text = T("عرض (پیکسل)", "Width (px)"); HeightLabel.Text = T("ارتفاع (پیکسل)", "Height (px)"); ApplySizeButton.Content = T("اعمال اندازه", "Apply size"); ToColorButton.Content = T("مرحله بعد: رنگ ←", "Next: colors →");
+        SizeTitle.Text = T("مرحله ۱ · تغییر اندازه", "Stage 1 · Resize"); SizeHint.Text = T("ابعاد خروجی را وارد و اعمال کنید. تصویر سمت چپ نتیجه همین مرحله است.", "Set and apply the output dimensions; the preview shows the result.");
+        WidthLabel.Text = T("عرض (پیکسل)", "Width (px)"); HeightLabel.Text = T("ارتفاع (پیکسل)", "Height (px)"); ApplySizeButton.Content = T("اعمال اندازه", "Apply size"); SaveSizeButton.Content = T("ذخیره خروجی اندازه", "Save resized image"); ToColorButton.Content = T("مرحله بعد: رنگ ←", "Next: colors →");
         SizeNotice.Text = T("روش تغییر اندازه نزدیک‌ترین همسایه است؛ نسبت تصویر خودکار حفظ نمی‌شود.", "Resize uses nearest-neighbor; aspect ratio is not locked.");
         ColorTitle.Text = T("مرحله ۲ · کاهش رنگ", "Stage 2 · Colors"); ColorHint.Text = T("ورودی این مرحله تصویر تغییراندازه‌یافته است؛ بیش از ۵۰ رنگ به‌طور خودکار کاهش می‌یابد.", "Input is the resized image; over 50 colors are reduced automatically.");
-        ColorLimitLabel.Text = T("حداکثر تعداد رنگ (۱ تا ۵۰)", "Maximum colors (1–50)"); ApplyColorButton.Content = T("اعمال تعداد رنگ", "Apply color limit"); ToPatternButton.Content = T("مرحله بعد: بافت ←", "Next: patterns →");
-        PatternTitle.Text = T("مرحله ۳ · اختصاص بافت", "Stage 3 · Patterns"); PatternHint.Text = T("برای هر رنگ یک پترن سیاه‌وسفید انتخاب کنید؛ بافت در تمام نقاط آن رنگ تکرار می‌شود.", "Choose a black-and-white pattern per color; it repeats wherever the color occurs."); SaveButton.Content = T("ذخیره تصویر نهایی", "Save final image");
+        ColorLimitLabel.Text = T("حداکثر تعداد رنگ (۱ تا ۵۰)", "Maximum colors (1–50)"); ApplyColorButton.Content = T("اعمال تعداد رنگ", "Apply color limit"); SaveColorButton.Content = T("ذخیره خروجی رنگ", "Save color image"); ToPatternButton.Content = T("مرحله بعد: بافت ←", "Next: patterns →");
+        PatternTitle.Text = T("مرحله ۳ · اختصاص بافت", "Stage 3 · Patterns"); PatternHint.Text = T("برای هر رنگ یک پترن سیاه‌وسفید انتخاب کنید؛ بافت در تمام نقاط آن رنگ تکرار می‌شود.", "Choose a black-and-white pattern per color; it repeats wherever the color occurs."); SaveButton.Content = T("ذخیره خروجی بافت", "Save pattern image");
+        MachineTitle.Text = T("مرحله ۴ · فایل ماشین", "Stage 4 · Loom file"); MachineHint.Text = T("خواندن و نوشتن قالب‌های زیر هنوز تأیید و پیاده‌سازی نشده است. تغییر پسوند، تبدیل فایل نیست.", "The formats below are not yet verified or implemented. Renaming a file is not conversion.");
+        MachineFormatLabel.Text = T("قالب هدف (پشتیبانی‌نشده)", "Target format (unsupported)"); MachineExportButton.Content = T("تبدیل و ذخیره فایل ماشین", "Convert and save loom file"); MachineImportButton.Content = T("انتخاب فایل ماشین", "Select loom file");
+        MachineNotice.Text = T("برای فعال شدن تبدیل یا خواندن، نمونه فایل واقعی، مدل کنترلر و مشخصات معتبر لازم است.", "A real sample, controller model, and verified specifications are needed before conversion or reading can be enabled.");
         SafetyText.Text = T("خروجی تصویر است، نه فایل دستگاه بافندگی.", "Output is an image, not a loom file."); CanvasSubtitle.Text = T("خروجی هر مرحله در این قسمت نمایش داده می‌شود", "The result of each stage appears here");
         EmptyTitle.Text = T("طرح خود را وارد کنید", "Bring in your design"); EmptyHint.Text = T("یک تصویر BMP یا TIFF انتخاب کنید.", "Choose a BMP or TIFF image."); EmptyButton.Content = T("انتخاب تصویر", "Choose image");
         if (session is null) StatusText.Text = T("آماده برای باز کردن تصویر", "Ready to open an image");
