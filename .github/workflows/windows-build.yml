@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   build:
     runs-on: windows-latest
@@ -32,10 +33,42 @@ jobs:
           & $iscc packaging/JacquardStudio.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-FileHash artifacts/installer/*.exe -Algorithm SHA256 | Format-List | Out-File artifacts/installer/SHA256.txt
+      - name: Download previous preview for upgrade test
+        uses: actions/download-artifact@v4
+        with:
+          name: JacquardStudio-001.1.0.0-a1-Windows-x64
+          path: artifacts/previous
+          run-id: 42240660422
+          github-token: ${{ github.token }}
+        continue-on-error: true
+      - name: Test per-user installer upgrade
+        shell: pwsh
+        run: |
+          $old = Get-ChildItem artifacts/previous/*Setup.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $old) { Write-Warning "Previous artifact unavailable; upgrade test skipped."; exit 0 }
+          $dir = Join-Path $env:RUNNER_TEMP "JacquardUpgradeTest"
+          $params = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=$dir")
+          $oldResult = Start-Process -FilePath $old.FullName -ArgumentList $params -Wait -PassThru
+          if ($oldResult.ExitCode -ne 0) { throw "Old installer failed: $($oldResult.ExitCode)" }
+          $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{5C0E5A7E-DF2A-4D61-9039-B9EC80CD87AD}_is1'
+          $before = Get-ItemProperty $key
+          if ($before.DisplayVersion -ne '001.1.0.0-a1') { throw "Old version not found: $($before.DisplayVersion)" }
+          $new = (Get-ChildItem artifacts/installer/*Setup.exe | Select-Object -First 1).FullName
+          $newResult = Start-Process -FilePath $new -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-') -Wait -PassThru
+          if ($newResult.ExitCode -ne 0) { throw "New installer failed: $($newResult.ExitCode)" }
+          $after = Get-ItemProperty $key
+          if ($after.DisplayVersion -ne '002.1.1.0-a1') { throw "Upgrade version incorrect: $($after.DisplayVersion)" }
+          if ($after.InstallLocation.TrimEnd('\') -ne $dir.TrimEnd('\')) { throw 'Upgrade did not retain install directory' }
+          $fileVersion = (Get-Item (Join-Path $dir 'JacquardStudio.exe')).VersionInfo.FileVersion
+          if ($fileVersion -ne '2.1.1.0') { throw "Executable not updated: $fileVersion" }
+          $uninstaller = Join-Path $dir 'unins000.exe'
+          $uninstallResult = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
+          if ($uninstallResult.ExitCode -ne 0) { throw "Uninstall failed: $($uninstallResult.ExitCode)" }
+          Write-Host 'Install, upgrade, and uninstall verified.'
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: JacquardStudio-001.1.0.0-a1-Windows-x64
+          name: JacquardStudio-002.1.1.0-a1-Windows-x64
           path: artifacts/installer/*
           if-no-files-found: error
           retention-days: 30

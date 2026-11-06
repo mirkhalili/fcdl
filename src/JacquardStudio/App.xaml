@@ -7,7 +7,11 @@
         <SolidColorBrush x:Key="Border" Color="#2B3A4E"/>
         <SolidColorBrush x:Key="Muted" Color="#9BAFC3"/>
         <SolidColorBrush x:Key="Accent" Color="#54E0C2"/>
+        <FontFamily x:Key="VazirFont">pack://application:,,,/JacquardStudio;component/Assets/Fonts/#Vazirmatn</FontFamily>
+        <Style TargetType="Window"><Setter Property="FontFamily" Value="{StaticResource VazirFont}"/></Style>
+        <Style TargetType="TextBox"><Setter Property="FontFamily" Value="{StaticResource VazirFont}"/></Style>
         <Style TargetType="Button">
+            <Setter Property="FontFamily" Value="{StaticResource VazirFont}"/>
             <Setter Property="Foreground" Value="#E5EEF6"/>
             <Setter Property="Background" Value="#263749"/>
             <Setter Property="BorderBrush" Value="#374C60"/>

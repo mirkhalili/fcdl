@@ -1,0 +1,48 @@
+<Window x:Class="JacquardStudio.EditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="آماده‌سازی طرح" Width="1260" Height="800" MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterOwner" Background="#0C1420" FlowDirection="RightToLeft" FontSize="13" Icon="Assets/app.ico">
+    <Grid Margin="22" x:Name="Root">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Grid Margin="0,0,0,16">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel><TextBlock x:Name="TitleText" Text="ابعاد، رنگ و بافت" FontSize="24" FontWeight="Bold"/><TextBlock x:Name="SubtitleText" Foreground="{StaticResource Muted}" Margin="0,5,0,0" Text="۱. اندازه و تعداد رنگ را تعیین کنید  ·  ۲. برای هر رنگ پترن انتخاب کنید"/></StackPanel>
+            <Button Grid.Column="1" x:Name="SaveButton" Content="ذخیره تصویر نهایی" Click="Save_Click" Background="#36C9AB" Foreground="#082621" FontWeight="Bold" IsEnabled="False"/>
+        </Grid>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="340"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="12" Padding="16">
+                <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <TextBlock x:Name="SizeTitle" Text="۱  اندازه و رنگ" FontSize="16" FontWeight="SemiBold"/>
+                    <StackPanel Grid.Row="1" Margin="0,12,0,12">
+                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <StackPanel><TextBlock x:Name="WidthLabel" Text="عرض (پیکسل)" Foreground="{StaticResource Muted}"/><TextBox x:Name="WidthInput" FlowDirection="LeftToRight" Margin="0,5,5,0" Padding="5"/></StackPanel>
+                            <StackPanel Grid.Column="1"><TextBlock x:Name="HeightLabel" Text="ارتفاع (پیکسل)" Foreground="{StaticResource Muted}"/><TextBox x:Name="HeightInput" FlowDirection="LeftToRight" Margin="0,5,5,0" Padding="5"/></StackPanel>
+                            <StackPanel Grid.Column="2"><TextBlock x:Name="ColorsLabel" Text="حداکثر رنگ" Foreground="{StaticResource Muted}"/><TextBox x:Name="ColorInput" Text="50" FlowDirection="LeftToRight" Margin="0,5,0,0" Padding="5"/></StackPanel>
+                        </Grid>
+                        <Button x:Name="ApplyButton" Content="اعمال اندازه و کاهش رنگ" Click="Apply_Click" Margin="0,12,0,0"/>
+                        <TextBlock x:Name="SummaryText" Foreground="#75DFC7" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Grid Grid.Row="2" Margin="0,4,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="PaletteTitle" Text="۲  پترن هر رنگ" FontSize="16" FontWeight="SemiBold"/><TextBlock x:Name="AssignedText" Grid.Column="1" Foreground="{StaticResource Muted}"/></Grid>
+                    <ListBox x:Name="PaletteList" Grid.Row="3" Background="#111B29" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate><DataTemplate><Border Background="#1D2B3B" CornerRadius="6" Padding="8" Margin="0,0,0,5"><Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Border Width="24" Height="24" Background="{Binding Brush}" BorderBrush="#A0A0A0" BorderThickness="1" CornerRadius="4"/>
+                            <StackPanel Grid.Column="1" Margin="8,0"><TextBlock Text="{Binding ColorLabel}" FlowDirection="LeftToRight" FontWeight="SemiBold"/><TextBlock Text="{Binding PatternLabel}" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis" MaxWidth="140" FontSize="11"/></StackPanel>
+                            <Button Grid.Column="2" Content="..." ToolTip="Choose pattern" Padding="8,3" Click="Pattern_Click"/>
+                        </Grid></Border></DataTemplate></ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+            <Border Grid.Column="2" Background="#0B121D" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="12" Padding="12" ClipToBounds="True">
+                <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <TextBlock x:Name="PreviewTitle" Text="پیش‌نمایش نتیجه" FontSize="16" FontWeight="SemiBold" Margin="4,4,4,10"/>
+                    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" FlowDirection="LeftToRight"><Image x:Name="ResultImage" Stretch="None" HorizontalAlignment="Left" VerticalAlignment="Top" RenderOptions.BitmapScalingMode="NearestNeighbor"/></ScrollViewer>
+                    <TextBlock Grid.Row="2" x:Name="HintText" Text="پترن‌ها باید تصویر سیاه‌وسفید خالص باشند و از گوشه بالا-چپ تکرار می‌شوند. رنگ‌های بدون پترن در پیش‌نمایش حفظ می‌شوند." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="4,12,4,4"/>
+                </Grid>
+            </Border>
+        </Grid>
+        <TextBlock Grid.Row="2" x:Name="StatusText" Foreground="{StaticResource Muted}" Margin="0,14,0,0" TextWrapping="Wrap"/>
+    </Grid>
+</Window>

@@ -44,6 +44,7 @@ public partial class MainWindow : Window
             DimensionsValue.Text = $"{result.Image.PixelWidth:N0} × {result.Image.PixelHeight:N0} px";
             FormatValue.Text = $"{result.Format} · {result.Image.Format.BitsPerPixel} bpp";
             UpdatePage();
+            PrepareButton.IsEnabled = true;
             StatusText.Text = english ? "Image opened. Preview only." : "تصویر باز شد؛ فقط پیش‌نمایش.";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException or System.Runtime.InteropServices.COMException)
@@ -70,12 +71,20 @@ public partial class MainWindow : Window
     private void ZoomReset_Click(object sender, RoutedEventArgs e) => SetZoom(1);
     private void Window_DragOver(object sender, DragEventArgs e) { e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; }
     private void Window_Drop(object sender, DragEventArgs e) { if (e.Data.GetData(DataFormats.FileDrop) is string[] { Length: 1 } files) _ = LoadAsync(files[0], 0); }
+    private void Prepare_Click(object sender, RoutedEventArgs e)
+    {
+        if (current is null || path is null) return;
+        new EditorWindow(current.Image, path, english) { Owner = this }.ShowDialog();
+    }
+    private void About_Click(object sender, RoutedEventArgs e) => new AboutWindow(english) { Owner = this }.ShowDialog();
     private void Language_Click(object sender, RoutedEventArgs e) { english = !english; UpdateLabels(); }
 
     private void UpdateLabels()
     {
         FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
         LanguageButton.Content = english ? "فارسی" : "English";
+        AboutButton.Content = english ? "About" : "درباره";
+        PrepareButton.Content = english ? "Size, colors & patterns →" : "ابعاد، رنگ و پترن  ←";
         SubtitleText.Text = english ? "Jacquard design workspace" : "فضای کار طراحی و بازرسی ژاکارد";
         BadgeText.Text = english ? "EXPERIMENTAL" : "نسخه آزمایشی";
         WorkspaceTitle.Text = english ? "WORKSPACE" : "فضای کاری";
@@ -84,8 +93,8 @@ public partial class MainWindow : Window
         OpenHint.Text = english ? "Or drop a BMP / TIFF file here" : "یا فایل BMP / TIFF را اینجا رها کنید";
         WorkflowTitle.Text = english ? "Workflow" : "مراحل کار";
         StepOne.Text = english ? "01   Open & preview" : "۱   باز کردن و پیش‌نمایش";
-        StepTwo.Text = english ? "02   Machine profile" : "۲   تنظیمات و پروفایل ماشین";
-        StepThree.Text = english ? "03   Convert & inspect" : "۳   تبدیل و بررسی خروجی";
+        StepTwo.Text = english ? "02   Size, colors & patterns" : "۲   ابعاد، رنگ و پترن";
+        StepThree.Text = english ? "03   Inspect & save image" : "۳   بررسی و ذخیره تصویر";
         CanvasTitle.Text = english ? "Design preview" : "پیش‌نمایش طرح";
         CanvasSubtitle.Text = english ? "Inspect the image before preparation" : "بررسی دقیق تصویر پیش از آماده‌سازی";
         EmptyTitle.Text = english ? "Bring in your design" : "طرح خود را وارد کنید";

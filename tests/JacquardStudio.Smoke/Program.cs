@@ -31,9 +31,34 @@ internal static class Program
             string pngPath = Path.Combine(dir, "disguised.bmp"); using (var f = File.Create(pngPath)) png.Save(f);
             Expect<NotSupportedException>(() => ImageLoader.Load(pngPath, 0));
             Expect<FileNotFoundException>(() => ImageLoader.Load(Path.Combine(dir, "missing.bmp"), 0));
+            var prepared = DesignProcessor.Prepare(b.Image, 6, 4, 50);
+            Check(prepared.Width == 6 && prepared.Height == 4 && prepared.SourceColorCount == 2 && prepared.Colors.Length == 2, "resize and exact palette");
+            Check(prepared.Indices[0] == prepared.Indices[1] && prepared.Indices[0] != prepared.Indices[2], "nearest neighbor geometry");
+            var black = new WeavePattern(2, 1, new byte[] { 0, 255 });
+            var white = new WeavePattern(1, 1, new byte[] { 255 });
+            var output = DesignProcessor.Render(prepared, new WeavePattern?[] { black, white });
+            var actual = new byte[6 * 4 * 4]; output.CopyPixels(actual, 24, 0);
+            Check(actual[0] == 0 && actual[4] == 255 && actual[8] == 255, "pattern tiled in global coordinates");
+            var many = new byte[100 * 4];
+            for (int i = 0; i < 100; i++) { many[i * 4] = (byte)(i * 2); many[i * 4 + 1] = (byte)i; many[i * 4 + 2] = (byte)(i * 2); many[i * 4 + 3] = 255; }
+            var manyImage = BitmapSource.Create(10, 10, 96, 96, PixelFormats.Bgra32, null, many, 40);
+            var reduced = DesignProcessor.Prepare(manyImage, 10, 10, 50);
+            Check(reduced.SourceColorCount == 100 && reduced.Colors.Length <= 50, "automatic reduction to <=50");
+            var less = DesignProcessor.Prepare(manyImage, 10, 10, 3);
+            Check(less.Colors.Length <= 3 && less.Counts.Sum() == 100, "requested color reduction");
+            Expect<ArgumentOutOfRangeException>(() => DesignProcessor.Prepare(manyImage, 10, 10, 51));
+            Expect<ArgumentOutOfRangeException>(() => DesignProcessor.Prepare(manyImage, 4001, 1000, 5));
+            var transparent = BitmapSource.Create(1, 1, 96, 96, PixelFormats.Bgra32, null, new byte[] {0, 0, 0, 0}, 4);
+            Expect<InvalidDataException>(() => DesignProcessor.Prepare(transparent, 1, 1, 1));
+            var gray = BitmapSource.Create(1, 1, 96, 96, PixelFormats.Bgra32, null, new byte[] {128, 128, 128, 255}, 4);
+            Expect<InvalidDataException>(() => DesignProcessor.ReadPattern(gray));
+            var pure = DesignProcessor.ReadPattern(image);
+            Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
             var window = new MainWindow(); window.Close();
+            var editor = new EditorWindow(b.Image, tiffPath, false); editor.Close();
+            var about = new AboutWindow(false); about.Close();
             Console.WriteLine("Smoke tests passed."); return 0;
         }
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }
