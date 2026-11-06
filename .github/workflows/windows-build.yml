@@ -17,10 +17,22 @@ jobs:
           dotnet-version: 10.0.x
       - name: Build and smoke-test on Windows
         run: |
-          dotnet build src/JacquardStudio/JacquardStudio.csproj -c Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet run --project tests/JacquardStudio.Smoke/JacquardStudio.Smoke.csproj -c Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build src/JacquardStudio/JacquardStudio.csproj -c Release *> build-log.txt
+          $code = $LASTEXITCODE
+          Get-Content build-log.txt
+          if ($code -ne 0) {
+            $message = ((Get-Content build-log.txt | Select-Object -Last 35) -join '%0A').Replace('%', '%25').Replace('%250A', '%0A')
+            Write-Output "::error title=Build details::$message"
+            exit $code
+          }
+          dotnet run --project tests/JacquardStudio.Smoke/JacquardStudio.Smoke.csproj -c Release *> smoke-log.txt
+          $code = $LASTEXITCODE
+          Get-Content smoke-log.txt
+          if ($code -ne 0) {
+            $message = ((Get-Content smoke-log.txt | Select-Object -Last 35) -join '%0A').Replace('%', '%25').Replace('%250A', '%0A')
+            Write-Output "::error title=Smoke details::$message"
+            exit $code
+          }
       - name: Publish self-contained Windows x64 application
         run: |
           dotnet publish src/JacquardStudio/JacquardStudio.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish
