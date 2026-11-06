@@ -6,6 +6,7 @@
 [Setup]
 AppId={{5C0E5A7E-DF2A-4D61-9039-B9EC80CD87AD}
 AppName={#AppName}
+AppVerName={#AppName}
 AppVersion={#AppVersion}
 VersionInfoVersion=3.2.0.0
 DefaultDirName={autopf}\Jacquard Studio

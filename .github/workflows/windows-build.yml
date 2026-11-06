@@ -44,6 +44,7 @@ jobs:
       - name: Test per-user installer upgrade
         shell: pwsh
         run: |
+          trap { Write-Output "::error title=Upgrade test::$($_.Exception.Message)"; exit 1 }
           $old = Get-ChildItem artifacts/previous/*Setup.exe -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $old) { throw "Previous artifact unavailable; cannot verify upgrade." }
           $dir = Join-Path $env:RUNNER_TEMP "JacquardUpgradeTest"
@@ -59,11 +60,11 @@ jobs:
           $after = Get-ItemProperty $key
           if ($after.DisplayVersion -ne (Get-Content version.txt -Raw).Trim()) { throw "Upgrade version incorrect: $($after.DisplayVersion)" }
           if ($after.InstallLocation.TrimEnd('\') -ne $dir.TrimEnd('\')) { throw 'Upgrade did not retain install directory' }
-          $productEntries = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -eq 'Jacquard Studio' })
+          $productEntries = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -like 'Jacquard Studio*' })
           if ($productEntries.Count -ne 1) { throw "Expected one installed product, found $($productEntries.Count)" }
           $repeat = Start-Process -FilePath $new -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-') -Wait -PassThru
           if ($repeat.ExitCode -ne 0) { throw "Repeat install failed: $($repeat.ExitCode)" }
-          $productEntries = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -eq 'Jacquard Studio' })
+          $productEntries = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -like 'Jacquard Studio*' })
           if ($productEntries.Count -ne 1) { throw "Repeat install created a second product entry" }
           $fileVersion = (Get-Item (Join-Path $dir 'JacquardStudio.exe')).VersionInfo.FileVersion
           if ($fileVersion -ne '3.2.0.0') { throw "Executable not updated: $fileVersion" }
