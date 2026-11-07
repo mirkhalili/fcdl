@@ -133,7 +133,7 @@ public partial class MainWindow : Window
     }
     private async Task LoadProjectAsync(string filename)
     {
-        SetBusy(true); StatusText.Text = T("در حال باز کردن پروژه…", "Opening project…");
+        SetBusy(true); StatusText.Text = T("در حال باز کردن پروژه…", "Opening project…"); bool loaded = false;
         try
         {
             var state = await Task.Run(() => ProjectFile.Load(filename));
@@ -145,11 +145,13 @@ public partial class MainWindow : Window
             switch (machineFormatIndex) { case 0: FormatJC4.IsChecked = true; break; case 1: FormatJC5.IsChecked = true; break; case 2: FormatZC5.IsChecked = true; break; case 3: FormatEP.IsChecked = true; break; case 4: FormatJC6.IsChecked = true; break; }
             RebuildPaletteEntries(state.PatternNames);
             FileValue.Text = Path.GetFileName(filename); FormatValue.Text = "SAM"; SetZoom(1); projectDirty = false; UpdateLabels(); ShowStage();
-            StatusText.Text = T("پروژه باز شد؛ تصویر و پترن‌ها در پروژه قرار دارند.", "Project opened; the image and patterns are embedded.");
+            StatusText.Text = T("پروژه باز شد؛ تصویر و پترن‌ها در پروژه قرار دارند.", "Project opened; the image and patterns are embedded."); loaded = true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException or System.Text.Json.JsonException or OverflowException or FormatException)
         { MessageBox.Show(this, T("باز کردن پروژه ممکن نشد: ", "Could not open project: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("باز کردن پروژه ناموفق بود.", "Could not open project."); }
         finally { SetBusy(false); }
+        if (loaded && stage == Stage.Selvedge) await PreviewSelvedgesAsync(false);
+        else if (loaded && (stage is Stage.Weft or Stage.Machine or Stage.Floats or Stage.Analysis) && MachineInput() is not null) await ComposeMachineAsync(false);
     }
     private async void SaveProject_Click(object sender, RoutedEventArgs e) => await SaveProjectAsync(false);
     private async void SaveProjectAs_Click(object sender, RoutedEventArgs e) => await SaveProjectAsync(true);
@@ -590,7 +592,7 @@ public partial class MainWindow : Window
         if (allowClose) return;
         e.Cancel = true; if (busy || closePromptActive) return;
         closePromptActive = true;
-        try { if (await ConfirmDiscardAsync()) { allowClose = true; Dispatcher.BeginInvoke(new Action(Close)); } }
+        try { if (await ConfirmDiscardAsync()) { allowClose = true; _ = Dispatcher.BeginInvoke(new Action(Close)); } }
         finally { closePromptActive = false; }
     }
     private async Task ReloadBankAsync(string? selectedId = null)

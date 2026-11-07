@@ -289,6 +289,9 @@ internal static class Program
             var positioned = MachineComposer.Compose(image, absolute); var positionedPixels = DesignAnalysis.ReadBinary(positioned.Image);
             Check(positioned.DesignStart == 20 && positioned.FabricStart == 12 && positioned.FabricWidth == 13, "absolute composite fabric geometry");
             var fabricMap = CompositionView.Fabric(positioned); Check(fabricMap.PixelWidth == 13 && DesignAnalysis.ReadBinary(fabricMap)[0] == 0, "fabric crop includes selvedges but excludes signals and padding");
+            var redSource = BitmapSource.Create(3, 2, 96, 96, PixelFormats.Bgra32, null, pixels.SelectMany(v => v == 0 ? new byte[] {0,0,255,255} : new byte[] {255,255,255,255}).ToArray(), 12);
+            Check(DesignAnalysis.ReadBinary(MachineComposer.Compose(redSource, absolute, true).Image).SequenceEqual(positionedPixels), "red-white input composes same signal and selvedge bits");
+            Expect<InvalidDataException>(() => MachineComposer.Compose(redSource, absolute, false));
             var redView = CompositionView.RedPreview(positioned.Image); var redBytes = new byte[30 * 2 * 4]; redView.CopyPixels(redBytes, 30 * 4, 0);
             Check(redBytes[4] == 0 && redBytes[5] == 0 && redBytes[6] == 255 && redBytes[7] == 255 && redBytes[0] == 255, "red preview marks active weft while preserving white");
             Check(DesignAnalysis.ReadBinary(Jc5Codec.Decode(Jc5Codec.Encode(positioned.Image, "test.jc5"))).SequenceEqual(positionedPixels), "red preview leaves machine bits unchanged");
