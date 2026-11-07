@@ -55,7 +55,7 @@ public static class Jc5Codec
     {
         if (width <= 0 || height <= 0 || (long)width * height > MaxPixels) throw new InvalidDataException("Invalid or unsupported JC5 dimensions (maximum 4 million pixels).");
     }
-    public static byte[] Encode(BitmapSource image, string name)
+    public static byte[] Encode(BitmapSource image, string name, bool redAsBlack = false)
     {
         int width = image.PixelWidth, height = image.PixelHeight; CheckDimensions(width, height);
         // The sampled controller name is ASCII and NUL-terminated. Do not silently encode Unicode as '?'.
@@ -69,9 +69,12 @@ public static class Jc5Codec
         for (int x = 0; x < width; x++)
         {
             int p = y * pixelsStride + x * 4;
-            if (pixels[p + 3] != 255 || pixels[p] != pixels[p + 1] || pixels[p] != pixels[p + 2] || (pixels[p] != 0 && pixels[p] != 255))
-                throw new InvalidDataException("JC5 requires an opaque, pure black-and-white hook map. Assign every pattern first.");
-            if (pixels[p] == 0) raster[(height - 1 - y) * rowBytes + x / 8] |= (byte)(0x80 >> (x % 8));
+            bool black = pixels[p] == 0 && pixels[p + 1] == 0 && pixels[p + 2] == 0;
+            bool white = pixels[p] == 255 && pixels[p + 1] == 255 && pixels[p + 2] == 255;
+            bool red = pixels[p] == 0 && pixels[p + 1] == 0 && pixels[p + 2] == 255;
+            if (pixels[p + 3] != 255 || !(black || white || (redAsBlack && red)))
+                throw new InvalidDataException("Hook map must be opaque black/white, or red/white only when explicitly selected.");
+            if (black || red) raster[(height - 1 - y) * rowBytes + x / 8] |= (byte)(1 << (x % 8));
         }
         using var s = new MemoryStream(); s.Write(Magic);
         WriteNumber(s, 4); Field(s, 1, NullAscii(name)); NumberField(s, 2, height); NumberField(s, 6, 0);
@@ -81,7 +84,7 @@ public static class Jc5Codec
         WriteNumber(s, 100); WriteNumber(s, checked(8 + areaName.Length)); WriteNumber(s, 1); WriteNumber(s, width); s.Write(areaName);
         s.Write(raster); return s.ToArray();
     }
-    public static BitmapSource Decode(byte[] data)
+    public static BitmapSource Decode(byte[] data, bool legacyMsbFirst = false)
     {
         if (data.Length > MaxFileBytes) throw new InvalidDataException("JC5 exceeds the supported size.");
         using var stream = new MemoryStream(data, false); using var r = new BinaryReader(stream);
@@ -99,23 +102,23 @@ public static class Jc5Codec
         byte[] raster = r.ReadBytes(rowBytes * height), pixels = new byte[width * height];
         for (int y = 0; y < height; y++)
         for (int x = 0; x < width; x++)
-            pixels[y * width + x] = (raster[(height - 1 - y) * rowBytes + x / 8] & (0x80 >> (x % 8))) != 0 ? (byte)0 : (byte)255;
+            pixels[y * width + x] = (raster[(height - 1 - y) * rowBytes + x / 8] & (legacyMsbFirst ? (0x80 >> (x % 8)) : (1 << (x % 8)))) != 0 ? (byte)0 : (byte)255;
         // Only declared hooks are exposed; trailing bits in the last byte are not represented in the image.
         var image = BitmapSource.Create(width, height, 96, 96, PixelFormats.Gray8, null, pixels, width); image.Freeze(); return image;
     }
-    public static BitmapSource Load(string path)
+    public static BitmapSource Load(string path, bool legacyMsbFirst = false)
     {
         using var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         if (f.Length > MaxFileBytes) throw new InvalidDataException("JC5 exceeds the supported size.");
-        using var m = new MemoryStream(); f.CopyTo(m); return Decode(m.ToArray());
+        using var m = new MemoryStream(); f.CopyTo(m); return Decode(m.ToArray(), legacyMsbFirst);
     }
-    public static void Save(BitmapSource image, string target, IEnumerable<string> protectedPaths)
+    public static void Save(BitmapSource image, string target, IEnumerable<string> protectedPaths, bool redAsBlack = false)
     {
         string destination = Path.GetFullPath(target);
-        if (!Path.GetExtension(destination).Equals(".jc5", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("JC5 requires a .jc5 extension.");
+        if (Path.GetExtension(destination).ToLowerInvariant() is not (".jc5" or ".jc6")) throw new ArgumentException("Expected a .jc5 or .jc6 extension.");
         if (protectedPaths.Any(p => string.Equals(Path.GetFullPath(p), destination, StringComparison.OrdinalIgnoreCase))) throw new IOException("Cannot overwrite an input file, project, or pattern.");
         // Use a deterministic ASCII name rather than corrupting Persian file names in the JC5 header.
-        byte[] data = Encode(image, "JacquardStudio.jc5");
+        byte[] data = Encode(image, "JacquardStudio.jc5", redAsBlack);
         string tmp = Path.Combine(Path.GetDirectoryName(destination)!, ".jacquard-" + Guid.NewGuid().ToString("N") + ".tmp");
         try { File.WriteAllBytes(tmp, data); File.Move(tmp, destination, true); }
         finally { if (File.Exists(tmp)) File.Delete(tmp); }

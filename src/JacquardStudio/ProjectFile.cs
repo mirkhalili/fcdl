@@ -135,7 +135,7 @@ public static class ProjectFile
             }
         }
         else if (m.ColorLimit is not null || m.Patterns is not null) throw new InvalidDataException("Invalid project state.");
-        if (m.MachineFormatIndex is < 0 or > 3) throw new InvalidDataException("Invalid machine format selection.");
+        if (m.MachineFormatIndex is < 0 or > 4) throw new InvalidDataException("Invalid machine format selection.");
         string stage = Bounded(m.Stage, 16, "Size");
         if (stage is not ("Size" or "Colors" or "Patterns" or "Machine")) throw new InvalidDataException("Invalid workflow stage.");
         if ((stage == "Colors" && resized is null) || (stage == "Patterns" && palette is null)) throw new InvalidDataException("Stage lacks required data.");

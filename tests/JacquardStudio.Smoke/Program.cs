@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using JacquardStudio;
@@ -74,13 +75,21 @@ internal static class Program
             byte[] encoded = Jc5Codec.Encode(image, "test.jc5");
             var decoded = Jc5Codec.Decode(encoded); var roundTrip = new byte[6]; decoded.CopyPixels(roundTrip, 3, 0);
             Check(roundTrip.SequenceEqual(pixels), "JC5 lossless hook-map roundtrip");
-            Check(encoded[^2] == 0x60 && encoded[^1] == 0x80, "JC5 bottom-up MSB-first black bits and zero padding");
+            Check(encoded[^2] == 0x06 && encoded[^1] == 0x01, "JC5 bottom-up LSB-first black bits and zero padding");
+            byte[] legacy = (byte[])encoded.Clone(); legacy[^2] = 0x60; legacy[^1] = 0x80;
+            var legacyImage = Jc5Codec.Decode(legacy, true); var legacyPixels = new byte[6]; legacyImage.CopyPixels(legacyPixels, 3, 0);
+            Check(legacyPixels.SequenceEqual(pixels), "explicit import of version 006 bit order");
+            var projectWithJc6 = new ProjectState(pipeline, "sample.bmp", "6", "4", "50", "Machine", false, 4, new string?[] { "black.bmp", "white.bmp" });
+            string jc6ProjectPath = Path.Combine(dir, "jc6.sam"); ProjectFile.Save(jc6ProjectPath, projectWithJc6, Array.Empty<string>());
+            Check(ProjectFile.Load(jc6ProjectPath).MachineFormatIndex == 4, "SAM remembers JC6 selection");
             Expect<InvalidDataException>(() => Jc5Codec.Decode(encoded[..^1]));
             Expect<ArgumentException>(() => Jc5Codec.Encode(image, "نام"));
             string jcPath = Path.Combine(dir, "test.jc5"); Jc5Codec.Save(image, jcPath, new[] { bmpPath });
             Check(Jc5Codec.Load(jcPath).PixelWidth == 3, "JC5 file load and save");
             Expect<IOException>(() => Jc5Codec.Save(image, jcPath, new[] { jcPath }));
             Expect<ArgumentException>(() => Jc5Codec.Save(image, Path.Combine(dir, "test.zc5"), Array.Empty<string>()));
+            string jc6Path = Path.Combine(dir, "test.jc6"); Jc5Codec.Save(image, jc6Path, Array.Empty<string>());
+            Check(Jc5Codec.Load(jc6Path).PixelWidth == 3, "sample-profile JC6 file load and save");
             // User-provided DesignScope exports, retained independently of the mutable uploaded archive.
             string repository = Directory.GetCurrentDirectory();
             while (!Directory.Exists(Path.Combine(repository, "tests", "fixtures"))) repository = Path.GetDirectoryName(repository) ?? throw new Exception("Reference fixtures missing");
@@ -98,9 +107,42 @@ internal static class Program
                     Check((reference[oldOffset + index] & mask) == (regenerated[newOffset + index] & mask), "DesignScope declared hook bits");
                 }
             }
+            // Independent DesignScope oracle: full hook raster AND pixel map for both exported controller samples.
+            string zipped = Path.Combine(repository, "tests", "fixtures", "designscope-reference.zip");
+            using (var archive = ZipFile.OpenRead(zipped))
+            {
+                foreach (string file in new[] { "baft.bmp", "orgin1.bmp", "machin.jc5", "machin.jc6" })
+                {
+                    var item = archive.GetEntry(file) ?? throw new Exception("Missing DesignScope reference: " + file);
+                    using var input = item.Open(); using var outputFile = File.Create(Path.Combine(dir, file)); input.CopyTo(outputFile);
+                }
+            }
+            var referenceMap = ImageLoader.Load(Path.Combine(dir, "baft.bmp"), 0).Image;
+            Expect<InvalidDataException>(() => Jc5Codec.Encode(referenceMap, "test.jc5"));
+            byte[] generated = Jc5Codec.Encode(referenceMap, "test.jc5", true);
+            var refBytes = new byte[1200 * 1200 * 4];
+            new FormatConvertedBitmap(referenceMap, PixelFormats.Bgra32, null, 0).CopyPixels(refBytes, 1200 * 4, 0);
+            foreach (string file in new[] { "machin.jc5", "machin.jc6" })
+            {
+                byte[] reference = File.ReadAllBytes(Path.Combine(dir, file));
+                Check(reference.AsSpan(reference.Length - 180000).SequenceEqual(generated.AsSpan(generated.Length - 180000)), "DesignScope exact machine raster for " + file);
+                var hookMap = Jc5Codec.Decode(reference); var grayMap = new byte[1200 * 1200]; hookMap.CopyPixels(grayMap, 1200, 0);
+                for (int i = 0; i < grayMap.Length; i++)
+                    Check(grayMap[i] == (refBytes[i * 4 + 1] == 0 ? 0 : 255), "DesignScope exact decoded hook pixel");
+            }
+            // Five supplied pattern grids and their phase reproduce the independently supplied woven image.
+            var colorful = ImageLoader.Load(Path.Combine(dir, "orgin1.bmp"), 0).Image;
+            var wovenSession = new WorkflowSession(colorful); wovenSession.ApplySize(1200, 1200); wovenSession.ApplyColors(50);
+            var referencePatterns = new Dictionary<int, int> { [0x656067] = 0, [0xE44944] = 1, [0xB9A771] = 2, [0xF7951D] = 3, [0xFFFFFF] = 4 };
+            Check(wovenSession.Palette!.Colors.Length == 5, "reference palette count");
+            for (int i = 0; i < wovenSession.Palette.Colors.Length; i++)
+                wovenSession.AssignPattern(i, PatternLibrary.Presets[referencePatterns[wovenSession.Palette.Colors[i]]].Pattern);
+            byte[] woven = new byte[1200 * 1200 * 4]; wovenSession.PatternPreview!.CopyPixels(woven, 1200 * 4, 0);
+            for (int i = 0; i < 1200 * 1200; i++)
+                Check(woven[i * 4] == (refBytes[i * 4 + 1] == 0 ? 0 : 255), "reference pattern placement and phase");
             var entry = new PaletteEntry(); entry.Assign("weave.bmp", new WeavePattern(2, 1, new byte[] { 0, 255 }));
             var thumbnail = new byte[2]; entry.PatternPreview!.CopyPixels(thumbnail, 2, 0);
-            Check(entry.PatternLabel == "weave.bmp" && thumbnail.SequenceEqual(new byte[] {0, 255}), "pattern thumbnail");
+            Check(entry.PatternLabel == "weave.bmp" && thumbnail.SequenceEqual(new byte[] {0, 255}) && entry.PatternGridPreview is not null && entry.PatternSize == "2 × 1", "pattern thumbnail, grid and dimensions");
             Expect<ArgumentOutOfRangeException>(() => pipeline.ApplySize(0, 4));
             Check(pipeline.CanSave, "failed size stage preserves committed work");
             pipeline.ApplyColors(1);
@@ -132,7 +174,7 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            Check(AppVersion.Display == "006.2.3.0-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "007.2.4.1-a1", "QAVNS version from version.txt");
             var window = new MainWindow();
             Check(window.FontFamily.Source.Contains("Vazirmatn"), "embedded font selected in main window");
             var nav = (System.Windows.Controls.Grid)window.FindName("Navigation");
@@ -140,6 +182,8 @@ internal static class Program
             Check(nav.FlowDirection == System.Windows.FlowDirection.RightToLeft && System.Windows.Controls.Grid.GetColumn(settings) == 2, "right-to-left workflow and right settings panel");
             var list = (System.Windows.Controls.ListView)window.FindName("PaletteList");
             Check(list.View is System.Windows.Controls.GridView grid && grid.Columns.Count == 2, "two-column color and pattern table");
+            Check(window.FindName("PatternCards") is System.Windows.Controls.ItemsControl, "reference-style pattern gallery exists");
+            Check(window.FindName("FormatJC6") is System.Windows.Controls.RadioButton, "sample JC6 selector exists");
             var machineExport = (System.Windows.Controls.Button)window.FindName("MachineExportButton");
             Check(!machineExport.IsEnabled, "machine export disabled until a valid input is selected");
             Check(window.FontFamily.GetTypefaces().Any(t => t.TryGetGlyphTypeface(out var glyph) && glyph.FontUri.ToString().Contains("Vazirmatn", StringComparison.OrdinalIgnoreCase)), "embedded font resolves");
