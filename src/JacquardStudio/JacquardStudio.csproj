@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>JacquardStudio</AssemblyName>
+    <Version>13.2.10.1</Version>
+    <AssemblyVersion>13.2.10.1</AssemblyVersion>
+    <FileVersion>13.2.10.1</FileVersion>
+    <InformationalVersion>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/../../version.txt').Trim())</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Product>Jacquard Studio</Product>
+    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets/Fonts/*.ttf" />
+    <Resource Include="Assets/app.ico" />
+    <Content Include="Assets/Fonts/OFL.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
