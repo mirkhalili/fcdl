@@ -281,11 +281,12 @@ internal static class Program
             var manyImage = BitmapSource.Create(10, 10, 96, 96, PixelFormats.Bgra32, null, many, 40);
             var reduced = DesignProcessor.Prepare(manyImage, 10, 10, 50);
             Check(reduced.SourceColorCount == 100 && reduced.Colors.Length <= 50, "automatic reduction to <=50");
-            var fullProject = new WorkflowSession(manyImage); fullProject.ApplySize(10,10); fullProject.ApplyColors(50);
+            var fiftyImage = BitmapSource.Create(50, 1, 96, 96, PixelFormats.Bgra32, null, many.Take(200).ToArray(), 200);
+            var fullProject = new WorkflowSession(fiftyImage); fullProject.ApplySize(50,1); fullProject.ApplyColors(50);
             Check(fullProject.Palette!.Colors.Length == 50, "maximum palette fixture");
             for (int i = 0; i < 50; i++) fullProject.AssignPattern(i, new WeavePattern(1,1,new byte[] {0}));
             fullProject.TogglePixel(0,0); string fullProjectPath = Path.Combine(dir,"full-50.sam");
-            ProjectFile.Save(fullProjectPath, new ProjectState(fullProject,"many.bmp","10","10","50","Floats",false,1,Enumerable.Repeat<string?>("pattern",50).ToArray()), Array.Empty<string>());
+            ProjectFile.Save(fullProjectPath, new ProjectState(fullProject,"many.bmp","50","1","50","Floats",false,1,Enumerable.Repeat<string?>("pattern",50).ToArray()), Array.Empty<string>());
             Check(ProjectFile.Load(fullProjectPath).Session.PixelOverrides![0] == 2, "50 weaves and overrides fit SAM entry limit");
             var less = DesignProcessor.Prepare(manyImage, 10, 10, 3);
             Check(less.Colors.Length <= 3 && less.Counts.Sum() == 100, "requested color reduction");
