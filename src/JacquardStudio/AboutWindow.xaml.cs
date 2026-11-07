@@ -11,7 +11,7 @@ public partial class AboutWindow : Window
         if (english)
         {
             FlowDirection = FlowDirection.LeftToRight; Title = "About";
-            DescriptionText.Text = "Experimental Windows tool for preparing jacquard design images. Loom file conversion is not yet available.";
+            DescriptionText.Text = "Experimental Windows tool for jacquard design, weave editing, and sample-profile loom files.";
             AuthorText.Text = "Developer: Mirkhalili";
         }
     }

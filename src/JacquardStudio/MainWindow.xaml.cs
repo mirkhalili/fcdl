@@ -12,7 +12,9 @@ public partial class MainWindow : Window
 {
     private enum Stage { Size, Colors, Patterns, Machine }
     private Stage stage = Stage.Size;
-    private bool english, busy;
+    private bool english, busy, bankOpen, lightTheme;
+    private int? bankTargetIndex;
+    private readonly WeaveBank bank = new();
     private string? path;
     private string? projectPath;
     private string sourceName = "";
@@ -22,7 +24,8 @@ public partial class MainWindow : Window
     private List<PaletteEntry> entries = new();
     private double zoom = 1;
 
-    public MainWindow() { InitializeComponent(); VersionText.Text = AppVersion.Display; UpdateLabels(); RefreshControls(); }
+    public MainWindow() { InitializeComponent(); lightTheme = ThemeManager.ReadLight(); ThemeManager.Apply(lightTheme, false); VersionText.Text = AppVersion.Display; UpdateLabels(); RefreshControls(); UpdateWindowTitle(); }
+    private void UpdateWindowTitle() => Title = $"Jacquard Studio ({(projectPath is null ? T("پروژه جدید", "New project") : Path.GetFileNameWithoutExtension(projectPath))})";
     private string T(string fa, string en) => english ? en : fa;
     private bool SizeDirty => session?.Resized is null || !int.TryParse(WidthInput.Text, out int w) || !int.TryParse(HeightInput.Text, out int h) || w != session.Resized.PixelWidth || h != session.Resized.PixelHeight;
     private bool ColorsDirty => session?.Palette is null || !int.TryParse(ColorInput.Text, out int colors) || colors != session.AppliedColorLimit;
@@ -57,10 +60,10 @@ public partial class MainWindow : Window
     }
     private void PreviousPage_Click(object sender, RoutedEventArgs e) { if (!busy && path is not null && current is not null && current.PageIndex > 0 && ConfirmDiscard()) _ = LoadAsync(path, current.PageIndex - 1); }
     private void NextPage_Click(object sender, RoutedEventArgs e) { if (!busy && path is not null && current is not null && current.PageIndex + 1 < current.PageCount && ConfirmDiscard()) _ = LoadAsync(path, current.PageIndex + 1); }
-    private void Window_DragOver(object sender, DragEventArgs e) { e.Effects = !busy && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; }
+    private void Window_DragOver(object sender, DragEventArgs e) { e.Effects = !busy && !bankOpen && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; }
     private void Window_Drop(object sender, DragEventArgs e)
     {
-        if (busy || e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files || !ConfirmDiscard()) return;
+        if (busy || bankOpen || e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files || !ConfirmDiscard()) return;
         if (Path.GetExtension(files[0]).Equals(".sam", StringComparison.OrdinalIgnoreCase)) _ = LoadProjectAsync(files[0]);
         else _ = LoadAsync(files[0], 0);
     }
@@ -69,7 +72,7 @@ public partial class MainWindow : Window
     private void RefreshControls()
     {
         if (!IsInitialized) return;
-        OpenButton.IsEnabled = !busy; OpenProjectButton.IsEnabled = !busy; SaveProjectButton.IsEnabled = !busy && session is not null; EmptyButton.IsEnabled = !busy; SettingsBorder.IsEnabled = !busy;
+        OpenButton.IsEnabled = !busy; OpenProjectButton.IsEnabled = !busy && !bankOpen; SaveProjectButton.IsEnabled = !busy && session is not null; SaveProjectAsButton.IsEnabled = !busy && session is not null; BankButton.IsEnabled = !busy; EmptyButton.IsEnabled = !busy; SettingsBorder.IsEnabled = !busy; BankWorkspace.IsEnabled = !busy;
         SizeStepButton.IsEnabled = !busy && session is not null;
         ColorStepButton.IsEnabled = !busy && session?.Resized is not null && !SizeDirty;
         PatternStepButton.IsEnabled = !busy && session?.Palette is not null && !SizeDirty && !ColorsDirty;
@@ -80,17 +83,19 @@ public partial class MainWindow : Window
         SaveColorButton.IsEnabled = !busy && stage == Stage.Colors && session?.ColorPreview is not null && !SizeDirty && !ColorsDirty;
         ToColorButton.IsEnabled = ColorStepButton.IsEnabled; ToPatternButton.IsEnabled = PatternStepButton.IsEnabled;
         SaveButton.IsEnabled = !busy && stage == Stage.Patterns && session?.PatternPreview is not null && !SizeDirty && !ColorsDirty;
-        var selected = ColorPaletteList.SelectedItem as PaletteEntry;
-        var target = MergeTarget.SelectedItem as PaletteEntry;
-        DeleteColorButton.IsEnabled = !busy && stage == Stage.Colors && !SizeDirty && !ColorsDirty && session?.Palette?.Colors.Length > 1 && selected is not null;
-        MergeColorButton.IsEnabled = DeleteColorButton.IsEnabled && target is not null && selected!.Index != target.Index;
+        int selectedCount = ColorPaletteList.SelectedItems.Count;
+        bool canEditColors = !busy && stage == Stage.Colors && !SizeDirty && !ColorsDirty && session?.Palette?.Colors.Length > 1;
+        DeleteColorButton.IsEnabled = canEditColors && selectedCount == 1;
+        MergeColorButton.IsEnabled = canEditColors && selectedCount == 2;
+        UpdateBankButtons();
         PreviousPage.IsEnabled = !busy && current is not null && current.PageIndex > 0;
         NextPage.IsEnabled = !busy && current is not null && current.PageIndex + 1 < current.PageCount;
         PageValue.Text = current is null ? "—" : $"{current.PageIndex + 1} / {current.PageCount}";
         foreach (var pair in new[] { (SizeStepButton, Stage.Size), (ColorStepButton, Stage.Colors), (PatternStepButton, Stage.Patterns), (MachineStepButton, Stage.Machine) })
         {
-            pair.Item1.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString((session is not null || stage == Stage.Machine) && pair.Item2 == stage ? "#31574F" : "#263749"));
-            pair.Item1.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString((session is not null || stage == Stage.Machine) && pair.Item2 == stage ? "#54E0C2" : "#374C60"));
+            bool active = (session is not null || stage == Stage.Machine) && pair.Item2 == stage;
+            pair.Item1.Background = active ? new SolidColorBrush((Color)ColorConverter.ConvertFromString(lightTheme ? "#D2EFE7" : "#31574F")) : (Brush)FindResource("ButtonBackground");
+            pair.Item1.BorderBrush = active ? (Brush)FindResource("Accent") : (Brush)FindResource("ButtonBorder");
         }
     }
     private void OpenProject_Click(object sender, RoutedEventArgs e)
@@ -119,11 +124,18 @@ public partial class MainWindow : Window
         { MessageBox.Show(this, T("باز کردن پروژه ممکن نشد: ", "Could not open project: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("باز کردن پروژه ناموفق بود.", "Could not open project."); }
         finally { SetBusy(false); }
     }
-    private async void SaveProject_Click(object sender, RoutedEventArgs e)
+    private async void SaveProject_Click(object sender, RoutedEventArgs e) => await SaveProjectAsync(false);
+    private async void SaveProjectAs_Click(object sender, RoutedEventArgs e) => await SaveProjectAsync(true);
+    private async Task SaveProjectAsync(bool saveAs)
     {
         if (busy || session is null || path is null) return;
-        var dialog = new SaveFileDialog { Filter = "SAM project (*.sam)|*.sam", AddExtension = true, DefaultExt = ".sam", OverwritePrompt = true, FileName = projectPath is null ? Path.GetFileNameWithoutExtension(sourceName) + ".sam" : Path.GetFileName(projectPath) };
-        if (dialog.ShowDialog(this) != true) return;
+        string? destination = projectPath;
+        if (ProjectSavePolicy.RequiresDialog(destination, saveAs))
+        {
+            var dialog = new SaveFileDialog { Filter = "SAM project (*.sam)|*.sam", AddExtension = true, DefaultExt = ".sam", OverwritePrompt = true, FileName = projectPath is null ? Path.GetFileNameWithoutExtension(sourceName) + ".sam" : Path.GetFileName(projectPath) };
+            if (dialog.ShowDialog(this) != true) return;
+            destination = dialog.FileName;
+        }
         var names = session.Patterns.Select((p, i) => p is null ? null : entries[i].PatternLabel).ToArray();
         var state = new ProjectState(session, sourceName, WidthInput.Text, HeightInput.Text, ColorInput.Text, stage.ToString(), english, machineFormatIndex, names);
         var protectedPaths = entries.Select(x => x.PatternPath).OfType<string>().ToList();
@@ -131,8 +143,8 @@ public partial class MainWindow : Window
         SetBusy(true); StatusText.Text = T("در حال ذخیره پروژه…", "Saving project…");
         try
         {
-            await Task.Run(() => ProjectFile.Save(dialog.FileName, state, protectedPaths));
-            projectPath = dialog.FileName; StatusText.Text = T("پروژه ذخیره شد.", "Project saved.");
+            await Task.Run(() => ProjectFile.Save(destination, state, protectedPaths));
+            projectPath = destination; UpdateWindowTitle(); StatusText.Text = T("پروژه ذخیره شد.", "Project saved.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException)
         { MessageBox.Show(this, T("ذخیره پروژه ممکن نشد: ", "Could not save project: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("ذخیره پروژه ناموفق بود.", "Project save failed."); }
@@ -159,6 +171,9 @@ public partial class MainWindow : Window
     private void MachineStep_Click(object sender, RoutedEventArgs e) { if (!busy) { stage = Stage.Machine; ShowStage(); } }
     private void ShowStage()
     {
+        WorkflowRoot.Visibility = bankOpen ? Visibility.Collapsed : Visibility.Visible;
+        BankWorkspace.Visibility = bankOpen ? Visibility.Visible : Visibility.Collapsed;
+        UpdateWindowTitle();
         bool hasFile = session is not null;
         NoFilePanel.Visibility = !hasFile && stage != Stage.Machine ? Visibility.Visible : Visibility.Collapsed;
         MachinePanel.Visibility = stage == Stage.Machine ? Visibility.Visible : Visibility.Collapsed;
@@ -236,7 +251,7 @@ public partial class MainWindow : Window
     }
     private void RebuildPaletteEntries(string?[]? restoredNames = null, IReadOnlyList<PaletteEntry>? previous = null, int removedIndex = -1)
     {
-        if (session?.Palette is not { } palette) { entries.Clear(); ColorPaletteList.ItemsSource = null; MergeTarget.ItemsSource = null; PatternCards.ItemsSource = null; return; }
+        if (session?.Palette is not { } palette) { entries.Clear(); ColorPaletteList.ItemsSource = null; PatternCards.ItemsSource = null; return; }
         var next = new List<PaletteEntry>();
         for (int i = 0; i < palette.Colors.Length; i++)
         {
@@ -252,19 +267,26 @@ public partial class MainWindow : Window
             }
             next.Add(entry);
         }
-        entries = next; ColorPaletteList.ItemsSource = entries; MergeTarget.ItemsSource = entries; PatternCards.ItemsSource = entries;
+        entries = next; ColorPaletteList.ItemsSource = entries; PatternCards.ItemsSource = entries;
     }
     private void ColorSelection_Changed(object sender, SelectionChangedEventArgs e) { if (IsInitialized) RefreshControls(); }
     private async void DeleteColor_Click(object sender, RoutedEventArgs e)
     {
-        if (busy || session?.Palette is not { } palette || ColorPaletteList.SelectedItem is not PaletteEntry source || palette.Colors.Length < 2 || SizeDirty || ColorsDirty) return;
+        if (busy || session?.Palette is not { } palette || ColorPaletteList.SelectedItems.Count != 1 || ColorPaletteList.SelectedItem is not PaletteEntry source || palette.Colors.Length < 2 || SizeDirty || ColorsDirty) return;
         int target = DesignProcessor.NearestRemainingColor(palette, source.Index);
         await MergeColorsAsync(source.Index, target, true);
     }
     private async void MergeColor_Click(object sender, RoutedEventArgs e)
     {
-        if (busy || session?.Palette is null || ColorPaletteList.SelectedItem is not PaletteEntry source || MergeTarget.SelectedItem is not PaletteEntry target || source.Index == target.Index || SizeDirty || ColorsDirty) return;
-        await MergeColorsAsync(source.Index, target.Index, false);
+        if (busy || session?.Palette is null || ColorPaletteList.SelectedItems.Count != 2 || SizeDirty || ColorsDirty) return;
+        var first = (PaletteEntry)ColorPaletteList.SelectedItems[0]; var second = (PaletteEntry)ColorPaletteList.SelectedItems[1];
+        string question = T($"دو رنگ {first.ColorCode} و {second.ColorCode} انتخاب شده‌اند.\nبله: رنگ اول حفظ شود.\nخیر: رنگ دوم حفظ شود.\nانصراف: هیچ تغییری انجام نشود.",
+            $"Two colors {first.ColorCode} and {second.ColorCode} are selected.\nYes: keep the first color.\nNo: keep the second color.\nCancel: make no changes.");
+        var choice = MessageBox.Show(this, question, Title, MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+        if (choice == MessageBoxResult.Cancel) return;
+        int target = choice == MessageBoxResult.Yes ? first.Index : second.Index;
+        int source = choice == MessageBoxResult.Yes ? second.Index : first.Index;
+        await MergeColorsAsync(source, target, false);
     }
     private async Task MergeColorsAsync(int source, int target, bool deleting)
     {
@@ -298,6 +320,116 @@ public partial class MainWindow : Window
     private void CloseWindow_Click(object sender, RoutedEventArgs e) => SystemCommands.CloseWindow(this);
     private void MaximizeWindow_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
     private void MinimizeWindow_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
+    private bool ConfirmDiscardDrawing()
+    {
+        if (!WeaveCanvas.IsDirty) return true;
+        return MessageBox.Show(this, T("تغییرات بافت در بانک ذخیره نشده است. کنار گذاشته شود؟", "The weave drawing has unsaved changes. Discard them?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+    }
+    private async void Bank_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy) return;
+        if (bankOpen) { if (ConfirmDiscardDrawing()) { bankOpen = false; bankTargetIndex = null; WeaveCanvas.MarkSaved(); ShowStage(); } return; }
+        bankTargetIndex = null; bankOpen = true; ShowStage(); await ReloadBankAsync();
+    }
+    private async void PatternBank_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || session?.Palette is null || (sender as Button)?.DataContext is not PaletteEntry entry) return;
+        bankTargetIndex = entry.Index; bankOpen = true; ShowStage(); await ReloadBankAsync();
+    }
+    private void BankBack_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || !ConfirmDiscardDrawing()) return;
+        WeaveCanvas.MarkSaved(); bankOpen = false; bankTargetIndex = null; ShowStage();
+    }
+    private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    { if (bankOpen && !ConfirmDiscardDrawing()) e.Cancel = true; }
+    private async Task ReloadBankAsync(string? selectedId = null)
+    {
+        SetBusy(true);
+        try
+        {
+            var result = await Task.Run(() => { var items = bank.Load(out int skipped); return (items, skipped); });
+            BankList.ItemsSource = result.items;
+            if (selectedId is not null) BankList.SelectedItem = result.items.FirstOrDefault(x => x.Id == selectedId);
+            BankStatus.Text = T($"{result.items.Count} بافت در دسترس" + (result.skipped > 0 ? $" · {result.skipped} فایل نامعتبر نادیده گرفته شد" : ""),
+                $"{result.items.Count} weaves available" + (result.skipped > 0 ? $" · {result.skipped} invalid items skipped" : ""));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        { MessageBox.Show(this, T("خواندن بانک ممکن نشد: ", "Could not load weave bank: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        finally { SetBusy(false); }
+    }
+    private void UpdateBankButtons()
+    {
+        if (!IsInitialized) return;
+        var item = BankList.SelectedItem as BankItem;
+        BankUseButton.IsEnabled = !busy && item is not null && bankTargetIndex is int index && session?.Palette is not null && index >= 0 && index < entries.Count;
+        BankEditButton.IsEnabled = !busy && item is not null;
+        BankDeleteButton.IsEnabled = !busy && item is not null && !item.IsPreset;
+    }
+    private void BankSelection_Changed(object sender, SelectionChangedEventArgs e) { if (IsInitialized) UpdateBankButtons(); }
+    private void EditorReset_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy) return;
+        if (!int.TryParse(WeaveWidth.Text, out int w) || !int.TryParse(WeaveHeight.Text, out int h) || w < 1 || h < 1 || w > WeaveEditor.MaxSide || h > WeaveEditor.MaxSide)
+        { MessageBox.Show(this, T("عرض و ارتفاع باید بین ۱ تا ۶۴ باشند.", "Width and height must be between 1 and 64.")); return; }
+        if (!ConfirmDiscardDrawing()) return;
+        WeaveCanvas.Reset(w, h);
+    }
+    private void BankEdit_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || BankList.SelectedItem is not BankItem item || !ConfirmDiscardDrawing()) return;
+        if (item.Pattern.Width > WeaveEditor.MaxSide || item.Pattern.Height > WeaveEditor.MaxSide)
+        { MessageBox.Show(this, T("این بافت برای ویرایش شبکه‌ای بزرگ است؛ ویرایشگر تا ۶۴×۶۴ پیکسل را می‌پذیرد. بافت همچنان قابل استفاده است.", "This weave exceeds the 64×64 editor limit; it can still be applied.")); return; }
+        WeaveCanvas.SetPattern(item.Pattern); WeaveWidth.Text = item.Pattern.Width.ToString(); WeaveHeight.Text = item.Pattern.Height.ToString(); WeaveName.Text = item.Name;
+    }
+    private async void BankSaveDrawing_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy) return;
+        try
+        {
+            var item = bank.SaveNew(WeaveName.Text, WeaveCanvas.Snapshot()); WeaveCanvas.MarkSaved(); await ReloadBankAsync(item.Id);
+            StatusText.Text = T("بافت در بانک ذخیره شد.", "Weave saved to the bank.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        { MessageBox.Show(this, T("ذخیره بافت ممکن نشد: ", "Could not save weave: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+    }
+    private async void BankImport_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy) return;
+        var dialog = new OpenFileDialog { Filter = "BMP and TIFF|*.bmp;*.tif;*.tiff", CheckFileExists = true };
+        if (dialog.ShowDialog(this) != true) return;
+        SetBusy(true);
+        try
+        {
+            var item = await Task.Run(() => { var input = ImageLoader.Load(dialog.FileName, 0); if (input.PageCount != 1) throw new InvalidDataException("Multi-page patterns are not supported."); return bank.SaveNew(Path.GetFileNameWithoutExtension(dialog.FileName), DesignProcessor.ReadPattern(input.Image)); });
+            SetBusy(false); await ReloadBankAsync(item.Id); StatusText.Text = T("بافت به بانک افزوده شد.", "Weave added to bank.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or NotSupportedException or System.Runtime.InteropServices.COMException)
+        { MessageBox.Show(this, T("بافت باید مات، تک‌صفحه‌ای و سیاه‌وسفید خالص باشد: ", "Weave must be opaque, single-page and pure black/white: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        finally { SetBusy(false); }
+    }
+    private async void BankDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || BankList.SelectedItem is not BankItem item || item.IsPreset) return;
+        if (MessageBox.Show(this, T($"بافت «{item.Name}» از بانک حذف شود؟ پروژه‌های ذخیره‌شده مستقل می‌مانند.", $"Delete {item.Name} from the bank? Saved projects remain self-contained."), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        try { bank.Delete(item); await ReloadBankAsync(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        { MessageBox.Show(this, T("حذف بافت ممکن نشد: ", "Could not delete weave: ") + ex.Message); }
+    }
+    private async void BankUse_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || BankList.SelectedItem is not BankItem item || bankTargetIndex is not int index || session?.Palette is null || index < 0 || index >= entries.Count || !ConfirmDiscardDrawing()) return;
+        var entry = entries[index]; SetBusy(true);
+        try
+        {
+            await Task.Run(() => session.AssignPattern(index, item.Pattern));
+            entry.Restore(item.Name, item.Pattern); WeaveCanvas.MarkSaved(); bankOpen = false; bankTargetIndex = null; ShowStage();
+            StatusText.Text = T("بافت بانک به رنگ انتخاب‌شده اختصاص یافت.", "Library weave applied to the selected color.");
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
+        { MessageBox.Show(this, T("اعمال بافت ممکن نشد: ", "Could not apply weave: ") + ex.Message); }
+        finally { SetBusy(false); }
+    }
     private async void Pattern_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session?.Palette is null || (sender as Button)?.DataContext is not PaletteEntry entry) return;
@@ -430,12 +562,12 @@ public partial class MainWindow : Window
     private void ZoomReset_Click(object sender, RoutedEventArgs e) => SetZoom(1);
     private void About_Click(object sender, RoutedEventArgs e) => new AboutWindow(english) { Owner = this }.ShowDialog();
     private void Language_Click(object sender, RoutedEventArgs e) { english = !english; UpdateLabels(); ShowStage(); }
+    private void Theme_Click(object sender, RoutedEventArgs e) { lightTheme = !lightTheme; ThemeManager.Apply(lightTheme, true); RefreshControls(); }
     private void UpdateLabels()
     {
         FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
         SettingsBorder.FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
-        LanguageButton.Content = english ? "فارسی" : "English"; AboutButton.Content = T("درباره", "About"); OpenProjectButton.Content = T("باز کردن پروژه", "Open project"); SaveProjectButton.Content = T("ذخیره پروژه", "Save project"); ColorSwatchColumn.Header = T("رنگ", "Color"); ColorCodeColumn.Header = T("کد رنگ", "Color code"); ColorCountColumn.Header = T("پیکسل", "Pixels"); ColorPercentColumn.Header = T("درصد", "Percent");
-        SubtitleText.Text = T("فضای کار طراحی و بازرسی ژاکارد", "Jacquard design workspace"); BadgeText.Text = T("نسخه آزمایشی", "EXPERIMENTAL");
+        LanguageButton.Content = english ? "FA" : "EN"; LanguageButton.ToolTip = T("تغییر زبان", "Change language"); AboutButton.ToolTip = T("درباره", "About"); OpenProjectButton.ToolTip = T("باز کردن پروژه", "Open project"); SaveProjectButton.ToolTip = T("ذخیره پروژه", "Save project"); SaveProjectAsButton.ToolTip = T("ذخیره با نام دیگر", "Save project as"); ThemeButton.ToolTip = T("تغییر تم", "Change theme"); BankButton.ToolTip = T("بانک و طراحی بافت", "Weave bank and editor"); ColorSwatchColumn.Header = T("رنگ", "Color"); ColorCodeColumn.Header = T("کد رنگ", "Color code"); ColorCountColumn.Header = T("پیکسل", "Pixels"); ColorPercentColumn.Header = T("درصد", "Percent");
         OpenButton.Content = T("+  باز کردن تصویر", "+  Open image"); SizeStepButton.Content = T("۱  تغییر اندازه", "1  Resize"); ColorStepButton.Content = T("۲  کاهش رنگ", "2  Colors"); PatternStepButton.Content = T("۳  اختصاص بافت", "3  Patterns"); MachineStepButton.Content = T("۴  فایل ماشین", "4  Loom file");
         FileCaption.Text = T("فایل ورودی", "INPUT FILE"); NoFileTitle.Text = T("شروع کار", "Get started"); NoFileHint.Text = T("ابتدا یک تصویر BMP یا TIFF باز کنید یا در پنجره رها کنید.", "Open or drop a BMP or TIFF image to start.");
         SizeTitle.Text = T("مرحله ۱ · تغییر اندازه", "Stage 1 · Resize"); SizeHint.Text = T("ابعاد خروجی را وارد و اعمال کنید. تصویر سمت چپ نتیجه همین مرحله است.", "Set and apply the output dimensions; the preview shows the result.");
@@ -444,7 +576,12 @@ public partial class MainWindow : Window
         ColorTitle.Text = T("مرحله ۲ · کاهش رنگ", "Stage 2 · Colors"); ColorHint.Text = T("ورودی این مرحله تصویر تغییراندازه‌یافته است؛ بیش از ۵۰ رنگ به‌طور خودکار کاهش می‌یابد.", "Input is the resized image; over 50 colors are reduced automatically.");
         ColorLimitLabel.Text = T("حداکثر تعداد رنگ (۱ تا ۵۰)", "Maximum colors (1–50)"); ApplyColorButton.Content = T("اعمال تعداد رنگ", "Apply color limit"); SaveColorButton.Content = T("ذخیره خروجی رنگ", "Save color image"); ToPatternButton.Content = T("مرحله بعد: بافت ←", "Next: patterns →");
         SaveButton.Content = T("ذخیره تصویر", "Save image");
-        MergeTargetLabel.Text = T("رنگ مقصد برای ادغام", "Destination color for merging"); DeleteColorButton.Content = T("حذف رنگ انتخابی", "Remove selected"); MergeColorButton.Content = T("ادغام با مقصد", "Merge into target");
+        ColorSelectionHint.Text = T("برای ادغام، دو رنگ را انتخاب کنید.", "Select two colors to merge."); DeleteColorButton.Content = T("حذف رنگ انتخابی", "Remove selected"); MergeColorButton.Content = T("ادغام دو رنگ", "Merge two colors");
+        BankTitle.Text = T("بانک و طراحی بافت", "Weave bank and editor"); BankHint.Text = T("یک بافت انتخاب کنید یا روی شبکه ترسیم کنید.", "Select a weave or draw on the grid."); BankBackButton.Content = T("بازگشت", "Back");
+        EditorTitle.Text = T("طراحی بافت", "Weave editor"); EditorHint.Text = T("روی خانه‌ها کلیک کنید یا بکشید؛ سیاه و سفید تغییر می‌کنند.", "Click or drag cells to paint black and white.");
+        WeaveWidthLabel.Text = T("عرض", "Width"); WeaveHeightLabel.Text = T("ارتفاع", "Height"); EditorResetButton.Content = T("ساخت شبکه", "Create grid"); BankSaveDrawingButton.Content = T("ذخیره در بانک", "Save to bank");
+        BankListTitle.Text = T("بافت‌های بانک", "Weave library"); BankUseButton.Content = T("اختصاص به رنگ", "Apply to color"); BankEditButton.Content = T("ویرایش انتخاب‌شده", "Edit selection"); BankImportButton.Content = T("افزودن از فایل BMP/TIFF", "Import BMP/TIFF"); BankDeleteButton.Content = T("حذف از بانک", "Delete from bank");
+        UpdateWindowTitle();
         DeveloperText.Text = T("برنامه‌نویس: میرخلیلی", "Developer: Mirkhalili");
         MachineTitle.Text = T("مرحله ۴ · فایل ماشین", "Stage 4 · Loom file"); MachineHint.Text = T("JC5 و JC6 تک‌ناحیه‌ای بر اساس نمونه DesignScope به‌صورت آزمایشی فعال هستند؛ سایر قالب‌ها پشتیبانی نمی‌شوند.", "Experimental single-area JC5 and JC6 based on DesignScope samples; other formats are not supported.");
         MachineFormatLabel.Text = T("قالب هدف", "Target format"); MachineRedAsBlack.Content = T("نقشه قرمز و سفید: قرمز = بافت", "Red/white hook map: red = black"); MachineLegacyImport.Content = T("خواندن فایل خروجی نسخه قدیمی ۰۰۶", "Import a file created by old version 006"); MachineUseSource.Content = T("استفاده از نقشه اصلی به جای نتیجه بافت", "Use original hook map instead of pattern result"); MachineExportButton.Content = T("تبدیل و ذخیره فایل ماشین", "Convert and save loom file"); MachineImportButton.Content = T("انتخاب فایل ماشین", "Select loom file");

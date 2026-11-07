@@ -3,6 +3,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
+        <SolidColorBrush x:Key="AppBackground" Color="#0C1420"/>
+        <SolidColorBrush x:Key="HeaderBackground" Color="#111B29"/>
+        <SolidColorBrush x:Key="CanvasBackground" Color="#0B121D"/>
+        <SolidColorBrush x:Key="PrimaryText" Color="#E5EEF6"/>
+        <SolidColorBrush x:Key="ButtonBackground" Color="#263749"/>
+        <SolidColorBrush x:Key="ButtonBorder" Color="#374C60"/>
+        <SolidColorBrush x:Key="GalleryBackground" Color="#172432"/>
+        <SolidColorBrush x:Key="ListBackground" Color="#111B29"/>
         <SolidColorBrush x:Key="Surface" Color="#161F2D"/>
         <SolidColorBrush x:Key="Border" Color="#2B3A4E"/>
         <SolidColorBrush x:Key="Muted" Color="#9BAFC3"/>
@@ -12,9 +20,9 @@
         <Style TargetType="TextBox"><Setter Property="FontFamily" Value="{StaticResource VazirFont}"/></Style>
         <Style TargetType="Button">
             <Setter Property="FontFamily" Value="{StaticResource VazirFont}"/>
-            <Setter Property="Foreground" Value="#E5EEF6"/>
-            <Setter Property="Background" Value="#263749"/>
-            <Setter Property="BorderBrush" Value="#374C60"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="Background" Value="{DynamicResource ButtonBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ButtonBorder}"/>
             <Setter Property="Padding" Value="16,10"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontSize" Value="13"/>
@@ -33,6 +41,6 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <Style TargetType="TextBlock"><Setter Property="Foreground" Value="#E5EEF6"/></Style>
+        <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
     </Application.Resources>
 </Application>
