@@ -87,6 +87,7 @@ public partial class MainWindow : Window
         bool canEditColors = !busy && stage == Stage.Colors && !SizeDirty && !ColorsDirty && session?.Palette?.Colors.Length > 1;
         DeleteColorButton.IsEnabled = canEditColors && selectedCount == 1;
         MergeColorButton.IsEnabled = canEditColors && selectedCount == 2;
+        ColorSelectionHint.Text = selectedCount > 2 ? T("برای ادغام فقط دو رنگ را انتخاب کنید.", "Select only two colors to merge.") : T("برای ادغام، دو رنگ را انتخاب کنید.", "Select two colors to merge.");
         UpdateBankButtons();
         PreviousPage.IsEnabled = !busy && current is not null && current.PageIndex > 0;
         NextPage.IsEnabled = !busy && current is not null && current.PageIndex + 1 < current.PageCount;
@@ -136,6 +137,7 @@ public partial class MainWindow : Window
             if (dialog.ShowDialog(this) != true) return;
             destination = dialog.FileName;
         }
+        if (string.IsNullOrEmpty(destination)) return;
         var names = session.Patterns.Select((p, i) => p is null ? null : entries[i].PatternLabel).ToArray();
         var state = new ProjectState(session, sourceName, WidthInput.Text, HeightInput.Text, ColorInput.Text, stage.ToString(), english, machineFormatIndex, names);
         var protectedPaths = entries.Select(x => x.PatternPath).OfType<string>().ToList();
@@ -279,7 +281,7 @@ public partial class MainWindow : Window
     private async void MergeColor_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session?.Palette is null || ColorPaletteList.SelectedItems.Count != 2 || SizeDirty || ColorsDirty) return;
-        var first = (PaletteEntry)ColorPaletteList.SelectedItems[0]; var second = (PaletteEntry)ColorPaletteList.SelectedItems[1];
+        if (ColorPaletteList.SelectedItems[0] is not PaletteEntry first || ColorPaletteList.SelectedItems[1] is not PaletteEntry second) return;
         string question = T($"دو رنگ {first.ColorCode} و {second.ColorCode} انتخاب شده‌اند.\nبله: رنگ اول حفظ شود.\nخیر: رنگ دوم حفظ شود.\nانصراف: هیچ تغییری انجام نشود.",
             $"Two colors {first.ColorCode} and {second.ColorCode} are selected.\nYes: keep the first color.\nNo: keep the second color.\nCancel: make no changes.");
         var choice = MessageBox.Show(this, question, Title, MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
