@@ -241,6 +241,8 @@ internal static class Program
             Check(verticalFloats.Count == 5 && verticalFloats[0] == new FloatRun(0,0,3,true,FloatDirection.Warp), "maximal warp floats including edge");
             Check(horizontalFloats.Count == 1 && horizontalFloats[0] == new FloatRun(0,2,2,true,FloatDirection.Weft), "maximal weft floats");
             Check(DesignAnalysis.FindFloats(analysisPixels, 3, 4, 5, FloatDirection.Warp).Count == 0, "float threshold longer than line");
+            var alternating = new byte[] {0,255,0,255};
+            Check(DesignAnalysis.FindFloats(alternating, 4, 1, 1, FloatDirection.Weft).Count == 4 && DesignAnalysis.FindFloats(alternating, 4, 1, 2, FloatDirection.Weft).Count == 0, "single-cell runs and no edge wrapping");
             byte beforeToggle = DesignAnalysis.ReadBinary(bankSession.PatternPreview!)[0];
             var historySnapshot = bankSession.Snapshot(); bankSession.TogglePixel(0,0);
             Check(DesignAnalysis.ReadBinary(bankSession.PatternPreview!)[0] != beforeToggle && DesignAnalysis.ReadBinary(historySnapshot.PatternPreview!)[0] == beforeToggle, "edited pixel and history snapshot are independent");
@@ -279,6 +281,12 @@ internal static class Program
             var manyImage = BitmapSource.Create(10, 10, 96, 96, PixelFormats.Bgra32, null, many, 40);
             var reduced = DesignProcessor.Prepare(manyImage, 10, 10, 50);
             Check(reduced.SourceColorCount == 100 && reduced.Colors.Length <= 50, "automatic reduction to <=50");
+            var fullProject = new WorkflowSession(manyImage); fullProject.ApplySize(10,10); fullProject.ApplyColors(50);
+            Check(fullProject.Palette!.Colors.Length == 50, "maximum palette fixture");
+            for (int i = 0; i < 50; i++) fullProject.AssignPattern(i, new WeavePattern(1,1,new byte[] {0}));
+            fullProject.TogglePixel(0,0); string fullProjectPath = Path.Combine(dir,"full-50.sam");
+            ProjectFile.Save(fullProjectPath, new ProjectState(fullProject,"many.bmp","10","10","50","Floats",false,1,Enumerable.Repeat<string?>("pattern",50).ToArray()), Array.Empty<string>());
+            Check(ProjectFile.Load(fullProjectPath).Session.PixelOverrides![0] == 2, "50 weaves and overrides fit SAM entry limit");
             var less = DesignProcessor.Prepare(manyImage, 10, 10, 3);
             Check(less.Colors.Length <= 3 && less.Counts.Sum() == 100, "requested color reduction");
             Expect<ArgumentOutOfRangeException>(() => DesignProcessor.Prepare(manyImage, 10, 10, 51));
