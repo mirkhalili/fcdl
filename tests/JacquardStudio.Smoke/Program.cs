@@ -318,6 +318,13 @@ internal static class Program
             var draftLoaded = ProjectFile.Load(draftFile); Check(draftLoaded.Machine!.WeftStart == "1" && draftLoaded.DraftWeft == draft && draftLoaded.WidthInput == "۳", "SAM persists applied settings and Persian draft independently");
             var absoluteFile = Path.Combine(dir,"positioned.sam"); ProjectFile.Save(absoluteFile, new ProjectState(bankSession,"sample.bmp","3","2","50","Weft",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,absolute), new[] {bmpPath});
             var absoluteLoaded = ProjectFile.Load(absoluteFile).Machine!; Check(absoluteLoaded.AbsoluteLayout && absoluteLoaded.TotalHooks == "30" && absoluteLoaded.WeftStart == "1" && DesignAnalysis.ReadBinary(MachineComposer.Compose(image, absoluteLoaded).Image).SequenceEqual(positionedPixels), "absolute layout persists and reproduces map");
+            var v4File = Path.Combine(dir, "legacy-v4.sam"); File.Copy(absoluteFile, v4File);
+            using (var zip = ZipFile.Open(v4File, ZipArchiveMode.Update))
+            {
+                var item = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(item.Open())) json = reader.ReadToEnd();
+                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":5", "\"Version\":4"));
+            }
+            var oldV4 = ProjectFile.Load(v4File); Check(oldV4.DraftWeft is null && oldV4.Machine!.AbsoluteLayout && DesignAnalysis.ReadBinary(MachineComposer.Compose(image, oldV4.Machine).Image).SequenceEqual(positionedPixels), "SAM v4 absolute settings remain applied");
             var composedState = new ProjectState(bankSession,"sample.bmp","3","2","50","Machine",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,setup);
             string machineProject = Path.Combine(dir,"machine-setup.sam"); ProjectFile.Save(machineProject, composedState, new[] {bmpPath});
             var restoredSetup = ProjectFile.Load(machineProject).Machine!;
@@ -367,6 +374,15 @@ internal static class Program
             var app = new App(); app.InitializeComponent();
             Check(AppVersion.Display == "015.2.12.1-a1", "QAVNS version from version.txt");
             var reportEntries = bankSession.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = bankSession.Palette.Counts[index], Percent = 100d * bankSession.Palette.Counts[index] / bankSession.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; if (bankSession.Patterns[index] is { } p) e.Restore("sample", p); return e; }).ToArray();
+            var fullEntries = fullProject.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = fullProject.Palette.Counts[index], Percent = 100d * fullProject.Palette.Counts[index] / fullProject.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; e.Restore("sample", fullProject.Patterns[index]!); return e; }).ToArray();
+            var fullMap = MachineComposer.Compose(fullProject.PatternPreview!, new MachineSetup("2", "1", edgeLeft, edgeRight, "left", "right", AbsoluteLayout: true, TotalHooks: "54", DesignStart: "3"));
+            var fullFabric = CompositionView.Fabric(fullMap); var fullAnalysis = DesignAnalysis.Analyze(DesignAnalysis.ReadBinary(fullFabric), fullFabric.PixelWidth, fullFabric.PixelHeight);
+            var fullPage = (System.Windows.Controls.Grid)DesignReport.CreatePage(fullProject, fullEntries, "پنجاه رنگ", null, false, machine: new MachineSetup("2", "1", edgeLeft, edgeRight), analysis: fullAnalysis, composition: fullMap);
+            DesignReport.Render(fullPage);
+            var reportBody = fullPage.Children.OfType<System.Windows.Controls.Grid>().Single(x => System.Windows.Controls.Grid.GetRow(x) == 3);
+            var reportColumns = reportBody.Children.OfType<System.Windows.Controls.Grid>().Single();
+            var reportRows = reportColumns.Children.OfType<System.Windows.Controls.StackPanel>().SelectMany(x => x.Children.OfType<System.Windows.Controls.Grid>()).ToArray();
+            Check(reportRows.Length == 50 && reportRows.All(r => r.TransformToAncestor(fullPage).TransformBounds(new System.Windows.Rect(r.RenderSize)).Bottom <= fullPage.ActualHeight - 35), "all fifty report rows fit above footer with range section");
             Check(DesignReport.PersianDate(new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero)) == "1403/01/01", "solar Hijri report date");
             Check(DesignReport.PersianDate(null).Contains("نامشخص"), "legacy creation date not invented");
             var reportImage = DesignReport.Render(DesignReport.CreatePage(bankSession, reportEntries, "نمونه", new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero), false, machine: absolute, analysis: fabricStats, composition: positioned));
