@@ -62,14 +62,14 @@ internal static class Program
             using (var zip = ZipFile.Open(legacySam, ZipArchiveMode.Update))
             {
                 var entryManifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(entryManifest.Open())) json = reader.ReadToEnd();
-                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":4", "\"Version\":1"));
+                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":5", "\"Version\":1"));
             }
             Check(ProjectFile.Load(legacySam).Session.CanSave, "legacy SAM version one loads");
             string legacyV2 = Path.Combine(dir, "legacy-v2.sam"); File.Copy(projectPath, legacyV2);
             using (var zip = ZipFile.Open(legacyV2, ZipArchiveMode.Update))
             {
                 var old = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(old.Open())) json = reader.ReadToEnd();
-                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":4", "\"Version\":2"));
+                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":5", "\"Version\":2"));
             }
             Check(ProjectFile.Load(legacyV2).Session.CanSave, "legacy SAM version two loads");
             Expect<IOException>(() => ProjectFile.Save(projectPath, projectState, new[] { projectPath }));
@@ -235,14 +235,20 @@ internal static class Program
             Check(rowEditor.Snapshot().Values.SequenceEqual(new byte[] {0,0,255,255, 0,255,255,0, 255,255,0,0, 255,0,0,255}), "copy first warp upward");
             rowEditor.Undo(); rowEditor.ApplyHelper("twillLeft");
             Check(rowEditor.Snapshot().Values.SequenceEqual(new byte[] {0,255,255,0, 0,0,255,255, 255,0,0,255, 255,255,0,0}), "copy first warp downward");
-            rowEditor.ApplyHelper("panama"); Check(rowEditor.Snapshot().Values.SequenceEqual(new byte[] {0,0,255,255, 0,0,255,255, 255,255,0,0, 255,255,0,0}), "2x2 Panama repeat");
-            rowEditor.Reset(6,2); rowEditor.ApplyHelper("panama"); Check(rowEditor.Snapshot().Values.Length == 12, "panama accepts even non-multiple-of-four dimensions");
+            rowEditor.ApplyHelper("panama"); Check(rowEditor.Snapshot().Values.SequenceEqual(new byte[] {255,255,0,0, 255,255,0,0, 0,0,255,255, 0,0,255,255}), "four-quadrant Panama");
+            rowEditor.Reset(6,2); rowEditor.ApplyHelper("panama"); Check(rowEditor.Snapshot().Values.SequenceEqual(new byte[] {255,255,255,0,0,0, 0,0,0,255,255,255}), "panama fills opposite quadrants on 6x2");
+            rowEditor.Reset(2,6); rowEditor.ApplyHelper("panama"); Check(rowEditor.Snapshot().Values.SequenceEqual(new byte[] {255,0,255,0,255,0,0,255,0,255,0,255}), "panama fills opposite quadrants on 2x6");
             rowEditor.Reset(3,2); Expect<ArgumentException>(() => rowEditor.ApplyHelper("panama"));
             Expect<ArgumentException>(() => rowEditor.ApplyHelper("satin"));
             rowEditor.Reset(5,5); rowEditor.ApplyHelper("satin");
             Check(rowEditor.Snapshot().Values.Count(v => v == 0) == 5 && Enumerable.Range(0,5).All(y => rowEditor.Snapshot().Values[y*5 + (y*2)%5] == 0), "five end satin with step two");
             rowEditor.Reset(8,8); rowEditor.ApplyHelper("satin", 1, 1, 8, 3); Check(rowEditor.Snapshot().Values.Count(v => v == 0) == 8, "eight-end satin step three");
             Expect<ArgumentException>(() => rowEditor.ApplyHelper("satin", 1, 1, 8, 2));
+            Check(NumberInput.TryInt("۱۲۳", out var persianValue) && persianValue == 123 && NumberInput.TryInt("١٢٣", out var arabicValue) && arabicValue == 123 && NumberInput.TryInt("1۲٣", out var mixedValue) && mixedValue == 123, "all digit forms normalize for numeric controls");
+            Check(!NumberInput.TryInt("۱۲x", out _) && !NumberInput.TryInt("۹۹۹۹۹۹۹۹۹۹۹۹۹۹۹۹۹۹۹", out _), "invalid or overflow numbers rejected");
+            var ranges = WarpRanges.Summarize(new WarpAnalysis(new[] {1,2,3,4,5,6,7,8}, 1, new double[] {-20,-30,0,10,40,-5,0,90}), 12, 2);
+            Check(ranges.LooseCount == 2 && ranges.TightCount == 2 && ranges.Loose[0] == new WarpRange(12,13,20,30) && ranges.Tight[0] == new WarpRange(19,19,90,90) && ranges.Tight[1] == new WarpRange(15,16,10,40), "report exact non-neutral ranges, offsets and percentages");
+            Check(WarpRanges.Summarize(new WarpAnalysis(new[] {0,0}, 0, new double[] {0,0}), 0).LooseCount == 0, "balanced warp ranges are empty");
             var analysisPixels = new byte[] {0,255,0, 0,255,0, 0,0,255, 255,0,255};
             var warp = DesignAnalysis.Analyze(analysisPixels, 3, 4);
             Check(warp.Counts.SequenceEqual(new[] {3,2,2}) && Math.Abs(warp.Mean - 7d/3) < 0.00001 && Math.Abs(warp.DeviationPercent[0] - 200d/7) < 0.00001, "warp count, mean and percent deviation");
@@ -303,6 +309,13 @@ internal static class Program
             Check(positionedPixels[30+2] == 0 && positionedPixels[30+1] == 255, "second row selects second weft");
             Expect<ArgumentException>(() => MachineComposer.Compose(image, absolute with { WeftStart = "10" }));
             Expect<ArgumentException>(() => MachineComposer.Compose(image, absolute with { TotalHooks = "24" }));
+            var draft = WeftSettings.FromMachine(absolute) with { WeftStart = "۱۰", WeftCount = "۳", Sequence = "۱،۲،۳" };
+            Check(absolute.WeftStart == "1" && draft.ApplyTo(absolute).WeftStart == "۱۰", "weft draft does not mutate applied settings");
+            Expect<ArgumentException>(() => MachineComposer.Compose(image, draft.ApplyTo(absolute)));
+            Check(DesignAnalysis.ReadBinary(MachineComposer.Compose(image, absolute).Image).SequenceEqual(positionedPixels), "failed draft cannot alter applied output");
+            var draftFile = Path.Combine(dir, "draft.sam");
+            ProjectFile.Save(draftFile, new ProjectState(bankSession,"sample.bmp","۳","۲","۵۰","Weft",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,absolute,draft), new[] {bmpPath});
+            var draftLoaded = ProjectFile.Load(draftFile); Check(draftLoaded.Machine!.WeftStart == "1" && draftLoaded.DraftWeft == draft && draftLoaded.WidthInput == "۳", "SAM persists applied settings and Persian draft independently");
             var absoluteFile = Path.Combine(dir,"positioned.sam"); ProjectFile.Save(absoluteFile, new ProjectState(bankSession,"sample.bmp","3","2","50","Weft",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,absolute), new[] {bmpPath});
             var absoluteLoaded = ProjectFile.Load(absoluteFile).Machine!; Check(absoluteLoaded.AbsoluteLayout && absoluteLoaded.TotalHooks == "30" && absoluteLoaded.WeftStart == "1" && DesignAnalysis.ReadBinary(MachineComposer.Compose(image, absoluteLoaded).Image).SequenceEqual(positionedPixels), "absolute layout persists and reproduces map");
             var composedState = new ProjectState(bankSession,"sample.bmp","3","2","50","Machine",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,setup);
@@ -352,7 +365,7 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            Check(AppVersion.Display == "014.2.11.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "015.2.12.1-a1", "QAVNS version from version.txt");
             var reportEntries = bankSession.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = bankSession.Palette.Counts[index], Percent = 100d * bankSession.Palette.Counts[index] / bankSession.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; if (bankSession.Patterns[index] is { } p) e.Restore("sample", p); return e; }).ToArray();
             Check(DesignReport.PersianDate(new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero)) == "1403/01/01", "solar Hijri report date");
             Check(DesignReport.PersianDate(null).Contains("نامشخص"), "legacy creation date not invented");
@@ -365,8 +378,12 @@ internal static class Program
             var stamped = new ProjectState(bankSession, "sample.bmp", "3", "2", "50", "Patterns", false, 1, bankSession.Patterns.Select(_ => (string?)"sample").ToArray(), new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero));
             string datedPath = Path.Combine(dir, "dated.sam"); ProjectFile.Save(datedPath, stamped, new[] {bmpPath});
             Check(ProjectFile.Load(datedPath).CreatedAt == stamped.CreatedAt, "project creation timestamp retained");
+            var guide = new GuideWindow(false); Check(guide.Content is System.Windows.Controls.Grid && guide.Title.Contains("راهنمای"), "illustrated in-app guide loads with navigation");
             var window = new MainWindow();
             Check(window.FontFamily.Source.Contains("Vazirmatn"), "embedded font selected in main window");
+            var pendingTotal = (System.Windows.Controls.TextBox)window.FindName("TotalHooksInput"); pendingTotal.Text = "۳۰";
+            var readSetup = typeof(MainWindow).GetMethod("ReadMachineSettings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            Check(((MachineSetup)readSetup.Invoke(window, null)!).TotalHooks == "" && window.FindName("ApplyWeftButton") is System.Windows.Controls.Button, "typing weft draft does not apply it");
             var nav = (System.Windows.Controls.Grid)window.FindName("Navigation");
             var settings = (System.Windows.FrameworkElement)window.FindName("SettingsBorder");
             Check(System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("WeftStepButton")) == 7 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("MachineStepButton")) == 8 && window.FindName("HelpButton") is System.Windows.Controls.Button, "weft immediately before machine and in-app help present");

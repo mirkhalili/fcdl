@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private BitmapSource? machinePreview, redPreview;
     private MachineComposition? composedMap;
     private bool loadingMachineSettings, absoluteLayout;
+    private WeftSettings appliedWeft = new();
     private System.Windows.Threading.DispatcherTimer? selvedgeTimer;
     private DateTimeOffset? projectCreated;
     private DesignMetadata metadata = new();
@@ -41,8 +42,8 @@ public partial class MainWindow : Window
     private void UpdateWindowTitle() => Title = $"Jacquard Studio ({(projectPath is null ? T("پروژه جدید", "New project") : Path.GetFileNameWithoutExtension(projectPath))}{(projectDirty && session is not null ? " *" : "")})";
     private void MarkProjectDirty() { if (session is not null) { projectDirty = true; UpdateWindowTitle(); } }
     private string T(string fa, string en) => english ? en : fa;
-    private bool SizeDirty => session?.Resized is null || !int.TryParse(WidthInput.Text, out int w) || !int.TryParse(HeightInput.Text, out int h) || w != session.Resized.PixelWidth || h != session.Resized.PixelHeight;
-    private bool ColorsDirty => session?.Palette is null || !int.TryParse(ColorInput.Text, out int colors) || colors != session.AppliedColorLimit;
+    private bool SizeDirty => session?.Resized is null || !NumberInput.TryInt(WidthInput.Text, out int w) || !NumberInput.TryInt(HeightInput.Text, out int h) || w != session.Resized.PixelWidth || h != session.Resized.PixelHeight;
+    private bool ColorsDirty => session?.Palette is null || !NumberInput.TryInt(ColorInput.Text, out int colors) || colors != session.AppliedColorLimit;
 
     private async Task<bool> ConfirmDiscardAsync()
     {
@@ -138,7 +139,7 @@ public partial class MainWindow : Window
         {
             var state = await Task.Run(() => ProjectFile.Load(filename));
             // Only replace current work after the complete archive has been checked.
-            session = state.Session; path = filename; projectPath = filename; projectCreated = state.CreatedAt; metadata = state.Metadata ?? new(); LoadMachineSettings(state.Machine ?? new MachineSetup(AbsoluteLayout: true)); ClearHistory(); sourceName = state.SourceName;
+            session = state.Session; path = filename; projectPath = filename; projectCreated = state.CreatedAt; metadata = state.Metadata ?? new(); LoadMachineSettings(state.Machine ?? new MachineSetup(AbsoluteLayout: true), state.DraftWeft); ClearHistory(); sourceName = state.SourceName;
             current = new ImageResult(session.Source, 1, 0, "SAM");
             WidthInput.Text = state.WidthInput; HeightInput.Text = state.HeightInput; ColorInput.Text = state.ColorInput;
             english = state.English; stage = Enum.Parse<Stage>(state.Stage); machineFormatIndex = state.MachineFormatIndex;
@@ -167,7 +168,7 @@ public partial class MainWindow : Window
         }
         if (string.IsNullOrEmpty(destination)) return false;
         var names = session.Patterns.Select((p, i) => p is null ? null : entries[i].PatternLabel).ToArray();
-        var state = new ProjectState(session, sourceName, WidthInput.Text, HeightInput.Text, ColorInput.Text, stage.ToString(), english, machineFormatIndex, names, projectCreated, metadata, ReadMachineSettings());
+        var state = new ProjectState(session, sourceName, WidthInput.Text, HeightInput.Text, ColorInput.Text, stage.ToString(), english, machineFormatIndex, names, projectCreated, metadata, ReadMachineSettings(), ReadWeftDraft());
         var protectedPaths = entries.Select(x => x.PatternPath).OfType<string>().ToList();
         if (!string.Equals(path, projectPath, StringComparison.OrdinalIgnoreCase)) protectedPaths.Add(path);
         SetBusy(true); StatusText.Text = T("در حال ذخیره پروژه…", "Saving project…");
@@ -268,6 +269,9 @@ public partial class MainWindow : Window
         SafetyText.Text = stage == Stage.Machine
             ? T("فایل JC5 آزمایشی است؛ قبل از تولید مستقل بررسی شود.", "JC5 is experimental; verify independently before production.")
             : T("خروجی این مرحله تصویر است، نه فایل دستگاه بافندگی.", "This stage outputs an image, not a loom file.");
+        MachineDraftNotice.Visibility = session is not null && WeftHasDraft ? Visibility.Visible : Visibility.Collapsed;
+        MachineDraftNotice.Text = T("پیش‌نویس پودگذاری هنوز اعمال نشده است؛ خروجی از تنظیمات قبلی استفاده می‌کند.", "The weft draft is not applied; output uses the previous settings.");
+        if (stage == Stage.Weft && WeftHasDraft) MachineSetupSummary.Text = T("تغییرات پودگذاری هنوز اعمال نشده‌اند.", "Weft changes have not been applied.");
         UpdateSummary(); RefreshControls();
     }
     private bool ConfirmPatternLoss()
@@ -279,7 +283,7 @@ public partial class MainWindow : Window
     private async void ApplySize_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session is null) return;
-        if (!int.TryParse(WidthInput.Text, out int w) || !int.TryParse(HeightInput.Text, out int h) || w <= 0 || h <= 0 || (long)w * h > DesignProcessor.MaxPixels)
+        if (!NumberInput.TryInt(WidthInput.Text, out int w) || !NumberInput.TryInt(HeightInput.Text, out int h) || w <= 0 || h <= 0 || (long)w * h > DesignProcessor.MaxPixels)
         { MessageBox.Show(this, T("ابعاد مثبت تا مجموع ۴ میلیون پیکسل وارد کنید.", "Enter positive dimensions totaling at most 4 million pixels.")); return; }
         if (!ConfirmPatternLoss()) return;
         var before = CaptureHistory(); SetBusy(true); StatusText.Text = T("در حال تغییر اندازه…", "Resizing…");
@@ -296,7 +300,7 @@ public partial class MainWindow : Window
     private async Task ApplyColorsAsync(bool confirm)
     {
         if (busy || session?.Resized is null || SizeDirty) return;
-        if (!int.TryParse(ColorInput.Text, out int colors) || colors is < 1 or > 50)
+        if (!NumberInput.TryInt(ColorInput.Text, out int colors) || colors is < 1 or > 50)
         { MessageBox.Show(this, T("تعداد رنگ باید بین ۱ تا ۵۰ باشد.", "The color count must be between 1 and 50.")); return; }
         if (confirm && !ConfirmPatternLoss()) return;
         var before = CaptureHistory(); SetBusy(true); StatusText.Text = T("در حال بررسی رنگ‌ها…", "Analyzing colors…");
@@ -420,20 +424,16 @@ public partial class MainWindow : Window
     }
     private void Help_Click(object sender, RoutedEventArgs e)
     {
-        var resource = Application.GetResourceStream(new Uri("pack://application:,,,/JacquardStudio;component/Help.fa.txt", UriKind.Absolute));
-        if (resource is null) { MessageBox.Show(this, T("راهنما یافت نشد.", "Help file not found.")); return; }
-        using var reader = new StreamReader(resource.Stream); string text = reader.ReadToEnd();
-        var body = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 14, LineHeight = 26, Margin = new Thickness(24), Foreground = (Brush)FindResource("PrimaryText") };
-        var scroll = new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        new Window { Title = T("راهنمای برنامه", "User guide (Persian)"), Owner = this, Width = 820, Height = 720, MinWidth = 440, MinHeight = 350, WindowStartupLocation = WindowStartupLocation.CenterOwner, FlowDirection = FlowDirection.RightToLeft, Background = (Brush)FindResource("AppBackground"), Content = scroll }.ShowDialog();
+        try { new GuideWindow(english) { Owner = this }.ShowDialog(); }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException) { MessageBox.Show(this, T("راهنما باز نشد: ", "Could not open guide: ") + ex.Message, Title); }
     }
     private void EditorHelper_Click(object sender, RoutedEventArgs e)
     {
         if (busy || sender is not Button { Tag: string action }) return;
-        if (!int.TryParse(StepXInput.Text, out int dx) || !int.TryParse(StepYInput.Text, out int dy) || dx < 1 || dy < 1 || dx > 64 || dy > 64)
+        if (!NumberInput.TryInt(StepXInput.Text, out int dx) || !NumberInput.TryInt(StepYInput.Text, out int dy) || dx < 1 || dy < 1 || dx > 64 || dy > 64)
         { MessageBox.Show(this, T("گام‌های X و Y باید بین ۱ تا ۶۴ باشند.", "X and Y steps must be between 1 and 64.")); return; }
         int repeat = 5, step = 2;
-        if (action == "satin" && (!int.TryParse(SatinRepeat.Text, out repeat) || !int.TryParse(SatinStep.Text, out step))) { MessageBox.Show(this, T("تکرار و گام ساتین باید عدد صحیح باشند.", "Satin repeat and step must be integers.")); return; }
+        if (action == "satin" && (!NumberInput.TryInt(SatinRepeat.Text, out repeat) || !NumberInput.TryInt(SatinStep.Text, out step))) { MessageBox.Show(this, T("تکرار و گام ساتین باید عدد صحیح باشند.", "Satin repeat and step must be integers.")); return; }
         try { WeaveCanvas.ApplyHelper(action, dx, dy, repeat, step); }
         catch (ArgumentException ex)
         {
@@ -492,7 +492,7 @@ public partial class MainWindow : Window
     private async void FloatScan_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session?.CanSave != true || SizeDirty || ColorsDirty) return;
-        if (!int.TryParse(FloatMinimum.Text, out int minimum) || minimum < 1 || minimum > DesignProcessor.MaxPixels)
+        if (!NumberInput.TryInt(FloatMinimum.Text, out int minimum) || minimum < 1 || minimum > DesignProcessor.MaxPixels)
         { MessageBox.Show(this, T("طول باید یک عدد مثبت باشد.", "Length must be a positive integer.")); return; }
         await ScanFloatsAsync(minimum, FloatWarp.IsChecked == true ? FloatDirection.Warp : FloatDirection.Weft, 0, true);
     }
@@ -623,7 +623,7 @@ public partial class MainWindow : Window
     private void EditorReset_Click(object sender, RoutedEventArgs e)
     {
         if (busy) return;
-        if (!int.TryParse(WeaveWidth.Text, out int w) || !int.TryParse(WeaveHeight.Text, out int h) || w < 1 || h < 1 || w > WeaveEditor.MaxSide || h > WeaveEditor.MaxSide)
+        if (!NumberInput.TryInt(WeaveWidth.Text, out int w) || !NumberInput.TryInt(WeaveHeight.Text, out int h) || w < 1 || h < 1 || w > WeaveEditor.MaxSide || h > WeaveEditor.MaxSide)
         { MessageBox.Show(this, T("عرض و ارتفاع باید بین ۱ تا ۶۴ باشند.", "Width and height must be between 1 and 64.")); return; }
         if (!ConfirmDiscardDrawing()) return;
         WeaveCanvas.Reset(w, h);
@@ -674,8 +674,8 @@ public partial class MainWindow : Window
         if (busy || BankList.SelectedItem is not BankItem item || !ConfirmDiscardDrawing()) return;
         if (bankSelvedgeSide is string side)
         {
-            var settings = ReadMachineSettings(); settings = side == "left" ? settings with { LeftPattern = item.Pattern, LeftName = item.Name } : settings with { RightPattern = item.Pattern, RightName = item.Name };
-            LoadMachineSettings(settings); MarkProjectDirty(); InvalidateAnalysis(); WeaveCanvas.DiscardChanges(); bankOpen = false; bankSelvedgeSide = null; ShowStage();
+            var draft = ReadWeftDraft(); var settings = ReadMachineSettings(); settings = side == "left" ? settings with { LeftPattern = item.Pattern, LeftName = item.Name } : settings with { RightPattern = item.Pattern, RightName = item.Name };
+            LoadMachineSettings(settings, draft); MarkProjectDirty(); InvalidateAnalysis(); WeaveCanvas.DiscardChanges(); bankOpen = false; bankSelvedgeSide = null; ShowStage();
             await PreviewSelvedgesAsync(false); return;
         }
         if (bankTargetIndex is not int index || session?.Palette is null || index < 0 || index >= entries.Count) return;
@@ -766,11 +766,14 @@ public partial class MainWindow : Window
         { MessageBox.Show(this, T("ذخیره ناموفق بود: ", "Save failed: ") + ex.Message); }
         finally { SetBusy(false); }
     }
-    private MachineSetup ReadMachineSettings()
+    private MachineSetup ReadMachineFields()
     {
         var left = LeftSelvedgePattern.SelectedItem as BankItem; var right = RightSelvedgePattern.SelectedItem as BankItem;
-        return new MachineSetup(LeftSelvedgeWidth.Text, RightSelvedgeWidth.Text, left?.Pattern, right?.Pattern, left?.Name ?? "", right?.Name ?? "", (absoluteLayout ? WeftCountInput.Text.Trim() is not ("" or "0" or "۰" or "٠") : BoxEnabled.IsChecked == true), Math.Max(0, BoxPlacement.SelectedIndex), BoxHooks.Text, BoxCodes.Text, BoxSequence.Text, BoxBottom.IsChecked == true, MachineUseSource.IsChecked == true, MachineRedAsBlack.IsChecked == true, absoluteLayout, TotalHooksInput.Text, DesignStartInput.Text, WeftStartInput.Text, WeftCountInput.Text);
+        return new MachineSetup(LeftSelvedgeWidth.Text, RightSelvedgeWidth.Text, left?.Pattern, right?.Pattern, left?.Name ?? "", right?.Name ?? "", (absoluteLayout ? !string.IsNullOrWhiteSpace(WeftCountInput.Text) && (!NumberInput.TryInt(WeftCountInput.Text, out int count) || count != 0) : BoxEnabled.IsChecked == true), Math.Max(0, BoxPlacement.SelectedIndex), BoxHooks.Text, BoxCodes.Text, BoxSequence.Text, BoxBottom.IsChecked == true, MachineUseSource.IsChecked == true, MachineRedAsBlack.IsChecked == true, absoluteLayout, TotalHooksInput.Text, DesignStartInput.Text, WeftStartInput.Text, WeftCountInput.Text);
     }
+    private WeftSettings ReadWeftDraft() => WeftSettings.FromMachine(ReadMachineFields());
+    private MachineSetup ReadMachineSettings() => appliedWeft.ApplyTo(ReadMachineFields());
+    private bool WeftHasDraft => ReadWeftDraft() != appliedWeft;
     private void InstallMachineChoices(IEnumerable<BankItem> items, MachineSetup settings)
     {
         var choices = items.ToList();
@@ -783,11 +786,12 @@ public partial class MainWindow : Window
         LeftSelvedgePattern.ItemsSource = choices; RightSelvedgePattern.ItemsSource = choices;
         LeftSelvedgePattern.SelectedItem = left; RightSelvedgePattern.SelectedItem = right;
     }
-    private void LoadMachineSettings(MachineSetup setup)
+    private void LoadMachineSettings(MachineSetup setup, WeftSettings? draft = null)
     {
         loadingMachineSettings = true;
         try
         {
+            appliedWeft = WeftSettings.FromMachine(setup); setup = (draft ?? appliedWeft).ApplyTo(setup);
             absoluteLayout = setup.AbsoluteLayout; BoxEnabled.Visibility = absoluteLayout ? Visibility.Collapsed : Visibility.Visible; AbsoluteFields.Visibility = absoluteLayout ? Visibility.Visible : Visibility.Collapsed; LegacySetup.Visibility = absoluteLayout ? Visibility.Collapsed : Visibility.Visible;
             TotalHooksInput.Text = setup.TotalHooks; DesignStartInput.Text = setup.DesignStart; WeftStartInput.Text = setup.WeftStart; WeftCountInput.Text = setup.WeftCount;
             LeftSelvedgeWidth.Text = setup.LeftWidth; RightSelvedgeWidth.Text = setup.RightWidth; BoxEnabled.IsChecked = setup.BoxEnabled;
@@ -810,15 +814,37 @@ public partial class MainWindow : Window
         finally { SetBusy(false); }
     }
     private async void RefreshMachineBank_Click(object sender, RoutedEventArgs e) => await RefreshMachineBankAsync();
-    private void MachineSettings_TextChanged(object sender, TextChangedEventArgs e) => MachineSettingsChanged();
-    private void MachineSettings_SelectionChanged(object sender, SelectionChangedEventArgs e) => MachineSettingsChanged();
-    private void MachineSettings_CheckChanged(object sender, RoutedEventArgs e) => MachineSettingsChanged();
-    private void MachineSettingsChanged()
+    private void MachineSettings_TextChanged(object sender, TextChangedEventArgs e) => MachineSettingsChanged(sender);
+    private void MachineSettings_SelectionChanged(object sender, SelectionChangedEventArgs e) => MachineSettingsChanged(sender);
+    private void MachineSettings_CheckChanged(object sender, RoutedEventArgs e) => MachineSettingsChanged(sender);
+    private void MachineSettingsChanged(object? sender = null)
     {
         if (!IsInitialized || loadingMachineSettings) return;
-        MarkProjectDirty(); InvalidateAnalysis(); MachineSetupSummary.Text = T("تنظیمات تغییر کرد؛ پیش‌نمایش را دوباره بسازید.", "Settings changed; regenerate the preview.");
+        MarkProjectDirty();
+        bool weftField = sender == TotalHooksInput || sender == DesignStartInput || sender == WeftCountInput || sender == WeftStartInput || sender == BoxEnabled || sender == BoxPlacement || sender == BoxHooks || sender == BoxCodes || sender == BoxSequence || sender == BoxBottom;
+        if (weftField)
+        {
+            MachineSetupSummary.Text = WeftHasDraft ? T("تغییرات پودگذاری هنوز اعمال نشده‌اند.", "Weft changes have not been applied.") : T("تنظیمات پودگذاری اعمال‌شده است.", "Weft settings are applied.");
+            return;
+        }
+        InvalidateAnalysis(); MachineSetupSummary.Text = T("تنظیمات تغییر کرد؛ پیش‌نمایش را دوباره بسازید.", "Settings changed; regenerate the preview.");
         if ((stage is Stage.Machine or Stage.Weft or Stage.Selvedge) && !busy) ShowStage();
         if ((stage is Stage.Selvedge or Stage.Weft or Stage.Machine) && selvedgeTimer is not null) { selvedgeTimer.Stop(); selvedgeTimer.Start(); }
+    }
+    private async void ApplyWeft_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || session?.PatternPreview is not { } frame || SizeDirty || ColorsDirty) return;
+        var draft = ReadWeftDraft(); var settings = draft.ApplyTo(ReadMachineSettings());
+        SetBusy(true);
+        try
+        {
+            var result = await Task.Run(() => MachineComposer.Compose(frame, settings, false));
+            appliedWeft = draft; MarkProjectDirty(); InvalidateAnalysis(); composedMap = result; machinePreview = result.Image;
+            MachineSetupSummary.Text = T($"پودگذاری اعمال شد؛ عرض نهایی {result.Image.PixelWidth:N0} تار.", $"Weft settings applied; final width {result.Image.PixelWidth:N0} hooks."); ShowStage();
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
+        { MachineSetupSummary.Text = T("اعمال نشد؛ تنظیمات پیشین حفظ شد: ", "Not applied; previous settings retained: ") + ex.Message; MessageBox.Show(this, MachineSetupSummary.Text, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        finally { SetBusy(false); }
     }
     private BitmapSource? MachineInput() => session is null ? null : stage == Stage.Machine && MachineUseSource.IsChecked == true ? session.Source : session.CanSave && !SizeDirty && !ColorsDirty ? session.PatternPreview : null;
     private async Task<MachineComposition?> ComposeMachineAsync(bool showErrors = true)
@@ -841,7 +867,7 @@ public partial class MainWindow : Window
     private void UpgradeLayout_Click(object sender, RoutedEventArgs e)
     {
         if (MessageBox.Show(this, T("تغییر به چیدمان جدید، کدهای قدیمی باکس را غیرفعال می‌کند. ادامه می‌دهید؟", "Switching to the new layout disables legacy box codes. Continue?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-        absoluteLayout = true; BoxEnabled.IsChecked = false; BoxEnabled.Visibility = Visibility.Collapsed; BoxSequence.Text = ""; AbsoluteFields.Visibility = Visibility.Visible; LegacySetup.Visibility = Visibility.Collapsed; MachineSettingsChanged();
+        absoluteLayout = true; BoxEnabled.IsChecked = false; BoxEnabled.Visibility = Visibility.Collapsed; BoxSequence.Text = ""; AbsoluteFields.Visibility = Visibility.Visible; LegacySetup.Visibility = Visibility.Collapsed; MarkProjectDirty(); MachineSetupSummary.Text = T("چیدمان جدید پیش‌نویس است؛ برای تغییر خروجی اعمال کنید.", "New layout is a draft; apply it to change the output.");
     }
     private async Task PreviewSelvedgesAsync(bool showErrors)
     {
@@ -859,9 +885,10 @@ public partial class MainWindow : Window
         if (busy || machineFormatIndex is not (1 or 4) || session is null || path is null) return;
         var composed = await ComposeMachineAsync(); if (composed is null) return;
         string format = machineFormatIndex == 4 ? "JC6" : "JC5";
-        bool overwriteColumns = !absoluteLayout && BoxEnabled.IsChecked == true && BoxPlacement.SelectedIndex == 2;
+        bool overwriteColumns = !appliedWeft.AbsoluteLayout && appliedWeft.BoxEnabled && appliedWeft.BoxPlacement == 2;
         string warning = T($"خروجی {format} آزمایشی و تک‌ناحیه‌ای است: {composed.Image.PixelWidth} قلاب و {composed.Image.PixelHeight} رج. بیت ۱ سیاه است. " + (overwriteColumns ? "قلاب‌های فرمان محتوای ستون‌های موجود را جایگزین می‌کنند. " : "") + "توالی و نگاشت منطقی را در پیش‌نمایش و اتصال و قطبیت قلاب‌های واقعی را با متخصص دستگاه بررسی کنید. ادامه می‌دهید؟",
             $"Experimental single-area {format}: {composed.Image.PixelWidth} hooks and {composed.Image.PixelHeight} picks. Bit 1 is black. " + (overwriteColumns ? "Signal hooks replace existing columns. " : "") + "Verify the preview, physical wiring and signal polarity with the machine specialist. Continue?");
+        if (WeftHasDraft) warning = T("پیش‌نویس پودگذاری اعمال نشده؛ این خروجی از تنظیمات قبلی استفاده می‌کند.\n\n", "The weft draft has not been applied; this export uses previous settings.\n\n") + warning;
         if (MessageBox.Show(this, warning, Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var dialog = new SaveFileDialog { Filter = $"{format} (*.jc5)|*.jc5", DefaultExt = ".jc5", AddExtension = true, OverwritePrompt = true, FileName = MachineFileNaming.SuggestedName(machineFormatIndex) };
         if (dialog.ShowDialog(this) != true) return;
@@ -906,6 +933,7 @@ public partial class MainWindow : Window
     private async void Report_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session?.Palette is null || SizeDirty || ColorsDirty) return;
+        if (WeftHasDraft && MessageBox.Show(this, T("پیش‌نویس پودگذاری اعمال نشده است. گزارش با تنظیمات اعمال‌شده قبلی ساخته شود؟", "The weft draft is not applied. Generate the report using the previous applied settings?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var currentSession = session; var setup = ReadMachineSettings();
         SetBusy(true); BitmapSource? bitmap = null;
         try
@@ -963,7 +991,7 @@ public partial class MainWindow : Window
         LeftSelvedgeLabel.Text = T("کناره چپ: تعداد قلاب و بافت", "Left selvedge: hooks and weave"); RightSelvedgeLabel.Text = T("کناره راست: تعداد قلاب و بافت", "Right selvedge: hooks and weave"); RefreshMachineBankButton.Content = T("به‌روزرسانی فهرست بانک", "Refresh weave bank");
         BoxEnabled.Content = T("فعال‌سازی قلاب‌های باکس‌موشن", "Enable box-motion signal hooks"); BoxPlacementLabel.Text = T("محل قلاب‌های فرمان", "Signal hook placement"); BoxAddLeft.Content = T("قلاب‌های اضافه در چپ", "Add signal hooks on left"); BoxAddRight.Content = T("قلاب‌های اضافه در راست", "Add signal hooks on right"); BoxReserved.Content = T("ستون‌های موجود (جایگزین محتوا)", "Existing columns (replace contents)");
         BoxHooksLabel.Text = T("تعداد قلاب اضافه / شماره ستون‌های موجود", "Extra hook count / existing column indices"); BoxCodesLabel.Text = T("الگوی هر پود؛ هر خط مثل 1=10", "Weft codes; one per line, e.g. 1=10"); BoxSequenceLabel.Text = T("توالی پودها؛ خالی = ترتیب طبیعی", "Weft sequence; blank = natural order"); BoxBottom.Content = T("شروع توالی از پایین تصویر", "Start sequence at image bottom");
-        BoxSafetyHint.Text = T("در هر رج فقط ستون پود انتخابی سیاه است؛ اتصال و قطبیت واقعی دستگاه باید مستقل تأیید شود.", "Only the selected weft column is black per row. Independently verify wiring and polarity."); MachinePreviewButton.Content = T("پیش‌نمایش نقشه نهایی ماشین", "Preview final machine map");
+        BoxSafetyHint.Text = T("در هر رج فقط ستون پود انتخابی سیاه است؛ اتصال و قطبیت واقعی دستگاه باید مستقل تأیید شود.", "Only the selected weft column is black per row. Independently verify wiring and polarity."); ApplyWeftButton.Content = T("اعمال پودگذاری", "Apply weft settings"); MachinePreviewButton.Content = T("پیش‌نمایش تنظیمات اعمال‌شده", "Preview applied settings");
         MachineNotice.Text = T("نقشه خروجی تک‌ناحیه‌ای و آزمایشی است. کناره و فرمان فقط به صورت ستون‌های منطقی درج می‌شوند؛ نگاشت فیزیکی و قطبیت کنترلر را قبل از تولید بررسی کنید.", "Output is experimental and single-area. Selvedges and signals are logical columns only; verify physical mapping and polarity before production.");
         SafetyText.Text = T("خروجی تصویر است، نه فایل دستگاه بافندگی.", "Output is an image, not a loom file."); CanvasSubtitle.Text = T("خروجی هر مرحله در این قسمت نمایش داده می‌شود", "The result of each stage appears here");
         EmptyTitle.Text = T("طرح خود را وارد کنید", "Bring in your design"); EmptyHint.Text = T("یک تصویر BMP یا TIFF انتخاب کنید.", "Choose a BMP or TIFF image."); EmptyButton.Content = T("انتخاب تصویر", "Choose image");

@@ -72,7 +72,7 @@ public sealed class WeaveEditor : FrameworkElement
             int i = y * width + x;
             next[i] = operation switch {
                 "plain" => (byte)((x + y) % 2 == 0 ? 0 : 255),
-                "panama" => (byte)(((x / 2 + y / 2) % 2) == 0 ? 0 : 255),
+                "panama" => (byte)((x < width / 2) != (y < height / 2) ? 0 : 255),
                 "satin" => (byte)(x % satinRepeat == (y * satinStep) % satinRepeat ? 0 : 255),
                 "invert" => values[i] == 0 ? (byte)255 : (byte)0,
                 "mirrorX" => values[y * width + (width - 1 - x)],

@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public sealed record ProjectState(WorkflowSession Session, string SourceName, string WidthInput, string HeightInput, string ColorInput, string Stage, bool English, int MachineFormatIndex, string?[] PatternNames, DateTimeOffset? CreatedAt = null, DesignMetadata? Metadata = null, MachineSetup? Machine = null);
+public sealed record ProjectState(WorkflowSession Session, string SourceName, string WidthInput, string HeightInput, string ColorInput, string Stage, bool English, int MachineFormatIndex, string?[] PatternNames, DateTimeOffset? CreatedAt = null, DesignMetadata? Metadata = null, MachineSetup? Machine = null, WeftSettings? DraftWeft = null);
 
 /// <summary>Self-contained, versioned SAM archive. Never extracts paths from the archive.</summary>
 public static class ProjectFile
@@ -27,8 +27,9 @@ public static class ProjectFile
     private sealed class Manifest
     {
         public Manifest() { }
-        public int Version { get; set; } = 4;
+        public int Version { get; set; } = 5;
         public MachineInfo? Machine { get; set; }
+        public WeftSettings? DraftWeft { get; set; }
         public bool HasOverrides { get; set; }
         public string? Designer { get; set; } public string? Usage { get; set; } public string? Description { get; set; }
         public int SourceWidth { get; set; } public int SourceHeight { get; set; }
@@ -75,6 +76,11 @@ public static class ProjectFile
         if (text.Length > max) throw new InvalidDataException("Project field is too long.");
         return text;
     }
+    private static WeftSettings BoundedDraft(WeftSettings d)
+    {
+        if (d.BoxPlacement is < 0 or > 2) throw new InvalidDataException("Invalid draft signal placement.");
+        return d with { BoxHooks = Bounded(d.BoxHooks, 256), BoxCodes = Bounded(d.BoxCodes, 8192), Sequence = Bounded(d.Sequence, 8192), TotalHooks = Bounded(d.TotalHooks, 32), DesignStart = Bounded(d.DesignStart, 32), WeftStart = Bounded(d.WeftStart, 32, "0"), WeftCount = Bounded(d.WeftCount, 32, "0") };
+    }
     public static void Save(string path, ProjectState state, IEnumerable<string> protectedPaths)
     {
         string target = Path.GetFullPath(path);
@@ -93,6 +99,7 @@ public static class ProjectFile
             SourceColors = palette?.SourceColorCount ?? 0, Colors = palette?.Colors,
             Patterns = palette is null ? null : session.Patterns.Select((p, i) => p is null ? null : new PatternInfo { Width = p.Width, Height = p.Height, Name = Bounded(state.PatternNames[i], 255) }).ToArray()
         };
+        if (state.DraftWeft is { } draft) m.DraftWeft = BoundedDraft(draft);
         if (state.Machine is { } setup)
         {
             PatternInfo? Info(WeavePattern? p, string name)
@@ -139,7 +146,7 @@ public static class ProjectFile
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
         if (zip.Entries.Count > 57) throw new InvalidDataException("Too many project entries.");
         var m = JsonSerializer.Deserialize<Manifest>(ReadEntry(zip, "manifest.json", MaxManifestBytes)) ?? throw new InvalidDataException("Missing project manifest.");
-        if (m.Version is not (1 or 2 or 3 or 4)) throw new NotSupportedException("Unsupported SAM project version.");
+        if (m.Version is not (1 or 2 or 3 or 4 or 5)) throw new NotSupportedException("Unsupported SAM project version.");
         if (m.Version == 1 && m.HasOverrides) throw new InvalidDataException("Overrides require SAM version 2.");
         if (m.Version < 3 && m.Machine is not null) throw new InvalidDataException("Machine setup requires SAM version 3.");
         CheckDimensions(m.SourceWidth, m.SourceHeight, DesignProcessor.MaxPixels);
@@ -190,6 +197,6 @@ public static class ProjectFile
             setup = new MachineSetup(Bounded(settings.LeftWidth, 32, "0"), Bounded(settings.RightWidth, 32, "0"), ReadWeave(settings.LeftPattern, "machine/left.bin"), ReadWeave(settings.RightPattern, "machine/right.bin"), Bounded(settings.LeftPattern?.Name, 255), Bounded(settings.RightPattern?.Name, 255), settings.BoxEnabled, settings.BoxPlacement, Bounded(settings.BoxHooks, 256), Bounded(settings.BoxCodes, 8192), Bounded(settings.Sequence, 8192), settings.StartFromBottom, settings.UseSource, settings.RedAsBlack, m.Version >= 4 && settings.AbsoluteLayout, Bounded(settings.TotalHooks, 32), Bounded(settings.DesignStart, 32), Bounded(settings.WeftStart, 32, "0"), Bounded(settings.WeftCount, 32, "0"));
         }
         var session = WorkflowSession.Restore(source, resized, palette, m.ColorLimit, patterns, overrides);
-        return new ProjectState(session, Bounded(m.SourceName, 255), Bounded(m.WidthInput, 32), Bounded(m.HeightInput, 32), Bounded(m.ColorInput, 32, "50"), stage, m.English, m.MachineFormatIndex, names, m.CreatedAt, new DesignMetadata(Bounded(m.Designer, 100), Bounded(m.Usage, 100), Bounded(m.Description, 300)), setup);
+        return new ProjectState(session, Bounded(m.SourceName, 255), Bounded(m.WidthInput, 32), Bounded(m.HeightInput, 32), Bounded(m.ColorInput, 32, "50"), stage, m.English, m.MachineFormatIndex, names, m.CreatedAt, new DesignMetadata(Bounded(m.Designer, 100), Bounded(m.Usage, 100), Bounded(m.Description, 300)), setup, m.Version >= 5 && m.DraftWeft is { } draft ? BoundedDraft(draft) : null);
     }
 }

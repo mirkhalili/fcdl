@@ -14,10 +14,9 @@ public sealed record MachineComposition(BitmapSource Image, int[] SignalHooks, s
 
 public static class MachineComposer
 {
-    private static string Normalize(string text) => new(text.Select(c => c is >= '۰' and <= '۹' ? (char)('0' + c - '۰') : c is >= '٠' and <= '٩' ? (char)('0' + c - '٠') : c == '،' ? ',' : c).ToArray());
     private static int Nonnegative(string s, string name)
     {
-        if (!int.TryParse(Normalize(s.Trim()), NumberStyles.None, CultureInfo.InvariantCulture, out int result) || result < 0) throw new ArgumentException(name + " must be a non-negative integer.");
+        if (!int.TryParse(NumberInput.Normalize(s.Trim()), NumberStyles.None, CultureInfo.InvariantCulture, out int result) || result < 0) throw new ArgumentException(name + " must be a non-negative integer.");
         return result;
     }
     private static void CheckPattern(WeavePattern? p, int width, string side)
@@ -42,7 +41,7 @@ public static class MachineComposer
         int[] sequence = Array.Empty<int>();
         if (count > 0)
         {
-            sequence = string.IsNullOrWhiteSpace(setup.Sequence) ? Enumerable.Range(1, count).ToArray() : Normalize(setup.Sequence).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(s => Nonnegative(s, "Weft number")).ToArray();
+            sequence = string.IsNullOrWhiteSpace(setup.Sequence) ? Enumerable.Range(1, count).ToArray() : NumberInput.Normalize(setup.Sequence).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(s => Nonnegative(s, "Weft number")).ToArray();
             if (sequence.Length is < 1 or > 4096 || sequence.Any(n => n < 1 || n > count)) throw new ArgumentException("The sequence must contain weft numbers between 1 and the weft count.");
         }
         int h = frame.PixelHeight, inputStride = frame.PixelWidth * 4; var bgra = new byte[checked(inputStride * h)];
@@ -79,7 +78,7 @@ public static class MachineComposer
             }
             else
             {
-                var parts = Normalize(setup.BoxHooks).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                var parts = NumberInput.Normalize(setup.BoxHooks).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length is < 1 or > 32) throw new ArgumentException("Enter between 1 and 32 comma-separated hook indices.");
                 signalHooks = parts.Select(x => Nonnegative(x, "Hook index")).ToArray();
                 if (signalHooks.Distinct().Count() != signalHooks.Length) throw new ArgumentException("Hook indices must be distinct.");
@@ -95,14 +94,14 @@ public static class MachineComposer
         string[] sequence = Array.Empty<string>();
         if (setup.BoxEnabled)
         {
-            foreach (string line in Normalize(setup.BoxCodes).Split(new[] {'\r','\n'}, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            foreach (string line in NumberInput.Normalize(setup.BoxCodes).Split(new[] {'\r','\n'}, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
                 string[] pair = line.Split('=', 2, StringSplitOptions.TrimEntries);
                 if (pair.Length != 2 || pair[0].Length is < 1 or > 32 || pair[0].Any(c => char.IsControl(c) || c == ',') || pair[1].Length != signalHooks.Length || pair[1].Any(c => c is not ('0' or '1')) || !codes.TryAdd(pair[0], pair[1]))
                     throw new ArgumentException("Each weft must have a unique name and exactly one 0/1 bit per signal hook, e.g. 1=10.");
             }
             if (codes.Count is < 1 or > 256) throw new ArgumentException("Define 1 to 256 wefts.");
-            sequence = Normalize(setup.Sequence).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            sequence = NumberInput.Normalize(setup.Sequence).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             if (sequence.Length is < 1 or > 4096 || sequence.Any(id => !codes.ContainsKey(id))) throw new ArgumentException("Every weft in the sequence must be defined.");
         }
         var bitmap = new FormatConvertedBitmap(frame, PixelFormats.Bgra32, null, 0);

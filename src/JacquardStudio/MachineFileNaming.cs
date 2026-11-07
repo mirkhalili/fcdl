@@ -7,6 +7,6 @@ public static class MachineFileNaming
     {
         if (format is not (1 or 4) || !Path.GetExtension(path).Equals(".jc5", StringComparison.OrdinalIgnoreCase)) return false;
         string name = Path.GetFileNameWithoutExtension(path);
-        return format != 4 || name.Contains('6') || name.Contains('۶');
+        return format != 4 || NumberInput.Normalize(name).Contains('6');
     }
 }

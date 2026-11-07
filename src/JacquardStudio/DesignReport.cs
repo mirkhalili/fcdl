@@ -86,15 +86,22 @@ public static class DesignReport
         extra.Children.Add(Text((english ? "Weft sequence: " : "توالی پود: ") + (string.IsNullOrWhiteSpace(machine.Sequence) ? (english ? "natural" : "طبیعی") : machine.Sequence) + (machine.StartFromBottom ? (english ? " · bottom" : " · شروع از پایین") : (english ? " · top" : " · شروع از بالا")), 10, Ink));
         if (analysis is not null)
         {
-            var groups = new Grid { Margin = new Thickness(0, 3, 0, 0) }; int n = Math.Min(5, analysis.Counts.Length);
-            for (int i = 0; i < n; i++) groups.ColumnDefinitions.Add(new ColumnDefinition());
-            for (int i = 0; i < n; i++)
+            var summary = WarpRanges.Summarize(analysis, composition?.FabricStart ?? 0);
+            var groups = new Grid { Margin = new Thickness(0, 2, 0, 0) }; groups.ColumnDefinitions.Add(new ColumnDefinition()); groups.ColumnDefinitions.Add(new ColumnDefinition());
+            void AddRanges(int column, string heading, IReadOnlyList<WarpRange> ranges, int count)
             {
-                int from = i * analysis.Counts.Length / n, to = (i + 1) * analysis.Counts.Length / n;
-                var (loose, tight) = CompositionView.Extremes(analysis, from, to - from); int offset = composition?.FabricStart ?? 0;
-                var text = new TextBlock { Text = english ? $"{from + offset}–{to - 1 + offset}\nLoose {loose:0.#}%\nTight {tight:0.#}%" : $"{from + offset}–{to - 1 + offset}\nشل {loose:0.#}%\nکش {tight:0.#}%", FontSize = 9, Foreground = Ink, TextAlignment = TextAlignment.Center, FlowDirection = FlowDirection.LeftToRight };
-                var cell = new Border { BorderBrush = Line, BorderThickness = new Thickness(1, 1, 0, 1), Padding = new Thickness(1), Child = text }; Grid.SetColumn(cell, i); groups.Children.Add(cell);
+                var list = new StackPanel();
+                list.Children.Add(Text(heading + $" ({ranges.Count}/{count})", 9, Accent, FontWeights.SemiBold));
+                if (ranges.Count == 0) list.Children.Add(Text(english ? "None" : "موردی نیست", 9, Muted));
+                foreach (var r in ranges)
+                {
+                    string percentage = Math.Abs(r.MaxPercent - r.MinPercent) < 0.0001 ? $"{r.MaxPercent:0.##}%" : $"{r.MinPercent:0.##}–{r.MaxPercent:0.##}%";
+                    list.Children.Add(Text(english ? $"Warp {r.Start}–{r.End}: {percentage}" : $"تار {r.Start}–{r.End}: {percentage}", 9, Ink));
+                }
+                var border = new Border { BorderBrush = Line, BorderThickness = new Thickness(1), Padding = new Thickness(5, 1, 5, 1), Child = list }; Grid.SetColumn(border, column); groups.Children.Add(border);
             }
+            AddRanges(0, english ? "Tightest ranges" : "بازه‌های کشیدگی بیشتر", summary.Tight, summary.TightCount);
+            AddRanges(1, english ? "Loosest ranges" : "بازه‌های شل‌شدگی بیشتر", summary.Loose, summary.LooseCount);
             extra.Children.Add(groups);
             extra.Children.Add(Text(english ? "Relative indicators; not physical tension measurements." : "شاخص نسبی؛ نه اندازه‌گیری فیزیکی کشش.", 9, Muted));
         }
