@@ -62,14 +62,14 @@ internal static class Program
             using (var zip = ZipFile.Open(legacySam, ZipArchiveMode.Update))
             {
                 var entryManifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(entryManifest.Open())) json = reader.ReadToEnd();
-                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":5", "\"Version\":1"));
+                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":6", "\"Version\":1"));
             }
             Check(ProjectFile.Load(legacySam).Session.CanSave, "legacy SAM version one loads");
             string legacyV2 = Path.Combine(dir, "legacy-v2.sam"); File.Copy(projectPath, legacyV2);
             using (var zip = ZipFile.Open(legacyV2, ZipArchiveMode.Update))
             {
                 var old = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(old.Open())) json = reader.ReadToEnd();
-                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":5", "\"Version\":2"));
+                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":6", "\"Version\":2"));
             }
             Check(ProjectFile.Load(legacyV2).Session.CanSave, "legacy SAM version two loads");
             Expect<IOException>(() => ProjectFile.Save(projectPath, projectState, new[] { projectPath }));
@@ -270,6 +270,20 @@ internal static class Program
             Check(DesignAnalysis.ReadBinary(autoSession.PatternPreview!).SequenceEqual(autoBytes), "invalid batch is atomic");
             string autoFile = Path.Combine(dir,"auto-floats.sam"); ProjectFile.Save(autoFile, new ProjectState(autoSession,"sample.bmp","3","2","50","Floats",false,1,autoSession.Patterns.Select(_ => (string?)"pattern").ToArray()), new[] {bmpPath});
             Check(DesignAnalysis.ReadBinary(ProjectFile.Load(autoFile).Session.PatternPreview!).SequenceEqual(autoBytes), "automatic float corrections survive SAM");
+            Check(DesignAnalysis.ReadBinary(autoSession.BasePatternPreview!).All(v => v == 0), "float corrections do not alter previous pattern stage");
+            var autoRestored = ProjectFile.Load(autoFile).Session;
+            Check(DesignAnalysis.ReadBinary(autoRestored.BasePatternPreview!).All(v => v == 0) && DesignAnalysis.ReadBinary(autoRestored.PatternPreview!).SequenceEqual(autoBytes), "SAM reconstructs distinct base and corrected stage previews");
+            Check(WarpDisplay.Deviation(0, false) == "متعادل" && !WarpDisplay.Deviation(-4, true).Contains("tightness") && WarpDisplay.Percentage(.001) == "<0.01%", "balanced and nonzero warp labels");
+            var beforeWeft = MachineComposer.BeforeWeft(new MachineSetup(LeftWidth:"1", RightWidth:"1", LeftPattern:new WeavePattern(1,1,new byte[]{0}), RightPattern:new WeavePattern(1,1,new byte[]{255}), BoxEnabled:true, AbsoluteLayout:true, TotalHooks:"30", DesignStart:"20", WeftStart:"1", WeftCount:"3"));
+            var earlyMap = MachineComposer.Compose(image, beforeWeft);
+            Check(earlyMap.Image.PixelWidth == 5 && earlyMap.DesignStart == 1 && earlyMap.SignalHooks.Length == 0, "pre-weft stages exclude later absolute layout and signal columns");
+            var simSettings = new SimulationSettings(1, 0, "#۱۲3ABC", "#AABBCC", 2, 75);
+            var sim = FabricSimulation.Render(image, simSettings);
+            Check(sim.PixelWidth == 24 && sim.PixelHeight == 16 && sim.IsFrozen && DesignAnalysis.ReadBinary(image).SequenceEqual(pixels), "simulation is bounded, immutable and leaves machine bitmap unchanged");
+            Expect<ArgumentException>(() => FabricSimulation.Render(image, simSettings with { WarpColor = "bad" }));
+            string simFile = Path.Combine(dir, "simulation.sam");
+            ProjectFile.Save(simFile, new ProjectState(autoSession,"sample.bmp","3","2","50","Simulation",false,1,autoSession.Patterns.Select(_ => (string?)"pattern").ToArray(), Simulation:simSettings), Array.Empty<string>());
+            var simLoaded = ProjectFile.Load(simFile); Check(simLoaded.Stage == "Simulation" && simLoaded.Simulation == simSettings, "SAM v6 simulation settings round trip");
             Check(PreviewViewport.ZoomOffset(100, 50, 2) == 150 && PreviewViewport.PanOffset(120, 40, 70) == 90 && PreviewViewport.PanOffset(1, 0, 20) == 0, "anchored zoom and pan geometry");
             byte beforeToggle = DesignAnalysis.ReadBinary(bankSession.PatternPreview!)[0];
             var historySnapshot = bankSession.Snapshot(); bankSession.TogglePixel(0,0);
@@ -336,7 +350,7 @@ internal static class Program
             using (var zip = ZipFile.Open(v4File, ZipArchiveMode.Update))
             {
                 var item = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(item.Open())) json = reader.ReadToEnd();
-                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":5", "\"Version\":4"));
+                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":6", "\"Version\":4"));
             }
             var oldV4 = ProjectFile.Load(v4File); Check(oldV4.DraftWeft is null && oldV4.Machine!.AbsoluteLayout && DesignAnalysis.ReadBinary(MachineComposer.Compose(image, oldV4.Machine).Image).SequenceEqual(positionedPixels), "SAM v4 absolute settings remain applied");
             var composedState = new ProjectState(bankSession,"sample.bmp","3","2","50","Machine",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,setup);

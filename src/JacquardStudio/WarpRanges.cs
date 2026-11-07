@@ -31,3 +31,21 @@ public static class WarpRanges
         return new WarpRangeSummary(loose, tight, looseCount, tightCount);
     }
 }
+
+public static class WarpDisplay
+{
+    public static string Percentage(double magnitude)
+    {
+        if (!double.IsFinite(magnitude) || magnitude <= 0) throw new ArgumentOutOfRangeException(nameof(magnitude));
+        return magnitude < 0.01 ? "<0.01%" : $"{magnitude:0.##}%";
+    }
+    public static string Range(WarpRange range)
+    {
+        string min = Percentage(range.MinPercent), max = Percentage(range.MaxPercent);
+        return min == max ? min : $"{min}–{max}";
+    }
+    public static string Deviation(double d, bool english)
+        => d == 0 ? (english ? "balanced" : "متعادل") : d < 0
+            ? (english ? "looseness " : "شل‌شدگی ") + Percentage(-d)
+            : (english ? "tightness " : "کشیدگی ") + Percentage(d);
+}

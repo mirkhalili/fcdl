@@ -15,7 +15,7 @@ public sealed class GuideWindow : Window
     private static readonly Brush Edge = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#84B9B0"));
     private readonly StackPanel content = new();
     private readonly ScrollViewer scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-    private static readonly string[] Titles = { "شروع سریع", "بانک و طراحی بافت", "کناره", "فلوت‌گیری", "تحلیل تار", "پودگذاری (Box Motion)", "خروجی ماشین", "ذخیره پروژه و گزارش", "کلیدهای میان‌بر", "نصب و SmartScreen" };
+    private static readonly string[] Titles = { "شروع سریع", "بانک و طراحی بافت", "کناره", "فلوت‌گیری", "تحلیل تار", "پودگذاری (Box Motion)", "خروجی ماشین", "ذخیره پروژه و گزارش", "کلیدهای میان‌بر", "نصب و SmartScreen", "شبیه‌سازی پارچه" };
 
     public GuideWindow(bool english)
     {
@@ -76,6 +76,7 @@ public sealed class GuideWindow : Window
             case 6: Box(30,45,150,55,"۱ · انتخاب JC5\nیا JC6"); Box(265,45,150,55,"۲ · نمایش قرمز\nو بررسی نقشه"); Box(500,45,150,55,"۳ · تبدیل\nو ذخیره"); Arrow(180,72,265,72); Arrow(415,72,500,72); break;
             case 7: Box(35,45,145,55,"Ctrl+S\nذخیره پروژه"); Box(265,45,145,55,"SAM\nتصویر و تنظیمات"); Box(495,45,145,55,"گزارش\nPDF و چاپ"); Arrow(180,72,265,72); Arrow(410,72,495,72); break;
             case 8: Box(30,45,130,55,"F1\nراهنما"); Box(195,45,130,55,"Ctrl+S\nذخیره"); Box(360,45,130,55,"Ctrl+Z\nبازگشت"); Box(525,45,130,55,"Alt+1…9\nمراحل"); break;
+            case 10: Box(30,45,150,55,"۱ · نخ تار و پود"); Box(265,45,150,55,"۲ · بافت و سایه"); Box(500,45,150,55,"۳ · تصویر تقریبی"); Arrow(180,72,265,72); Arrow(415,72,500,72); break;
             default: Box(70,45,155,55,"دریافت از\nمنبع رسمی"); Box(260,45,155,55,"بررسی هش\nو ناشر"); Box(450,45,155,55,"نصب و\nارتقای نسخه"); Arrow(225,72,260,72); Arrow(415,72,450,72); break;
         }
         var box = new Border { Background = Brushes.White, BorderBrush = Edge, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(6), Child = new Viewbox { Stretch = Stretch.Uniform, Child = canvas } };

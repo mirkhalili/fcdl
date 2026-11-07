@@ -12,6 +12,7 @@ public sealed class WorkflowSession
     public int? AppliedColorLimit { get; private set; }
     public WeavePattern?[] Patterns { get; private set; } = Array.Empty<WeavePattern?>();
     public BitmapSource? PatternPreview { get; private set; }
+    public BitmapSource? BasePatternPreview { get; private set; }
     // 0=base weave, 1=black, 2=white. Immutable-by-replacement for undo snapshots.
     public byte[]? PixelOverrides { get; private set; }
 
@@ -21,7 +22,7 @@ public sealed class WorkflowSession
         // Commit only after successful processing so failures never discard previous work.
         var image = DesignProcessor.Resize(Source, width, height);
         Resized = image; Palette = null; ColorPreview = null; AppliedColorLimit = null;
-        Patterns = Array.Empty<WeavePattern?>(); PatternPreview = null; PixelOverrides = null;
+        Patterns = Array.Empty<WeavePattern?>(); PatternPreview = null; BasePatternPreview = null; PixelOverrides = null;
     }
     public void ApplyColors(int maximum)
     {
@@ -29,7 +30,7 @@ public sealed class WorkflowSession
         var palette = DesignProcessor.Prepare(input, input.PixelWidth, input.PixelHeight, maximum);
         var patterns = new WeavePattern?[palette.Colors.Length];
         var preview = DesignProcessor.Render(palette, patterns);
-        Palette = palette; Patterns = patterns; ColorPreview = preview; PatternPreview = preview; AppliedColorLimit = maximum; PixelOverrides = null;
+        Palette = palette; Patterns = patterns; ColorPreview = preview; PatternPreview = preview; BasePatternPreview = preview; AppliedColorLimit = maximum; PixelOverrides = null;
     }
     public void MergeColors(int source, int target)
     {
@@ -37,16 +38,16 @@ public sealed class WorkflowSession
         var next = DesignProcessor.MergeColors(palette, source, target);
         var patterns = Patterns.Where((_, i) => i != source).ToArray();
         var colorPreview = DesignProcessor.Render(next, new WeavePattern?[next.Colors.Length]);
-        var patternPreview = ApplyOverrides(DesignProcessor.Render(next, patterns), PixelOverrides);
-        Palette = next; Patterns = patterns; ColorPreview = colorPreview; PatternPreview = patternPreview;
+        var basePreview = DesignProcessor.Render(next, patterns); var patternPreview = ApplyOverrides(basePreview, PixelOverrides);
+        Palette = next; Patterns = patterns; ColorPreview = colorPreview; BasePatternPreview = basePreview; PatternPreview = patternPreview;
     }
     public void AssignPattern(int index, WeavePattern pattern)
     {
         var palette = Palette ?? throw new InvalidOperationException("Apply colors first.");
         if ((uint)index >= (uint)Patterns.Length) throw new ArgumentOutOfRangeException(nameof(index));
         var next = (WeavePattern?[])Patterns.Clone(); next[index] = pattern;
-        var preview = ApplyOverrides(DesignProcessor.Render(palette, next), PixelOverrides);
-        Patterns = next; PatternPreview = preview;
+        var basePreview = DesignProcessor.Render(palette, next); var preview = ApplyOverrides(basePreview, PixelOverrides);
+        Patterns = next; BasePatternPreview = basePreview; PatternPreview = preview;
     }
     internal static WorkflowSession Restore(BitmapSource source, BitmapSource? resized, PaletteResult? palette, int? limit, WeavePattern?[] patterns, byte[]? overrides = null)
     {
@@ -54,7 +55,7 @@ public sealed class WorkflowSession
         if (palette is not null)
         {
             session.ColorPreview = DesignProcessor.Render(palette, new WeavePattern?[palette.Colors.Length]);
-            session.PatternPreview = ApplyOverrides(DesignProcessor.Render(palette, patterns), overrides);
+            session.BasePatternPreview = DesignProcessor.Render(palette, patterns); session.PatternPreview = ApplyOverrides(session.BasePatternPreview, overrides);
         }
         return session;
     }
@@ -99,6 +100,6 @@ public sealed class WorkflowSession
         PixelOverrides = next; PatternPreview = output;
     }
     // Stage results are replaced, never modified in place; share them for bounded undo snapshots.
-    public WorkflowSession Snapshot() => new(Source) { Resized = Resized, Palette = Palette, ColorPreview = ColorPreview, AppliedColorLimit = AppliedColorLimit, Patterns = Patterns, PatternPreview = PatternPreview, PixelOverrides = PixelOverrides };
+    public WorkflowSession Snapshot() => new(Source) { Resized = Resized, Palette = Palette, ColorPreview = ColorPreview, AppliedColorLimit = AppliedColorLimit, Patterns = Patterns, PatternPreview = PatternPreview, BasePatternPreview = BasePatternPreview, PixelOverrides = PixelOverrides };
     public bool CanSave => Palette is not null && Patterns.Length > 0 && Patterns.All(p => p is not null);
 }

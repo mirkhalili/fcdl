@@ -95,7 +95,7 @@ public static class DesignReport
                 if (ranges.Count == 0) list.Children.Add(Text(english ? "None" : "موردی نیست", 9, Muted));
                 foreach (var r in ranges)
                 {
-                    string percentage = Math.Abs(r.MaxPercent - r.MinPercent) < 0.0001 ? $"{r.MaxPercent:0.##}%" : $"{r.MinPercent:0.##}–{r.MaxPercent:0.##}%";
+                    string percentage = WarpDisplay.Range(r);
                     list.Children.Add(Text(english ? $"Warp {r.Start}–{r.End}: {percentage}" : $"تار {r.Start}–{r.End}: {percentage}", 9, Ink));
                 }
                 var border = new Border { BorderBrush = Line, BorderThickness = new Thickness(1), Padding = new Thickness(5, 1, 5, 1), Child = list }; Grid.SetColumn(border, column); groups.Children.Add(border);

@@ -14,6 +14,8 @@ public sealed record MachineComposition(BitmapSource Image, int[] SignalHooks, s
 
 public static class MachineComposer
 {
+    /// <summary>Projection for stages before weft placement: preserve only the already-defined selvedges.</summary>
+    public static MachineSetup BeforeWeft(MachineSetup setup) => new(setup.LeftWidth, setup.RightWidth, setup.LeftPattern, setup.RightPattern, setup.LeftName, setup.RightName);
     private static int Nonnegative(string s, string name)
     {
         if (!int.TryParse(NumberInput.Normalize(s.Trim()), NumberStyles.None, CultureInfo.InvariantCulture, out int result) || result < 0) throw new ArgumentException(name + " must be a non-negative integer.");
