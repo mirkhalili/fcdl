@@ -111,7 +111,7 @@ internal static class Program
             string zipped = Path.Combine(repository, "tests", "fixtures", "designscope-reference.zip");
             using (var archive = ZipFile.OpenRead(zipped))
             {
-                foreach (string file in new[] { "baft.bmp", "orgin1.bmp", "machin.jc5", "machin.jc6" })
+                foreach (string file in new[] { "baft.bmp", "orgin1.bmp", "machin.jc5", "machin.jc6", "legacy-design.jc5", "designscope-view-of-legacy.bmp" })
                 {
                     var item = archive.GetEntry(file) ?? throw new Exception("Missing DesignScope reference: " + file);
                     using var input = item.Open(); using var outputFile = File.Create(Path.Combine(dir, file)); input.CopyTo(outputFile);
@@ -129,6 +129,20 @@ internal static class Program
                 var hookMap = Jc5Codec.Decode(reference); var grayMap = new byte[1200 * 1200]; hookMap.CopyPixels(grayMap, 1200, 0);
                 for (int i = 0; i < grayMap.Length; i++)
                     Check(grayMap[i] == (refBytes[i * 4 + 1] == 0 ? 0 : 255), "DesignScope exact decoded hook pixel");
+            }
+            // Actual old application output: normal interpretation shows DesignScope's distorted view;
+            // explicit legacy interpretation restores the original full hook map.
+            byte[] oldJc = File.ReadAllBytes(Path.Combine(dir, "legacy-design.jc5"));
+            var oldView = Jc5Codec.Decode(oldJc); var correctedOldView = Jc5Codec.Decode(oldJc, true);
+            byte[] oldGray = new byte[1200 * 1200], correctedGray = new byte[1200 * 1200];
+            oldView.CopyPixels(oldGray, 1200, 0); correctedOldView.CopyPixels(correctedGray, 1200, 0);
+            var seen = ImageLoader.Load(Path.Combine(dir, "designscope-view-of-legacy.bmp"), 0).Image;
+            byte[] seenPixels = new byte[1200 * 1200 * 4];
+            new FormatConvertedBitmap(seen, PixelFormats.Bgra32, null, 0).CopyPixels(seenPixels, 1200 * 4, 0);
+            for (int i = 0; i < oldGray.Length; i++)
+            {
+                Check(oldGray[i] == (seenPixels[i * 4 + 1] == 0 ? 0 : 255), "legacy JC5 reproduces DesignScope view");
+                Check(correctedGray[i] == (refBytes[i * 4 + 1] == 0 ? 0 : 255), "legacy JC5 restores original reference map");
             }
             // Five supplied pattern grids and their phase reproduce the independently supplied woven image.
             var colorful = ImageLoader.Load(Path.Combine(dir, "orgin1.bmp"), 0).Image;
