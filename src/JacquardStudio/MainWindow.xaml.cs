@@ -23,6 +23,8 @@ public partial class MainWindow : Window
     private WorkflowSession? session;
     private List<PaletteEntry> entries = new();
     private double zoom = 1;
+    private BitmapSource? machinePreview;
+    private bool loadingMachineSettings;
     private DateTimeOffset? projectCreated;
     private DesignMetadata metadata = new();
     private WarpAnalysis? warpAnalysis;
@@ -33,7 +35,7 @@ public partial class MainWindow : Window
     private sealed record HistoryState(WorkflowSession Session, Stage Stage, string?[] Names, string?[] Paths);
     private readonly List<HistoryState> undoHistory = new(), redoHistory = new();
 
-    public MainWindow() { InitializeComponent(); WeaveCanvas.Changed += (_, _) => RefreshControls(); lightTheme = ThemeManager.ReadLight(); ThemeManager.Apply(lightTheme, false); VersionText.Text = AppVersion.Display; UpdateLabels(); RefreshControls(); UpdateWindowTitle(); }
+    public MainWindow() { InitializeComponent(); WeaveCanvas.Changed += (_, _) => RefreshControls(); lightTheme = ThemeManager.ReadLight(); ThemeManager.Apply(lightTheme, false); VersionText.Text = AppVersion.Display; LoadMachineSettings(new MachineSetup()); UpdateLabels(); RefreshControls(); UpdateWindowTitle(); }
     private void UpdateWindowTitle() => Title = $"Jacquard Studio ({(projectPath is null ? T("پروژه جدید", "New project") : Path.GetFileNameWithoutExtension(projectPath))})";
     private string T(string fa, string en) => english ? en : fa;
     private bool SizeDirty => session?.Resized is null || !int.TryParse(WidthInput.Text, out int w) || !int.TryParse(HeightInput.Text, out int h) || w != session.Resized.PixelWidth || h != session.Resized.PixelHeight;
@@ -57,7 +59,7 @@ public partial class MainWindow : Window
         try
         {
             var result = await Task.Run(() => ImageLoader.Load(filename, page));
-            path = filename; projectPath = null; projectCreated = DateTimeOffset.Now; metadata = new(); ClearHistory(); sourceName = Path.GetFileName(filename); current = result; session = new WorkflowSession(result.Image); RebuildPaletteEntries();
+            path = filename; projectPath = null; projectCreated = DateTimeOffset.Now; metadata = new(); LoadMachineSettings(new MachineSetup()); ClearHistory(); sourceName = Path.GetFileName(filename); current = result; session = new WorkflowSession(result.Image); RebuildPaletteEntries();
             WidthInput.Text = result.Image.PixelWidth.ToString(); HeightInput.Text = result.Image.PixelHeight.ToString(); ColorInput.Text = "50";
             FileValue.Text = Path.GetFileName(filename); FormatValue.Text = $"{result.Format} · {result.Image.Format.BitsPerPixel} bpp";
             zoom = 1; SetZoom(1); stage = Stage.Size; ShowStage();
@@ -90,6 +92,7 @@ public partial class MainWindow : Window
         InfoButton.IsEnabled = !busy && !bankOpen && session is not null;
         FloatPreviousButton.IsEnabled = !busy && floatRuns is { Count: > 0 } && floatIndex > 0;
         FloatNextButton.IsEnabled = !busy && floatRuns is { Count: > 0 } && floatIndex < floatRuns.Count - 1;
+        MachinePreviewButton.IsEnabled = !busy && stage == Stage.Machine && MachineInput() is not null;
         MachineExportButton.IsEnabled = !busy && stage == Stage.Machine && (machineFormatIndex is 1 or 4) && session is not null &&
             (MachineUseSource.IsChecked == true || (session.CanSave && !SizeDirty && !ColorsDirty));
         SaveSizeButton.IsEnabled = !busy && stage == Stage.Size && session?.Resized is not null && !SizeDirty;
@@ -130,7 +133,7 @@ public partial class MainWindow : Window
         {
             var state = await Task.Run(() => ProjectFile.Load(filename));
             // Only replace current work after the complete archive has been checked.
-            session = state.Session; path = filename; projectPath = filename; projectCreated = state.CreatedAt; metadata = state.Metadata ?? new(); ClearHistory(); sourceName = state.SourceName;
+            session = state.Session; path = filename; projectPath = filename; projectCreated = state.CreatedAt; metadata = state.Metadata ?? new(); LoadMachineSettings(state.Machine ?? new MachineSetup()); ClearHistory(); sourceName = state.SourceName;
             current = new ImageResult(session.Source, 1, 0, "SAM");
             WidthInput.Text = state.WidthInput; HeightInput.Text = state.HeightInput; ColorInput.Text = state.ColorInput;
             english = state.English; stage = Enum.Parse<Stage>(state.Stage); machineFormatIndex = state.MachineFormatIndex;
@@ -157,7 +160,7 @@ public partial class MainWindow : Window
         }
         if (string.IsNullOrEmpty(destination)) return;
         var names = session.Patterns.Select((p, i) => p is null ? null : entries[i].PatternLabel).ToArray();
-        var state = new ProjectState(session, sourceName, WidthInput.Text, HeightInput.Text, ColorInput.Text, stage.ToString(), english, machineFormatIndex, names, projectCreated, metadata);
+        var state = new ProjectState(session, sourceName, WidthInput.Text, HeightInput.Text, ColorInput.Text, stage.ToString(), english, machineFormatIndex, names, projectCreated, metadata, ReadMachineSettings());
         var protectedPaths = entries.Select(x => x.PatternPath).OfType<string>().ToList();
         if (!string.Equals(path, projectPath, StringComparison.OrdinalIgnoreCase)) protectedPaths.Add(path);
         SetBusy(true); StatusText.Text = T("در حال ذخیره پروژه…", "Saving project…");
@@ -175,7 +178,7 @@ public partial class MainWindow : Window
         if ((sender as RadioButton)?.Tag is string tag && int.TryParse(tag, out int selected)) machineFormatIndex = selected;
         if (IsInitialized) RefreshControls();
     }
-    private void MachineSource_Changed(object sender, RoutedEventArgs e) { if (IsInitialized) ShowStage(); }
+    private void MachineSource_Changed(object sender, RoutedEventArgs e) { if (IsInitialized && !loadingMachineSettings) MachineSettingsChanged(); }
     private void SizeStep_Click(object sender, RoutedEventArgs e) { if (!busy && session is not null) { stage = Stage.Size; ShowStage(); } }
     private async void ColorStep_Click(object sender, RoutedEventArgs e)
     {
@@ -188,7 +191,7 @@ public partial class MainWindow : Window
         if (busy || session?.Palette is null || SizeDirty || ColorsDirty) return;
         stage = Stage.Patterns; ShowStage();
     }
-    private void MachineStep_Click(object sender, RoutedEventArgs e) { if (!busy) { stage = Stage.Machine; ShowStage(); } }
+    private async void MachineStep_Click(object sender, RoutedEventArgs e) { if (!busy) { stage = Stage.Machine; ShowStage(); await RefreshMachineBankAsync(); } }
     private void AnalysisStep_Click(object sender, RoutedEventArgs e) { if (!busy && session?.CanSave == true && !SizeDirty && !ColorsDirty) { stage = Stage.Analysis; ShowStage(); } }
     private void FloatStep_Click(object sender, RoutedEventArgs e) { if (!busy && session?.CanSave == true && !SizeDirty && !ColorsDirty) { stage = Stage.Floats; ShowStage(); } }
     private void ShowStage()
@@ -219,13 +222,13 @@ public partial class MainWindow : Window
                 Stage.Analysis => heatmap ?? session.PatternPreview ?? session.Source,
                 Stage.Floats => session.PatternPreview ?? session.Source,
                 Stage.Patterns => session.PatternPreview ?? session.ColorPreview ?? session.Source,
-                Stage.Machine => MachineUseSource.IsChecked == true ? session.Source : session.PatternPreview ?? session.ColorPreview ?? session.Resized ?? session.Source,
+                Stage.Machine => machinePreview ?? (MachineUseSource.IsChecked == true ? session.Source : session.PatternPreview ?? session.ColorPreview ?? session.Resized ?? session.Source),
                 _ => session.Source
             };
             PreviewImage.Source = view; ImageScroll.Visibility = Visibility.Visible; EmptyState.Visibility = Visibility.Collapsed;
             PreviewDetails.Text = $"{view.PixelWidth:N0} × {view.PixelHeight:N0} px";
         }
-        CanvasTitle.Text = stage == Stage.Machine ? T("پیش‌نمایش طرح فعلی", "Current design preview") : !hasFile ? T("پیش‌نمایش طرح", "Design preview") : stage switch
+        CanvasTitle.Text = stage == Stage.Machine ? (machinePreview is null ? T("پیش‌نمایش طرح فعلی", "Current design preview") : T("نقشه نهایی ماشین", "Final machine map")) : !hasFile ? T("پیش‌نمایش طرح", "Design preview") : stage switch
         {
             Stage.Size => T("پیش‌نمایش اندازه", "Size preview"),
             Stage.Colors => T("پیش‌نمایش رنگ‌ها", "Color preview"),
@@ -337,7 +340,7 @@ public partial class MainWindow : Window
     }
     private HistoryState CaptureHistory() => new(session!.Snapshot(), stage, entries.Select(x => (string?)x.PatternLabel).ToArray(), entries.Select(x => x.PatternPath).ToArray());
     private void ClearHistory() { undoHistory.Clear(); redoHistory.Clear(); InvalidateAnalysis(); }
-    private void InvalidateAnalysis() { warpAnalysis = null; heatmap = null; floatRuns = null; floatIndex = 0; if (IsInitialized) { AnalysisResultText.Text = T("برای محاسبه، دکمه بالا را بزنید.", "Run analysis to calculate."); FloatResultText.Text = T("هنوز بررسی نشده است.", "Not scanned yet."); FloatCurrentText.Text = ""; } }
+    private void InvalidateAnalysis() { machinePreview = null; warpAnalysis = null; heatmap = null; floatRuns = null; floatIndex = 0; if (IsInitialized) { AnalysisResultText.Text = T("برای محاسبه، دکمه بالا را بزنید.", "Run analysis to calculate."); FloatResultText.Text = T("هنوز بررسی نشده است.", "Not scanned yet."); FloatCurrentText.Text = ""; } }
     private void RecordHistory(HistoryState state) { InvalidateAnalysis(); undoHistory.Add(state); if (undoHistory.Count > 3) undoHistory.RemoveAt(0); redoHistory.Clear(); }
     private void RestoreHistory(HistoryState state)
     {
@@ -380,6 +383,14 @@ public partial class MainWindow : Window
     private void EditorGrid_Click(object sender, RoutedEventArgs e) => WeaveCanvas.GridVisible = !WeaveCanvas.GridVisible;
     private void PreviewImage_MouseMove(object sender, MouseEventArgs e)
     {
+        if (stage == Stage.Machine && machinePreview is { } map)
+        {
+            var local = e.GetPosition(PreviewImage);
+            if (local.X < 0 || local.Y < 0 || local.X >= PreviewImage.ActualWidth || local.Y >= PreviewImage.ActualHeight) { HoverCard.Visibility = Visibility.Collapsed; return; }
+            int hx = (int)(local.X * map.PixelWidth / PreviewImage.ActualWidth), hy = (int)(local.Y * map.PixelHeight / PreviewImage.ActualHeight);
+            var pixel = new byte[1]; map.CopyPixels(new Int32Rect(hx, hy, 1, 1), pixel, 1, 0);
+            HoverDetails.Text = T($"ستون / قلاب منطقی: {hx} · رج: {hy}\nبیت فایل: {(pixel[0] == 0 ? 1 : 0)}", $"Logical hook: {hx} · row: {hy}\nFile bit: {(pixel[0] == 0 ? 1 : 0)}"); HoverCard.Visibility = Visibility.Visible; return;
+        }
         if (session?.Palette is not { } palette || SizeDirty || ColorsDirty || stage is not (Stage.Patterns or Stage.Analysis or Stage.Floats)) { HoverCard.Visibility = Visibility.Collapsed; return; }
         var point = e.GetPosition(PreviewImage);
         var hit = PreviewHitTest.Find(palette, point.X, point.Y, PreviewImage.ActualWidth, PreviewImage.ActualHeight);
@@ -670,33 +681,98 @@ public partial class MainWindow : Window
         { MessageBox.Show(this, T("ذخیره ناموفق بود: ", "Save failed: ") + ex.Message); }
         finally { SetBusy(false); }
     }
+    private MachineSetup ReadMachineSettings()
+    {
+        var left = LeftSelvedgePattern.SelectedItem as BankItem; var right = RightSelvedgePattern.SelectedItem as BankItem;
+        return new MachineSetup(LeftSelvedgeWidth.Text, RightSelvedgeWidth.Text, left?.Pattern, right?.Pattern, left?.Name ?? "", right?.Name ?? "", BoxEnabled.IsChecked == true, Math.Max(0, BoxPlacement.SelectedIndex), BoxHooks.Text, BoxCodes.Text, BoxSequence.Text, BoxBottom.IsChecked == true, MachineUseSource.IsChecked == true, MachineRedAsBlack.IsChecked == true);
+    }
+    private void InstallMachineChoices(IEnumerable<BankItem> items, MachineSetup settings)
+    {
+        var choices = items.ToList();
+        BankItem? Make(WeavePattern? p, string name, string side)
+        {
+            if (p is null) return null;
+            var item = new BankItem { Id = "project-" + side, Name = name, Pattern = p }; choices.Insert(0, item); return item;
+        }
+        var left = Make(settings.LeftPattern, settings.LeftName, "left"); var right = Make(settings.RightPattern, settings.RightName, "right");
+        LeftSelvedgePattern.ItemsSource = choices; RightSelvedgePattern.ItemsSource = choices;
+        LeftSelvedgePattern.SelectedItem = left; RightSelvedgePattern.SelectedItem = right;
+    }
+    private void LoadMachineSettings(MachineSetup setup)
+    {
+        loadingMachineSettings = true;
+        try
+        {
+            LeftSelvedgeWidth.Text = setup.LeftWidth; RightSelvedgeWidth.Text = setup.RightWidth; BoxEnabled.IsChecked = setup.BoxEnabled;
+            BoxPlacement.SelectedIndex = setup.BoxPlacement; BoxHooks.Text = setup.BoxHooks; BoxCodes.Text = setup.BoxCodes; BoxSequence.Text = setup.Sequence; BoxBottom.IsChecked = setup.StartFromBottom; MachineUseSource.IsChecked = setup.UseSource; MachineRedAsBlack.IsChecked = setup.RedAsBlack;
+            var presets = PatternLibrary.Presets.Select((p, index) => new BankItem { Id = "preset-" + index, Name = p.Name, Pattern = p.Pattern, IsPreset = true });
+            InstallMachineChoices(presets, setup); machinePreview = null; MachineSetupSummary.Text = "";
+        }
+        finally { loadingMachineSettings = false; }
+    }
+    private async Task RefreshMachineBankAsync()
+    {
+        if (busy) return; var setup = ReadMachineSettings(); SetBusy(true);
+        try
+        {
+            var result = await Task.Run(() => { var items = bank.Load(out int skipped); return (items, skipped); });
+            loadingMachineSettings = true; try { InstallMachineChoices(result.items, setup); } finally { loadingMachineSettings = false; }
+            if (result.skipped > 0) MachineSetupSummary.Text = T($"{result.skipped} بافت نامعتبر بانک نادیده گرفته شد.", $"{result.skipped} invalid bank items skipped.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException) { MessageBox.Show(this, T("خواندن بانک ممکن نشد: ", "Could not read weave bank: ") + ex.Message, Title); }
+        finally { SetBusy(false); }
+    }
+    private async void RefreshMachineBank_Click(object sender, RoutedEventArgs e) => await RefreshMachineBankAsync();
+    private void MachineSettings_TextChanged(object sender, TextChangedEventArgs e) => MachineSettingsChanged();
+    private void MachineSettings_SelectionChanged(object sender, SelectionChangedEventArgs e) => MachineSettingsChanged();
+    private void MachineSettings_CheckChanged(object sender, RoutedEventArgs e) => MachineSettingsChanged();
+    private void MachineSettingsChanged()
+    {
+        if (!IsInitialized || loadingMachineSettings) return;
+        machinePreview = null; MachineSetupSummary.Text = T("تنظیمات تغییر کرد؛ پیش‌نمایش را دوباره بسازید.", "Settings changed; regenerate the preview.");
+        if (stage == Stage.Machine && !busy) ShowStage();
+    }
+    private BitmapSource? MachineInput() => session is null ? null : MachineUseSource.IsChecked == true ? session.Source : session.CanSave && !SizeDirty && !ColorsDirty ? session.PatternPreview : null;
+    private async Task<MachineComposition?> ComposeMachineAsync()
+    {
+        var frame = MachineInput(); if (frame is null) return null;
+        var settings = ReadMachineSettings(); bool red = MachineRedAsBlack.IsChecked == true;
+        SetBusy(true);
+        try
+        {
+            var result = await Task.Run(() => MachineComposer.Compose(frame, settings, red));
+            machinePreview = result.Image;
+            string signals = result.SignalHooks.Length == 0 ? T("غیرفعال", "off") : string.Join(", ", result.SignalHooks);
+            MachineSetupSummary.Text = T($"نقشه نهایی: {result.Image.PixelWidth:N0} قلاب × {result.Image.PixelHeight:N0} رج · قلاب‌های فرمان: {signals}", $"Final map: {result.Image.PixelWidth:N0} hooks × {result.Image.PixelHeight:N0} picks · signal hooks: {signals}");
+            ShowStage(); return result;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
+        { MessageBox.Show(this, T("تنظیمات خروجی معتبر نیست: ", "Invalid machine setup: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); return null; }
+        finally { SetBusy(false); }
+    }
+    private async void MachinePreview_Click(object sender, RoutedEventArgs e) { if (!busy) await ComposeMachineAsync(); }
     private async void MachineExport_Click(object sender, RoutedEventArgs e)
     {
         if (busy || machineFormatIndex is not (1 or 4) || session is null || path is null) return;
-        BitmapSource? frame = MachineUseSource.IsChecked == true ? session.Source :
-            session.CanSave && !SizeDirty && !ColorsDirty ? session.PatternPreview : null;
-        if (frame is null) return;
+        var composed = await ComposeMachineAsync(); if (composed is null) return;
         string format = machineFormatIndex == 4 ? "JC6" : "JC5";
-        bool redAsBlack = MachineRedAsBlack.IsChecked == true;
-        string warning = T($"خروجی {format} آزمایشی و تک‌ناحیه‌ای است: {frame.PixelWidth} قلاب و {frame.PixelHeight} رج، سیاه{(redAsBlack ? " و قرمز" : "")} = بیت ۱. نگاشت یا لبه دستگاه به آن اضافه نمی‌شود. ابتدا با DesignScope و بدون تولید بررسی کنید. ادامه می‌دهید؟",
-            $"Experimental single-area {format}: {frame.PixelWidth} hooks and {frame.PixelHeight} picks, black{(redAsBlack ? " and red" : "")} = bit 1. No machine mapping or selvedges are added. Verify in DesignScope before production. Continue?");
+        bool overwriteColumns = BoxEnabled.IsChecked == true && BoxPlacement.SelectedIndex == 2;
+        string warning = T($"خروجی {format} آزمایشی و تک‌ناحیه‌ای است: {composed.Image.PixelWidth} قلاب و {composed.Image.PixelHeight} رج. بیت ۱ سیاه است. " + (overwriteColumns ? "قلاب‌های فرمان محتوای ستون‌های موجود را جایگزین می‌کنند. " : "") + "توالی و نگاشت منطقی را در پیش‌نمایش و اتصال و قطبیت قلاب‌های واقعی را با متخصص دستگاه بررسی کنید. ادامه می‌دهید؟",
+            $"Experimental single-area {format}: {composed.Image.PixelWidth} hooks and {composed.Image.PixelHeight} picks. Bit 1 is black. " + (overwriteColumns ? "Signal hooks replace existing columns. " : "") + "Verify the preview, physical wiring and signal polarity with the machine specialist. Continue?");
         if (MessageBox.Show(this, warning, Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var dialog = new SaveFileDialog { Filter = $"{format} (*.jc5)|*.jc5", DefaultExt = ".jc5", AddExtension = true, OverwritePrompt = true, FileName = MachineFileNaming.SuggestedName(machineFormatIndex) };
         if (dialog.ShowDialog(this) != true) return;
         if (!MachineFileNaming.ValidDestination(dialog.FileName, machineFormatIndex))
-        {
-            MessageBox.Show(this, T("برای JC6 نام فایل باید شامل عدد ۶ باشد و پسوند آن jc5 بماند؛ مانند design6.jc5.", "For JC6, the name must contain 6 and the extension must be .jc5, e.g. design6.jc5."), Title, MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
+        { MessageBox.Show(this, T("برای JC6 نام فایل باید شامل عدد ۶ باشد و پسوند آن jc5 بماند؛ مانند design6.jc5.", "For JC6, the name must contain 6 and the extension must be .jc5, e.g. design6.jc5."), Title, MessageBoxButton.OK, MessageBoxImage.Warning); return; }
         var protectedPaths = new[] { path }.Concat(projectPath is null ? Array.Empty<string>() : new[] { projectPath }).Concat(entries.Select(x => x.PatternPath).OfType<string>()).ToArray();
         SetBusy(true);
         try
         {
-            await Task.Run(() => Jc5Codec.Save(frame, dialog.FileName, protectedPaths, redAsBlack));
-            StatusText.Text = T($"{format} آزمایشی ذخیره شد؛ پیش از تولید آن را در DesignScope بررسی کنید.", $"Experimental {format} saved; verify it in DesignScope before production.");
+            await Task.Run(() => Jc5Codec.Save(composed.Image, dialog.FileName, protectedPaths));
+            StatusText.Text = T($"{format} آزمایشی ذخیره شد؛ پیش از تولید آن را مستقل بررسی کنید.", $"Experimental {format} saved; verify independently before production.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException)
-        { MessageBox.Show(this, T("ذخیره JC5 ناموفق بود: ", "JC5 save failed: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        { MessageBox.Show(this, T("ذخیره فایل ماشین ناموفق بود: ", "Loom file save failed: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally { SetBusy(false); }
     }
     private async void MachineImport_Click(object sender, RoutedEventArgs e)
@@ -710,7 +786,7 @@ public partial class MainWindow : Window
             bool legacy = MachineLegacyImport.IsChecked == true;
             var image = await Task.Run(() => Jc5Codec.Load(dialog.FileName, legacy));
             var next = new WorkflowSession(image); next.ApplySize(image.PixelWidth, image.PixelHeight);
-            session = next; path = dialog.FileName; projectPath = null; projectCreated = DateTimeOffset.Now; metadata = new(); ClearHistory(); sourceName = Path.GetFileName(path);
+            session = next; path = dialog.FileName; projectPath = null; projectCreated = DateTimeOffset.Now; metadata = new(); LoadMachineSettings(new MachineSetup()); ClearHistory(); sourceName = Path.GetFileName(path);
             current = new ImageResult(image, 1, 0, "JC5 (experimental)"); RebuildPaletteEntries();
             WidthInput.Text = image.PixelWidth.ToString(); HeightInput.Text = image.PixelHeight.ToString(); ColorInput.Text = "50";
             FileValue.Text = sourceName; FormatValue.Text = "JC5 · experimental"; stage = Stage.Size; SetZoom(1); ShowStage();
@@ -765,7 +841,12 @@ public partial class MainWindow : Window
         DeveloperText.Text = T("برنامه‌نویس: میرخلیلی", "Developer: Mirkhalili");
         MachineTitle.Text = T("مرحله ۴ · فایل ماشین", "Stage 4 · Loom file"); MachineHint.Text = T("JC5 و JC6 تک‌ناحیه‌ای بر اساس نمونه DesignScope به‌صورت آزمایشی فعال هستند؛ سایر قالب‌ها پشتیبانی نمی‌شوند.", "Experimental single-area JC5 and JC6 based on DesignScope samples; other formats are not supported.");
         MachineFormatLabel.Text = T("قالب هدف", "Target format"); MachineRedAsBlack.Content = T("نقشه قرمز و سفید: قرمز = بافت", "Red/white hook map: red = black"); MachineLegacyImport.Content = T("خواندن فایل خروجی نسخه قدیمی ۰۰۶", "Import a file created by old version 006"); MachineUseSource.Content = T("استفاده از نقشه اصلی به جای نتیجه بافت", "Use original hook map instead of pattern result"); MachineExportButton.Content = T("تبدیل و ذخیره فایل ماشین", "Convert and save loom file"); MachineImportButton.Content = T("انتخاب فایل ماشین", "Select loom file");
-        MachineNotice.Text = T("عرض تصویر = تعداد قلاب و ارتفاع = تعداد رج. رنگ سیاه بیت ۱ است. لبه، ناحیه اضافی و تنظیمات دستگاه اضافه نمی‌شوند. قبل از تولید در DesignScope و روی دستگاه آزمایش کنید.", "Image width = hooks and height = picks; black is bit 1. No selvedge, extra areas or machine settings are added. Verify in DesignScope and on the controller before production.");
+        MachineSetupExpander.Header = T("کناره و باکس‌موشن", "Selvedges and box motion"); MachineSetupHint.Text = T("کناره‌ها به عرض طرح اضافه می‌شوند؛ برای هر سمت، پهنا و بافت بانک را انتخاب کنید.", "Selvedges are added to the design width; select a width and library weave for each side.");
+        LeftSelvedgeLabel.Text = T("کناره چپ: تعداد قلاب و بافت", "Left selvedge: hooks and weave"); RightSelvedgeLabel.Text = T("کناره راست: تعداد قلاب و بافت", "Right selvedge: hooks and weave"); RefreshMachineBankButton.Content = T("به‌روزرسانی فهرست بانک", "Refresh weave bank");
+        BoxEnabled.Content = T("فعال‌سازی قلاب‌های باکس‌موشن", "Enable box-motion signal hooks"); BoxPlacementLabel.Text = T("محل قلاب‌های فرمان", "Signal hook placement"); BoxAddLeft.Content = T("قلاب‌های اضافه در چپ", "Add signal hooks on left"); BoxAddRight.Content = T("قلاب‌های اضافه در راست", "Add signal hooks on right"); BoxReserved.Content = T("ستون‌های موجود (جایگزین محتوا)", "Existing columns (replace contents)");
+        BoxHooksLabel.Text = T("تعداد قلاب اضافه / شماره ستون‌های موجود", "Extra hook count / existing column indices"); BoxCodesLabel.Text = T("الگوی هر پود؛ هر خط مثل 1=10", "Weft codes; one per line, e.g. 1=10"); BoxSequenceLabel.Text = T("توالی تکراری پودها؛ مثل 1,2", "Repeating weft sequence, e.g. 1,2"); BoxBottom.Content = T("شروع توالی از پایین تصویر", "Start sequence at image bottom");
+        BoxSafetyHint.Text = T("شماره ستون‌ها از صفر و از چپ نقشه نهایی است؛ بیت ۱ در فایل سیاه است. اتصال و قطبیت واقعی دستگاه باید مستقل تأیید شود.", "Column indices are zero-based from the left; 1 is a black file bit. Independently verify physical wiring and polarity."); MachinePreviewButton.Content = T("پیش‌نمایش نقشه نهایی ماشین", "Preview final machine map");
+        MachineNotice.Text = T("نقشه خروجی تک‌ناحیه‌ای و آزمایشی است. کناره و فرمان فقط به صورت ستون‌های منطقی درج می‌شوند؛ نگاشت فیزیکی و قطبیت کنترلر را قبل از تولید بررسی کنید.", "Output is experimental and single-area. Selvedges and signals are logical columns only; verify physical mapping and polarity before production.");
         SafetyText.Text = T("خروجی تصویر است، نه فایل دستگاه بافندگی.", "Output is an image, not a loom file."); CanvasSubtitle.Text = T("خروجی هر مرحله در این قسمت نمایش داده می‌شود", "The result of each stage appears here");
         EmptyTitle.Text = T("طرح خود را وارد کنید", "Bring in your design"); EmptyHint.Text = T("یک تصویر BMP یا TIFF انتخاب کنید.", "Choose a BMP or TIFF image."); EmptyButton.Content = T("انتخاب تصویر", "Choose image");
         if (session is null) StatusText.Text = T("آماده برای باز کردن تصویر", "Ready to open an image");

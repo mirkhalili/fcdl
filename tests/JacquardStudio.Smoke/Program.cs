@@ -62,9 +62,16 @@ internal static class Program
             using (var zip = ZipFile.Open(legacySam, ZipArchiveMode.Update))
             {
                 var entryManifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(entryManifest.Open())) json = reader.ReadToEnd();
-                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":2", "\"Version\":1"));
+                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":3", "\"Version\":1"));
             }
             Check(ProjectFile.Load(legacySam).Session.CanSave, "legacy SAM version one loads");
+            string legacyV2 = Path.Combine(dir, "legacy-v2.sam"); File.Copy(projectPath, legacyV2);
+            using (var zip = ZipFile.Open(legacyV2, ZipArchiveMode.Update))
+            {
+                var old = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(old.Open())) json = reader.ReadToEnd();
+                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":3", "\"Version\":2"));
+            }
+            Check(ProjectFile.Load(legacyV2).Session.CanSave, "legacy SAM version two loads");
             Expect<IOException>(() => ProjectFile.Save(projectPath, projectState, new[] { projectPath }));
             string broken = Path.Combine(dir, "broken.sam"); File.WriteAllBytes(broken, new byte[] { 1, 2, 3 });
             Expect<InvalidDataException>(() => ProjectFile.Load(broken));
@@ -258,6 +265,27 @@ internal static class Program
             Check(DesignAnalysis.ReadBinary(ImageLoader.Load(editedImage, 0).Image)[0] == changedPixel, "edited pixel exported to bitmap");
             string editedMachine = Path.Combine(dir, "edited.jc5"); Jc5Codec.Save(edited.Session.PatternPreview!, editedMachine, new[] {bmpPath});
             Check(DesignAnalysis.ReadBinary(Jc5Codec.Load(editedMachine)).SequenceEqual(DesignAnalysis.ReadBinary(edited.Session.PatternPreview!)), "edited pixels exported to JC5");
+            var edgeLeft = new WeavePattern(2, 2, new byte[] {0,255,255,0}); var edgeRight = new WeavePattern(1,1,new byte[] {0});
+            var setup = new MachineSetup("2", "1", edgeLeft, edgeRight, "left", "right", true, 1, "2", "۱=۱۰\n۲=۰۱", "۱،۲");
+            var machineMap = MachineComposer.Compose(image, setup);
+            Check(machineMap.Image.PixelWidth == 8 && machineMap.SignalHooks.SequenceEqual(new[] {6,7}) && machineMap.RowWefts.SequenceEqual(new[] {"1","2"}), "selvedge and configurable box motion dimensions and sequence");
+            Check(DesignAnalysis.ReadBinary(machineMap.Image).SequenceEqual(new byte[] {0,255,0,255,255,0,0,255, 255,0,255,0,0,0,255,0}), "independent expected logical hook pixels");
+            var encodedMachine = Jc5Codec.Encode(machineMap.Image, "test.jc5");
+            Check(DesignAnalysis.ReadBinary(Jc5Codec.Decode(encodedMachine)).SequenceEqual(DesignAnalysis.ReadBinary(machineMap.Image)), "selvedge and signals survive JC5 encoding");
+            var bottomMap = MachineComposer.Compose(image, setup with { StartFromBottom = true });
+            Check(bottomMap.RowWefts.SequenceEqual(new[] {"2","1"}) && DesignAnalysis.ReadBinary(bottomMap.Image)[6] == 255, "weft sequence origin selectable");
+            var reservedMap = MachineComposer.Compose(image, setup with { BoxPlacement = 2, BoxHooks = "0,5" });
+            Check(reservedMap.SignalHooks.SequenceEqual(new[] {0,5}) && reservedMap.Image.PixelWidth == 6, "reserved existing hooks do not expand width");
+            Expect<ArgumentException>(() => MachineComposer.Compose(image, setup with { LeftPattern = null }));
+            Expect<ArgumentException>(() => MachineComposer.Compose(image, setup with { BoxPlacement = 2, BoxHooks = "0,0" }));
+            Expect<ArgumentException>(() => MachineComposer.Compose(image, setup with { BoxCodes = "1=1" }));
+            Expect<ArgumentException>(() => MachineComposer.Compose(image, setup with { Sequence = "99" }));
+            Expect<ArgumentException>(() => MachineComposer.Compose(image, setup with { LeftWidth = "4000000" }));
+            var composedState = new ProjectState(bankSession,"sample.bmp","3","2","50","Machine",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,setup);
+            string machineProject = Path.Combine(dir,"machine-setup.sam"); ProjectFile.Save(machineProject, composedState, new[] {bmpPath});
+            var restoredSetup = ProjectFile.Load(machineProject).Machine!;
+            Check(restoredSetup.LeftPattern!.Values.SequenceEqual(edgeLeft.Values) && restoredSetup.RightPattern!.Values.SequenceEqual(edgeRight.Values) && restoredSetup.BoxCodes == setup.BoxCodes, "SAM embeds both selvedges and signal setup");
+            Check(DesignAnalysis.ReadBinary(MachineComposer.Compose(image, restoredSetup).Image).SequenceEqual(DesignAnalysis.ReadBinary(machineMap.Image)), "restored machine setup produces identical map");
             Check(ProjectSavePolicy.RequiresDialog(null, false) && !ProjectSavePolicy.RequiresDialog("project.sam", false) && ProjectSavePolicy.RequiresDialog("project.sam", true), "save existing vs save as policy");
             var entry = new PaletteEntry(); entry.Assign("weave.bmp", new WeavePattern(2, 1, new byte[] { 0, 255 }));
             var thumbnail = new byte[2]; entry.PatternPreview!.CopyPixels(thumbnail, 2, 0);
@@ -286,8 +314,8 @@ internal static class Program
             Check(fullProject.Palette!.Colors.Length == 50, "maximum palette fixture");
             for (int i = 0; i < 50; i++) fullProject.AssignPattern(i, new WeavePattern(1,1,new byte[] {0}));
             fullProject.TogglePixel(0,0); string fullProjectPath = Path.Combine(dir,"full-50.sam");
-            ProjectFile.Save(fullProjectPath, new ProjectState(fullProject,"many.bmp","50","1","50","Floats",false,1,Enumerable.Repeat<string?>("pattern",50).ToArray()), Array.Empty<string>());
-            Check(ProjectFile.Load(fullProjectPath).Session.PixelOverrides![0] == 2, "50 weaves and overrides fit SAM entry limit");
+            ProjectFile.Save(fullProjectPath, new ProjectState(fullProject,"many.bmp","50","1","50","Floats",false,1,Enumerable.Repeat<string?>("pattern",50).ToArray(), null, null, setup), Array.Empty<string>());
+            Check(ProjectFile.Load(fullProjectPath).Session.PixelOverrides![0] == 2 && ProjectFile.Load(fullProjectPath).Machine?.LeftPattern is not null, "50 weaves, overrides and two selvedges fit SAM entry limit");
             var less = DesignProcessor.Prepare(manyImage, 10, 10, 3);
             Check(less.Colors.Length <= 3 && less.Counts.Sum() == 100, "requested color reduction");
             Expect<ArgumentOutOfRangeException>(() => DesignProcessor.Prepare(manyImage, 10, 10, 51));
@@ -300,7 +328,7 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            Check(AppVersion.Display == "011.2.8.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "012.2.9.1-a1", "QAVNS version from version.txt");
             var reportEntries = bankSession.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = bankSession.Palette.Counts[index], Percent = 100d * bankSession.Palette.Counts[index] / bankSession.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; if (bankSession.Patterns[index] is { } p) e.Restore("sample", p); return e; }).ToArray();
             Check(DesignReport.PersianDate(new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero)) == "1403/01/01", "solar Hijri report date");
             Check(DesignReport.PersianDate(null).Contains("نامشخص"), "legacy creation date not invented");
@@ -328,8 +356,11 @@ internal static class Program
             Check(window.FindName("SaveProjectAsButton") is System.Windows.Controls.Button && window.FindName("ThemeButton") is System.Windows.Controls.Button, "save as and theme controls");
             Check(window.FindName("UndoButton") is System.Windows.Controls.Button && window.FindName("RedoButton") is System.Windows.Controls.Button && window.FindName("ReportButton") is System.Windows.Controls.Button && window.FindName("HoverCard") is System.Windows.Controls.Border, "history, report and hover controls");
             Check(window.FindName("InfoButton") is System.Windows.Controls.Button && window.FindName("AnalysisPanel") is System.Windows.Controls.ScrollViewer && window.FindName("FloatPanel") is System.Windows.Controls.ScrollViewer, "design info, analysis and float controls");
+            Check(window.FindName("MachineSetupExpander") is System.Windows.Controls.Expander && window.FindName("BoxCodes") is System.Windows.Controls.TextBox && window.FindName("MachinePreviewButton") is System.Windows.Controls.Button, "integrated machine selvedge and box settings");
             var title = (System.Windows.Controls.TextBlock)window.FindName("WindowTitleText");
             Check(System.Windows.Controls.Grid.GetColumn(title) == 0 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)System.Windows.Media.VisualTreeHelper.GetParent((System.Windows.DependencyObject)window.FindName("CloseWindowButton"))) == 1, "title and caption button positions swapped");
+            var captionButtons = (System.Windows.Controls.StackPanel)System.Windows.Media.VisualTreeHelper.GetParent((System.Windows.DependencyObject)window.FindName("CloseWindowButton"));
+            Check(ReferenceEquals(captionButtons.Children[0], window.FindName("MinimizeWindowButton")) && ReferenceEquals(captionButtons.Children[2], window.FindName("CloseWindowButton")), "minimize left and close right in left-to-right caption");
             ThemeManager.Apply(true, false);
             Check(((System.Windows.Media.SolidColorBrush)app.Resources["AppBackground"]).Color == (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#F2F5F8"), "light theme resources");
             ThemeManager.Apply(false, false);
