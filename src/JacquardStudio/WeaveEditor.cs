@@ -38,7 +38,7 @@ public sealed class WeaveEditor : FrameworkElement
     }
     public void MarkSaved() { saved = Snapshot(); Changed?.Invoke(this, EventArgs.Empty); }
     public void DiscardChanges() { undo.Clear(); redo.Clear(); Restore(saved); }
-    public void ApplyHelper(string operation, int stepX = 1, int stepY = 1)
+    public void ApplyHelper(string operation, int stepX = 1, int stepY = 1, int satinRepeat = 5, int satinStep = 2)
     {
         if (stepX < 1 || stepY < 1 || stepX > MaxSide || stepY > MaxSide) throw new ArgumentOutOfRangeException(nameof(stepX));
         byte[] next = (byte[])values.Clone();
@@ -53,21 +53,27 @@ public sealed class WeaveEditor : FrameworkElement
         }
         else if (operation is "twillRight" or "twillLeft")
         {
-            // Continue the current first row, shifting one cell per successive row, with wrap.
-            for (int y = 1; y < height; y++) for (int x = 0; x < width; x++)
-                next[y * width + x] = values[(x + (operation == "twillRight" ? y : -y) % width + width) % width];
+            // Continue the leftmost warp column, shifting vertically by one per column, with wrap.
+            for (int x = 1; x < width; x++) for (int y = 0; y < height; y++)
+                next[y * width + x] = values[((y + (operation == "twillRight" ? x : -x) % height + height) % height) * width];
         }
         else
         {
-        if (operation == "panama" && (width % 4 != 0 || height % 4 != 0)) throw new ArgumentException("Panama repeat requires dimensions that are multiples of 4.");
-        if (operation == "satin" && (width % 5 != 0 || height % 5 != 0)) throw new ArgumentException("Five-end satin requires dimensions that are multiples of 5.");
+        if (operation == "panama" && (width % 2 != 0 || height % 2 != 0)) throw new ArgumentException("Panama requires even width and height.");
+        if (operation == "satin")
+        {
+            static int Gcd(int a, int b) { while (b != 0) (a, b) = (b, a % b); return a; }
+            if (satinRepeat < 5 || satinRepeat > MaxSide || satinStep < 2 || satinStep > satinRepeat - 2 || Gcd(satinRepeat, satinStep) != 1)
+                throw new ArgumentException("Satin repeat must be 5–64 and the step must be coprime, between 2 and repeat minus 2.");
+            if (width % satinRepeat != 0 || height % satinRepeat != 0) throw new ArgumentException("Satin dimensions must be multiples of the selected repeat.");
+        }
         for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
         {
             int i = y * width + x;
             next[i] = operation switch {
                 "plain" => (byte)((x + y) % 2 == 0 ? 0 : 255),
                 "panama" => (byte)(((x / 2 + y / 2) % 2) == 0 ? 0 : 255),
-                "satin" => (byte)(x % 5 == (y * 2) % 5 ? 0 : 255),
+                "satin" => (byte)(x % satinRepeat == (y * satinStep) % satinRepeat ? 0 : 255),
                 "invert" => values[i] == 0 ? (byte)255 : (byte)0,
                 "mirrorX" => values[y * width + (width - 1 - x)],
                 "mirrorY" => values[(height - 1 - y) * width + x],

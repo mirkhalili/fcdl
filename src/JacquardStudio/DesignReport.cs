@@ -21,7 +21,7 @@ public static class DesignReport
         catch (ArgumentOutOfRangeException) { return "نامشخص / Unknown"; }
     }
     private static TextBlock Text(string text, double size, Brush? color = null, FontWeight? weight = null) => new() { Text = text, FontSize = size, Foreground = color ?? Ink, FontWeight = weight ?? FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-    public static FrameworkElement CreatePage(WorkflowSession session, IReadOnlyList<PaletteEntry> entries, string projectName, DateTimeOffset? created, bool english, DesignMetadata? metadata = null)
+    public static FrameworkElement CreatePage(WorkflowSession session, IReadOnlyList<PaletteEntry> entries, string projectName, DateTimeOffset? created, bool english, DesignMetadata? metadata = null, MachineSetup? machine = null, WarpAnalysis? analysis = null)
     {
         var palette = session.Palette ?? throw new InvalidOperationException("A color palette is required for a report.");
         if (entries.Count != palette.Colors.Length) throw new ArgumentException("Palette metadata does not match.");
@@ -29,6 +29,7 @@ public static class DesignReport
         System.Windows.Documents.TextElement.SetFontFamily(page, (FontFamily)Application.Current.FindResource("VazirFont"));
         page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(215) });
         page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(52) });
+        page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(90) });
         page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(35) });
         page.Margin = new Thickness(0);
@@ -36,10 +37,12 @@ public static class DesignReport
         var header = new Grid { Margin = new Thickness(30, 18, 30, 0) };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(173) }); header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(173) });
         var titles = new StackPanel();
-        titles.Children.Add(Text("JACQUARD STUDIO  /  DESIGN REPORT", 9, Accent, FontWeights.Bold));
+        var brand = new StackPanel { Orientation = Orientation.Horizontal };
+        brand.Children.Add(new Image { Source = new BitmapImage(new Uri("pack://application:,,,/JacquardStudio;component/Assets/app.ico", UriKind.Absolute)), Width = 27, Height = 27, Margin = new Thickness(0, 0, 7, 0) });
+        brand.Children.Add(Text("JACQUARD STUDIO  /  DESIGN REPORT", 9, Accent, FontWeights.Bold)); titles.Children.Add(brand);
         titles.Children.Add(new TextBlock { Text = english ? "Jacquard design report" : "گزارش طرح ژاکارد", FontSize = 20, Foreground = Ink, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 3, 0, 0) });
         titles.Children.Add(Text((english ? "Project: " : "پروژه: ") + projectName, 12, Ink, FontWeights.SemiBold));
-        titles.Children.Add(Text((english ? "Created: " : "ایجاد شمسی: ") + PersianDate(created), 10, Muted));
+        titles.Children.Add(Text(PersianDate(created), 10, Muted));
         var info = new TextBlock { Text = (english ? "Designer: " : "طراح: ") + metadata.Designer + "\n" + (english ? "Use: " : "کاربرد: ") + metadata.Usage + "\n" + (english ? "Notes: " : "توضیحات: ") + metadata.Description, Foreground = Ink, FontSize = 10, TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis, MaxHeight = 102, Margin = new Thickness(0, 5, 8, 0) };
         titles.Children.Add(info); header.Children.Add(titles);
         void AddImage(int column, string caption, ImageSource source)
@@ -57,12 +60,22 @@ public static class DesignReport
         var metrics = new Border { Margin = new Thickness(30, 4, 30, 4), Background = Brush("#EAF5F2"), CornerRadius = new CornerRadius(6), Padding = new Thickness(14, 5, 14, 5) };
         metrics.Child = Text(english ? $"WARP  {palette.Width:N0}     ·     WEFT  {palette.Height:N0}     ·     PIXELS  {(long)palette.Width * palette.Height:N0}     ·     COLORS  {entries.Count}" : $"تار: {palette.Width:N0}     ·     پود: {palette.Height:N0}     ·     کل پیکسل: {(long)palette.Width * palette.Height:N0}     ·     رنگ: {entries.Count}", 13, Ink, FontWeights.SemiBold);
         Grid.SetRow(metrics, 1); page.Children.Add(metrics);
+        machine ??= new MachineSetup();
+        string layout = machine.AbsoluteLayout ? (english ? $"Total: {machine.TotalHooks}   Start: {machine.DesignStart}   Wefts: {machine.WeftCount} at {machine.WeftStart}" : $"کل تار: {machine.TotalHooks}   شروع طرح: {machine.DesignStart}   پود: {machine.WeftCount} از {machine.WeftStart}") : (english ? "Legacy box layout" : "چیدمان قدیمی پودگذاری");
+        string edges = english ? $"Left selvedge: {machine.LeftWidth} · {machine.LeftName}   |   Right: {machine.RightWidth} · {machine.RightName}" : $"کناره چپ: {machine.LeftWidth} · {machine.LeftName}   |   راست: {machine.RightWidth} · {machine.RightName}";
+        string stats = analysis is null ? (english ? "Analysis unavailable until all weaves are assigned." : "تحلیل پس از تخصیص همه بافت‌ها در دسترس است.") : (english ? $"Design warp black-count mean: {analysis.Mean:0.##}; min {analysis.Counts.Min()}, max {analysis.Counts.Max()} (geometric indicator)" : $"تحلیل تار طرح: میانگین نقاط سیاه {analysis.Mean:0.##}؛ کمینه {analysis.Counts.Min()}، بیشینه {analysis.Counts.Max()} (شاخص هندسی)");
+        var extra = new StackPanel { Margin = new Thickness(30, 1, 30, 2) };
+        extra.Children.Add(Text(edges, 10, Ink)); extra.Children.Add(Text(layout, 10, Ink));
+        extra.Children.Add(Text((english ? "Weft sequence: " : "توالی پود: ") + (string.IsNullOrWhiteSpace(machine.Sequence) ? (english ? "natural" : "طبیعی") : machine.Sequence) + (machine.StartFromBottom ? (english ? " · bottom" : " · شروع از پایین") : (english ? " · top" : " · شروع از بالا")), 10, Ink));
+        extra.Children.Add(Text(stats, 10, Muted));
+        if (analysis is not null) { var strip = new Image { Source = DesignAnalysis.Heatmap(analysis, 1), Height = 12, Stretch = Stretch.Fill }; RenderOptions.SetBitmapScalingMode(strip, BitmapScalingMode.NearestNeighbor); extra.Children.Add(strip); }
+        Grid.SetRow(extra, 2); page.Children.Add(extra);
         var body = new Grid { Margin = new Thickness(30, 3, 30, 0) };
         body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(28) }); body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         body.Children.Add(Text(english ? "COLORS  /  WEAVES  /  SHARE" : "رنگ‌ها  /  بافت‌های اختصاص‌یافته  /  درصد", 14, Accent, FontWeights.Bold));
         var columns = new Grid(); columns.ColumnDefinitions.Add(new ColumnDefinition()); columns.ColumnDefinitions.Add(new ColumnDefinition()); Grid.SetRow(columns, 1); body.Children.Add(columns);
         int rows = Math.Max(1, (entries.Count + 1) / 2);
-        double rowHeight = Math.Min(68, 785d / rows), pictureSize = Math.Max(25, rowHeight - 4);
+        double rowHeight = Math.Min(68, 690d / rows), pictureSize = Math.Max(25, rowHeight - 4);
         for (int c = 0; c < 2; c++)
         {
             var list = new StackPanel { Margin = new Thickness(c == 0 ? 0 : 8, 0, c == 0 ? 8 : 0, 0) };
@@ -80,8 +93,8 @@ public static class DesignReport
                 list.Children.Add(row);
             }
         }
-        Grid.SetRow(body, 2); page.Children.Add(body);
-        var footer = new Border { Margin = new Thickness(30, 0, 30, 5), BorderBrush = Line, BorderThickness = new Thickness(0, 1, 0, 0), Child = Text(english ? "Jacquard Studio  •  Design summary  •  Mirkhalili" : "ژاکارد استودیو  •  خلاصه طرح  •  میرخلیلی", 10, Muted) }; Grid.SetRow(footer, 3); page.Children.Add(footer);
+        Grid.SetRow(body, 3); page.Children.Add(body);
+        var footer = new Border { Margin = new Thickness(30, 0, 30, 5), BorderBrush = Line, BorderThickness = new Thickness(0, 1, 0, 0), Child = Text(english ? "Jacquard Studio  •  Design summary  •  Mirkhalili" : "ژاکارد استودیو  •  خلاصه طرح  •  میرخلیلی", 10, Muted) }; Grid.SetRow(footer, 4); page.Children.Add(footer);
         return page;
     }
     public static BitmapSource Render(FrameworkElement page)

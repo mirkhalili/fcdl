@@ -22,11 +22,12 @@ public static class ProjectFile
         public bool BoxEnabled { get; set; } public int BoxPlacement { get; set; }
         public string? BoxHooks { get; set; } public string? BoxCodes { get; set; } public string? Sequence { get; set; }
         public bool StartFromBottom { get; set; } public bool UseSource { get; set; } public bool RedAsBlack { get; set; }
+        public bool AbsoluteLayout { get; set; } public string? TotalHooks { get; set; } public string? DesignStart { get; set; } public string? WeftStart { get; set; } public string? WeftCount { get; set; }
     }
     private sealed class Manifest
     {
         public Manifest() { }
-        public int Version { get; set; } = 3;
+        public int Version { get; set; } = 4;
         public MachineInfo? Machine { get; set; }
         public bool HasOverrides { get; set; }
         public string? Designer { get; set; } public string? Usage { get; set; } public string? Description { get; set; }
@@ -102,7 +103,7 @@ public static class ProjectFile
                 return new PatternInfo { Width = p.Width, Height = p.Height, Name = Bounded(name, 255) };
             }
             if (setup.BoxPlacement is < 0 or > 2) throw new InvalidDataException("Invalid signal placement.");
-            m.Machine = new MachineInfo { LeftWidth = Bounded(setup.LeftWidth, 32), RightWidth = Bounded(setup.RightWidth, 32), LeftPattern = Info(setup.LeftPattern, setup.LeftName), RightPattern = Info(setup.RightPattern, setup.RightName), BoxEnabled = setup.BoxEnabled, BoxPlacement = setup.BoxPlacement, BoxHooks = Bounded(setup.BoxHooks, 256), BoxCodes = Bounded(setup.BoxCodes, 8192), Sequence = Bounded(setup.Sequence, 8192), StartFromBottom = setup.StartFromBottom, UseSource = setup.UseSource, RedAsBlack = setup.RedAsBlack };
+            m.Machine = new MachineInfo { LeftWidth = Bounded(setup.LeftWidth, 32), RightWidth = Bounded(setup.RightWidth, 32), LeftPattern = Info(setup.LeftPattern, setup.LeftName), RightPattern = Info(setup.RightPattern, setup.RightName), BoxEnabled = setup.BoxEnabled, BoxPlacement = setup.BoxPlacement, BoxHooks = Bounded(setup.BoxHooks, 256), BoxCodes = Bounded(setup.BoxCodes, 8192), Sequence = Bounded(setup.Sequence, 8192), StartFromBottom = setup.StartFromBottom, UseSource = setup.UseSource, RedAsBlack = setup.RedAsBlack, AbsoluteLayout = setup.AbsoluteLayout, TotalHooks = Bounded(setup.TotalHooks, 32), DesignStart = Bounded(setup.DesignStart, 32), WeftStart = Bounded(setup.WeftStart, 32), WeftCount = Bounded(setup.WeftCount, 32) };
         }
         byte[] manifestBytes = JsonSerializer.SerializeToUtf8Bytes(m);
         if (manifestBytes.Length > MaxManifestBytes) throw new InvalidDataException("Project settings exceed the manifest size limit.");
@@ -138,7 +139,7 @@ public static class ProjectFile
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
         if (zip.Entries.Count > 57) throw new InvalidDataException("Too many project entries.");
         var m = JsonSerializer.Deserialize<Manifest>(ReadEntry(zip, "manifest.json", MaxManifestBytes)) ?? throw new InvalidDataException("Missing project manifest.");
-        if (m.Version is not (1 or 2 or 3)) throw new NotSupportedException("Unsupported SAM project version.");
+        if (m.Version is not (1 or 2 or 3 or 4)) throw new NotSupportedException("Unsupported SAM project version.");
         if (m.Version == 1 && m.HasOverrides) throw new InvalidDataException("Overrides require SAM version 2.");
         if (m.Version < 3 && m.Machine is not null) throw new InvalidDataException("Machine setup requires SAM version 3.");
         CheckDimensions(m.SourceWidth, m.SourceHeight, DesignProcessor.MaxPixels);
@@ -172,9 +173,9 @@ public static class ProjectFile
         else if (m.ColorLimit is not null || m.Patterns is not null || m.HasOverrides) throw new InvalidDataException("Invalid project state.");
         if (m.MachineFormatIndex is < 0 or > 4) throw new InvalidDataException("Invalid machine format selection.");
         string stage = Bounded(m.Stage, 16, "Size");
-        if (stage is not ("Size" or "Colors" or "Patterns" or "Machine" or "Analysis" or "Floats")) throw new InvalidDataException("Invalid workflow stage.");
-        if ((stage == "Colors" && resized is null) || ((stage is "Patterns" or "Analysis" or "Floats") && palette is null)) throw new InvalidDataException("Stage lacks required data.");
-        if ((stage is "Analysis" or "Floats") && patterns.Any(p => p is null)) throw new InvalidDataException("Analysis requires a complete weave.");
+        if (stage is not ("Size" or "Colors" or "Patterns" or "Machine" or "Analysis" or "Floats" or "Selvedge" or "Weft")) throw new InvalidDataException("Invalid workflow stage.");
+        if ((stage == "Colors" && resized is null) || ((stage is "Patterns" or "Analysis" or "Floats" or "Selvedge" or "Weft") && palette is null)) throw new InvalidDataException("Stage lacks required data.");
+        if ((stage is "Analysis" or "Floats" or "Selvedge" or "Weft") && patterns.Any(p => p is null)) throw new InvalidDataException("Analysis requires a complete weave.");
         MachineSetup? setup = null;
         if (m.Machine is { } settings)
         {
@@ -186,7 +187,7 @@ public static class ProjectFile
                 return new WeavePattern(p.Width, p.Height, bytes);
             }
             if (settings.BoxPlacement is < 0 or > 2) throw new InvalidDataException("Invalid signal placement.");
-            setup = new MachineSetup(Bounded(settings.LeftWidth, 32, "0"), Bounded(settings.RightWidth, 32, "0"), ReadWeave(settings.LeftPattern, "machine/left.bin"), ReadWeave(settings.RightPattern, "machine/right.bin"), Bounded(settings.LeftPattern?.Name, 255), Bounded(settings.RightPattern?.Name, 255), settings.BoxEnabled, settings.BoxPlacement, Bounded(settings.BoxHooks, 256), Bounded(settings.BoxCodes, 8192), Bounded(settings.Sequence, 8192), settings.StartFromBottom, settings.UseSource, settings.RedAsBlack);
+            setup = new MachineSetup(Bounded(settings.LeftWidth, 32, "0"), Bounded(settings.RightWidth, 32, "0"), ReadWeave(settings.LeftPattern, "machine/left.bin"), ReadWeave(settings.RightPattern, "machine/right.bin"), Bounded(settings.LeftPattern?.Name, 255), Bounded(settings.RightPattern?.Name, 255), settings.BoxEnabled, settings.BoxPlacement, Bounded(settings.BoxHooks, 256), Bounded(settings.BoxCodes, 8192), Bounded(settings.Sequence, 8192), settings.StartFromBottom, settings.UseSource, settings.RedAsBlack, m.Version >= 4 && settings.AbsoluteLayout, Bounded(settings.TotalHooks, 32), Bounded(settings.DesignStart, 32), Bounded(settings.WeftStart, 32, "0"), Bounded(settings.WeftCount, 32, "0"));
         }
         var session = WorkflowSession.Restore(source, resized, palette, m.ColorLimit, patterns, overrides);
         return new ProjectState(session, Bounded(m.SourceName, 255), Bounded(m.WidthInput, 32), Bounded(m.HeightInput, 32), Bounded(m.ColorInput, 32, "50"), stage, m.English, m.MachineFormatIndex, names, m.CreatedAt, new DesignMetadata(Bounded(m.Designer, 100), Bounded(m.Usage, 100), Bounded(m.Description, 300)), setup);
