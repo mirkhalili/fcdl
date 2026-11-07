@@ -6,9 +6,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>JacquardStudio</AssemblyName>
-    <Version>7.2.4.1</Version>
-    <AssemblyVersion>7.2.4.1</AssemblyVersion>
-    <FileVersion>7.2.4.1</FileVersion>
+    <Version>8.2.5.1</Version>
+    <AssemblyVersion>8.2.5.1</AssemblyVersion>
+    <FileVersion>8.2.5.1</FileVersion>
     <InformationalVersion>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/../../version.txt').Trim())</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Product>Jacquard Studio</Product>

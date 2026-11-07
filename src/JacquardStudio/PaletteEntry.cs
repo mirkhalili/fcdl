@@ -8,6 +8,11 @@ public sealed class PaletteEntry : INotifyPropertyChanged
 {
     public int Index { get; init; }
     public string ColorLabel { get; init; } = "";
+    public string ColorCode { get; init; } = "";
+    public int PixelCount { get; init; }
+    public string PixelCountText => PixelCount.ToString("N0");
+    public double Percent { get; init; }
+    public string PercentText => $"{Percent:0.##}%";
     public Brush Brush { get; init; } = Brushes.Black;
     public int ColorNumber => Index + 1;
     public Brush ColorNumberForeground => Brush is SolidColorBrush color && color.Color.R * 299 + color.Color.G * 587 + color.Color.B * 114 > 150_000 ? Brushes.Black : Brushes.White;

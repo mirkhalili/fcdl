@@ -154,6 +154,30 @@ internal static class Program
             byte[] woven = new byte[1200 * 1200 * 4]; wovenSession.PatternPreview!.CopyPixels(woven, 1200 * 4, 0);
             for (int i = 0; i < 1200 * 1200; i++)
                 Check(woven[i * 4] == (refBytes[i * 4 + 1] == 0 ? 0 : 255), "reference pattern placement and phase");
+            // Manual edits preserve every pixel, target color, remaining patterns, and SAM state.
+            var manual = new WorkflowSession(b.Image); manual.ApplySize(3, 2); manual.ApplyColors(50);
+            var firstPattern = new WeavePattern(1, 1, new byte[] {0}); var targetPattern = new WeavePattern(1, 1, new byte[] {255});
+            manual.AssignPattern(0, firstPattern); manual.AssignPattern(1, targetPattern);
+            Check(DesignProcessor.NearestRemainingColor(manual.Palette!, 0) == 1, "nearest removal target");
+            manual.MergeColors(0, 1);
+            Check(manual.Palette!.Colors.Length == 1 && manual.Palette.Colors[0] == 0xFFFFFF && manual.Palette.Counts[0] == 6 && manual.Palette.Indices.All(i => i == 0), "merge pixels and target counts");
+            Check(ReferenceEquals(manual.Patterns[0], targetPattern) && manual.CanSave, "merge preserves target weave");
+            Expect<ArgumentException>(() => manual.MergeColors(0, 0));
+            Check(manual.Palette.Colors.Length == 1 && manual.Palette.Counts[0] == 6, "invalid merge preserves state");
+            string mergedProject = Path.Combine(dir, "merged.sam");
+            ProjectFile.Save(mergedProject, new ProjectState(manual, "sample.bmp", "3", "2", "50", "Colors", false, 1, new string?[] { "target.bmp" }), Array.Empty<string>());
+            var mergedRestored = ProjectFile.Load(mergedProject);
+            Check(mergedRestored.Session.Palette!.Counts.SequenceEqual(new[] {6}) && mergedRestored.Session.Patterns[0]!.Values.SequenceEqual(new byte[] {255}), "SAM persists merged palette and weave");
+            var multi = new PaletteResult(5, 1, 3, new[] {0x000000, 0x121212, 0xFFFFFF}, new byte[] {0, 1, 2, 0, 2}, new[] {2, 1, 2});
+            Check(DesignProcessor.NearestRemainingColor(multi, 0) == 1, "nearest uses RGB distance");
+            var mergedUp = DesignProcessor.MergeColors(multi, 0, 2);
+            Check(mergedUp.Colors.SequenceEqual(new[] {0x121212, 0xFFFFFF}) && mergedUp.Indices.SequenceEqual(new byte[] {1, 0, 1, 1, 1}) && mergedUp.Counts.SequenceEqual(new[] {1, 4}), "merge handles source before target");
+            var mergedDown = DesignProcessor.MergeColors(multi, 2, 0);
+            Check(mergedDown.Indices.SequenceEqual(new byte[] {0, 1, 0, 0, 0}) && mergedDown.Counts.SequenceEqual(new[] {4, 1}), "merge handles source after target");
+            Check(MachineFileNaming.SuggestedName(4) == "design6.jc5" && MachineFileNaming.ValidDestination("design6.jc5", 4) && MachineFileNaming.ValidDestination("طرح۶.jc5", 4), "JC6 uses jc5 extension with 6");
+            Check(!MachineFileNaming.ValidDestination("design.jc5", 4) && !MachineFileNaming.ValidDestination("design6.jc6", 4) && MachineFileNaming.ValidDestination("design.jc5", 1), "JC6 name and extension validation");
+            var colorStats = new PaletteEntry { ColorCode = "#ABCDEF", PixelCount = 25, Percent = 25.0 };
+            Check(colorStats.ColorCode == "#ABCDEF" && colorStats.PixelCount == 25 && colorStats.Percent == 25.0, "color stats fields");
             var entry = new PaletteEntry(); entry.Assign("weave.bmp", new WeavePattern(2, 1, new byte[] { 0, 255 }));
             var thumbnail = new byte[2]; entry.PatternPreview!.CopyPixels(thumbnail, 2, 0);
             Check(entry.PatternLabel == "weave.bmp" && thumbnail.SequenceEqual(new byte[] {0, 255}) && entry.PatternGridPreview is not null && entry.PatternSize == "2 × 1", "pattern thumbnail, grid and dimensions");
@@ -188,14 +212,25 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            Check(AppVersion.Display == "007.2.4.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "008.2.5.1-a1", "QAVNS version from version.txt");
             var window = new MainWindow();
             Check(window.FontFamily.Source.Contains("Vazirmatn"), "embedded font selected in main window");
             var nav = (System.Windows.Controls.Grid)window.FindName("Navigation");
             var settings = (System.Windows.FrameworkElement)window.FindName("SettingsBorder");
             Check(nav.FlowDirection == System.Windows.FlowDirection.RightToLeft && System.Windows.Controls.Grid.GetColumn(settings) == 2, "right-to-left workflow and right settings panel");
-            var list = (System.Windows.Controls.ListView)window.FindName("PaletteList");
-            Check(list.View is System.Windows.Controls.GridView grid && grid.Columns.Count == 2, "two-column color and pattern table");
+            var list = (System.Windows.Controls.ListView)window.FindName("ColorPaletteList");
+            Check(list.View is System.Windows.Controls.GridView grid && grid.Columns.Count == 4, "four-column color statistics table");
+            var cards = (System.Windows.Controls.ItemsControl)window.FindName("PatternCards");
+            Check(cards.ItemsPanel.LoadContent() is System.Windows.Controls.WrapPanel, "pattern gallery wraps rows");
+            var gallery = (System.Windows.DependencyObject)window.FindName("PatternGallery");
+            bool insideSettings = false;
+            for (var parent = System.Windows.Media.VisualTreeHelper.GetParent(gallery); parent is not null; parent = System.Windows.Media.VisualTreeHelper.GetParent(parent))
+                if (ReferenceEquals(parent, settings)) insideSettings = true;
+            Check(insideSettings, "pattern gallery physically in right settings panel");
+            Check(window.FindName("PaletteList") is null, "old pattern table removed");
+            Check(((System.Windows.Controls.TextBlock)window.FindName("DeveloperText")).Text.Contains("میرخلیلی"), "developer credit in footer");
+            Check(System.Windows.Shell.WindowChrome.GetWindowChrome(window) is not null, "resizable custom title bar");
+            Check(window.FindName("CloseWindowButton") is System.Windows.Controls.Button && window.FindName("MaximizeWindowButton") is System.Windows.Controls.Button && window.FindName("MinimizeWindowButton") is System.Windows.Controls.Button, "caption buttons");
             Check(window.FindName("PatternCards") is System.Windows.Controls.ItemsControl, "reference-style pattern gallery exists");
             Check(window.FindName("FormatJC6") is System.Windows.Controls.RadioButton, "sample JC6 selector exists");
             var machineExport = (System.Windows.Controls.Button)window.FindName("MachineExportButton");

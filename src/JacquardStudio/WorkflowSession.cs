@@ -29,6 +29,15 @@ public sealed class WorkflowSession
         var preview = DesignProcessor.Render(palette, patterns);
         Palette = palette; Patterns = patterns; ColorPreview = preview; PatternPreview = preview; AppliedColorLimit = maximum;
     }
+    public void MergeColors(int source, int target)
+    {
+        var palette = Palette ?? throw new InvalidOperationException("Apply colors first.");
+        var next = DesignProcessor.MergeColors(palette, source, target);
+        var patterns = Patterns.Where((_, i) => i != source).ToArray();
+        var colorPreview = DesignProcessor.Render(next, new WeavePattern?[next.Colors.Length]);
+        var patternPreview = DesignProcessor.Render(next, patterns);
+        Palette = next; Patterns = patterns; ColorPreview = colorPreview; PatternPreview = patternPreview;
+    }
     public void AssignPattern(int index, WeavePattern pattern)
     {
         var palette = Palette ?? throw new InvalidOperationException("Apply colors first.");

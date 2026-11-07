@@ -51,7 +51,7 @@ jobs:
         with:
           name: JacquardStudio-Windows-x64
           path: artifacts/previous
-          run-id: 42262893945
+          run-id: 42356856294
           github-token: ${{ github.token }}
       - name: Test per-user installer upgrade
         shell: pwsh
@@ -65,7 +65,7 @@ jobs:
           if ($oldResult.ExitCode -ne 0) { throw "Old installer failed: $($oldResult.ExitCode)" }
           $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{5C0E5A7E-DF2A-4D61-9039-B9EC80CD87AD}_is1'
           $before = Get-ItemProperty $key
-          if ($before.DisplayVersion -ne '006.2.3.0-a1') { throw "Old version not found: $($before.DisplayVersion)" }
+          if ($before.DisplayVersion -ne '007.2.4.1-a1') { throw "Old version not found: $($before.DisplayVersion)" }
           $new = (Get-ChildItem artifacts/installer/*Setup.exe | Select-Object -First 1).FullName
           $newResult = Start-Process -FilePath $new -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-') -Wait -PassThru
           if ($newResult.ExitCode -ne 0) { throw "New installer failed: $($newResult.ExitCode)" }
@@ -79,7 +79,7 @@ jobs:
           $productEntries = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -like 'Jacquard Studio*' })
           if ($productEntries.Count -ne 1) { throw "Repeat install created a second product entry" }
           $fileVersion = (Get-Item (Join-Path $dir 'JacquardStudio.exe')).VersionInfo.FileVersion
-          if ($fileVersion -ne '7.2.4.1') { throw "Executable not updated: $fileVersion" }
+          if ($fileVersion -ne '8.2.5.1') { throw "Executable not updated: $fileVersion" }
           $uninstaller = Join-Path $dir 'unins000.exe'
           $uninstallResult = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
           if ($uninstallResult.ExitCode -ne 0) { throw "Uninstall failed: $($uninstallResult.ExitCode)" }

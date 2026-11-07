@@ -132,6 +132,39 @@ public static class DesignProcessor
         return new PaletteResult(width, height, unique.Count, palette, indices, counts);
     }
 
+    /// <summary>Replace all pixels of one palette color with a selected surviving color.</summary>
+    public static PaletteResult MergeColors(PaletteResult palette, int source, int target)
+    {
+        if (palette.Colors.Length < 2 || (uint)source >= (uint)palette.Colors.Length || (uint)target >= (uint)palette.Colors.Length || source == target)
+            throw new ArgumentException("Select two different colors; at least one color must remain.");
+        var colors = palette.Colors.Where((_, i) => i != source).ToArray();
+        int newTarget = target > source ? target - 1 : target;
+        var indices = new byte[palette.Indices.Length]; var counts = new int[colors.Length];
+        for (int i = 0; i < indices.Length; i++)
+        {
+            int old = palette.Indices[i];
+            int next = old == source ? newTarget : old > source ? old - 1 : old;
+            indices[i] = (byte)next; counts[next]++;
+        }
+        return new PaletteResult(palette.Width, palette.Height, palette.SourceColorCount, colors, indices, counts);
+    }
+    public static int NearestRemainingColor(PaletteResult palette, int source)
+    {
+        if (palette.Colors.Length < 2 || (uint)source >= (uint)palette.Colors.Length) throw new ArgumentException("At least two colors are required.");
+        int color = palette.Colors[source], best = -1, bestDistance = int.MaxValue;
+        for (int i = 0; i < palette.Colors.Length; i++)
+        {
+            if (i == source) continue;
+            int c = palette.Colors[i];
+            int r = ((c >> 16) & 255) - ((color >> 16) & 255);
+            int g = ((c >> 8) & 255) - ((color >> 8) & 255);
+            int b = (c & 255) - (color & 255);
+            int distance = r * r + g * g + b * b;
+            if (distance < bestDistance) { best = i; bestDistance = distance; }
+        }
+        return best;
+    }
+
     private static int Nearest(int color, int[] palette)
     {
         int best = 0, distance = int.MaxValue;

@@ -3,16 +3,27 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Jacquard Studio" Width="1320" Height="820" MinWidth="920" MinHeight="650"
         WindowStartupLocation="CenterScreen" Background="#0C1420" FontSize="14" Icon="Assets/app.ico"
-        FlowDirection="RightToLeft" AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver">
+        WindowStyle="None" ResizeMode="CanResize" FlowDirection="RightToLeft" AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver">
+    <WindowChrome.WindowChrome><WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/></WindowChrome.WindowChrome>
     <Grid>
-        <Grid.RowDefinitions><RowDefinition Height="70"/><RowDefinition Height="*"/><RowDefinition Height="38"/></Grid.RowDefinitions>
-        <Border Background="#111B29" BorderBrush="#27384B" BorderThickness="0,0,0,1">
+        <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="70"/><RowDefinition Height="*"/><RowDefinition Height="38"/></Grid.RowDefinitions>
+        <Border Grid.Row="0" Background="#111B29" BorderBrush="#27384B" BorderThickness="0,0,0,1" FlowDirection="LeftToRight" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown" MouseRightButtonUp="TitleBar_MouseRightButtonUp">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="CloseWindowButton" Content="✕" ToolTip="بستن" AutomationProperties.Name="Close" Click="CloseWindow_Click" Width="44" Height="32" Background="#71343D" Padding="0"/>
+                    <Button x:Name="MaximizeWindowButton" Content="□" ToolTip="بزرگ‌نمایی / بازگردانی" AutomationProperties.Name="Maximize or restore" Click="MaximizeWindow_Click" Width="44" Height="32" Padding="0"/>
+                    <Button x:Name="MinimizeWindowButton" Content="−" ToolTip="کمینه کردن" AutomationProperties.Name="Minimize" Click="MinimizeWindow_Click" Width="44" Height="32" Padding="0"/>
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="Jacquard Studio" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,18,0" FontWeight="SemiBold" FlowDirection="LeftToRight"/>
+            </Grid>
+        </Border>
+        <Border Grid.Row="1" Background="#111B29" BorderBrush="#27384B" BorderThickness="0,0,0,1">
             <Grid Margin="24,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center"><TextBlock Text="JACQUARD STUDIO" FontSize="16" FontWeight="Bold" FlowDirection="LeftToRight" HorizontalAlignment="Right"/><TextBlock x:Name="SubtitleText" Text="فضای کار طراحی و بازرسی ژاکارد" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,3,0,0"/></StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><Border Background="#1C3A38" CornerRadius="12" Padding="10,5" Margin="12,0"><TextBlock x:Name="BadgeText" Text="نسخه آزمایشی" Foreground="#69E4C7" FontSize="11"/></Border><Button x:Name="OpenProjectButton" Content="باز کردن پروژه" Click="OpenProject_Click" Padding="12,7" Margin="0,0,8,0"/><Button x:Name="SaveProjectButton" Content="ذخیره پروژه" Click="SaveProject_Click" Padding="12,7" Margin="0,0,8,0" IsEnabled="False"/><Button x:Name="AboutButton" Content="درباره" Click="About_Click" Padding="12,7" Margin="0,0,8,0"/><Button x:Name="LanguageButton" Content="English" Click="Language_Click" Padding="12,7"/></StackPanel>
             </Grid>
         </Border>
-        <Grid Grid.Row="1" Margin="22">
+        <Grid Grid.Row="2" Margin="22">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <Grid x:Name="Navigation" Margin="0,0,0,16" FlowDirection="RightToLeft">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -27,7 +38,7 @@
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" MinWidth="260"/><ColumnDefinition Width="10"/><ColumnDefinition Width="355" MinWidth="270"/></Grid.ColumnDefinitions>
                 <GridSplitter Grid.Column="1" Width="10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#2B3A4E" ShowsPreview="True" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" ToolTip="Resize panels"/>
                 <Border Grid.Column="2" x:Name="SettingsBorder" FlowDirection="RightToLeft" Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="12" Padding="18">
-                    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <Grid><Grid x:Name="RegularSettings"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                         <StackPanel><TextBlock x:Name="FileCaption" Text="فایل ورودی" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="FileValue" Text="—" FlowDirection="LeftToRight" TextTrimming="CharacterEllipsis" Margin="0,6,0,6"/><StackPanel Orientation="Horizontal" FlowDirection="LeftToRight" Margin="0,0,0,12"><Button x:Name="PreviousPage" Content="‹" Click="PreviousPage_Click" Width="36" Padding="6" IsEnabled="False"/><TextBlock x:Name="PageValue" Text="—" Width="78" TextAlignment="Center" VerticalAlignment="Center"/><Button x:Name="NextPage" Content="›" Click="NextPage_Click" Width="36" Padding="6" IsEnabled="False"/><TextBlock x:Name="FormatValue" Text="" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="12,0,0,0"/></StackPanel><Border Height="1" Background="#2B3A4E"/></StackPanel>
                         <Grid Grid.Row="1" Margin="0,16,0,0">
                             <StackPanel x:Name="NoFilePanel"><TextBlock x:Name="NoFileTitle" Text="شروع کار" FontSize="18" FontWeight="SemiBold"/><TextBlock x:Name="NoFileHint" Text="ابتدا یک تصویر BMP یا TIFF باز کنید یا در پنجره رها کنید." TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,10,0,0"/></StackPanel>
@@ -40,26 +51,29 @@
                                 <Button x:Name="ToColorButton" Content="مرحله بعد: رنگ ←" Click="ColorStep_Click" Margin="0,10,0,0" IsEnabled="False"/>
                                 <TextBlock x:Name="SizeNotice" Text="روش تغییر اندازه نزدیک‌ترین همسایه است؛ نسبت تصویر خودکار حفظ نمی‌شود." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,18,0,0" FontSize="12"/>
                             </StackPanel>
-                            <StackPanel x:Name="ColorPanel" Visibility="Collapsed">
+                            <ScrollViewer x:Name="ColorScroll" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel x:Name="ColorPanel" Visibility="Collapsed">
                                 <TextBlock x:Name="ColorTitle" Text="مرحله ۲ · کاهش رنگ" FontSize="18" FontWeight="SemiBold"/>
                                 <TextBlock x:Name="ColorHint" Text="ورودی این مرحله تصویر تغییراندازه‌یافته است؛ بیش از ۵۰ رنگ به‌طور خودکار کاهش می‌یابد." TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,8,0,16"/>
                                 <TextBlock x:Name="ColorLimitLabel" Text="حداکثر تعداد رنگ (۱ تا ۵۰)"/><TextBox x:Name="ColorInput" Text="50" TextChanged="Inputs_Changed" FlowDirection="LeftToRight" Margin="0,6,0,0" Padding="7"/>
                                 <Button x:Name="ApplyColorButton" Content="اعمال تعداد رنگ" Click="ApplyColor_Click" Margin="0,14,0,0"/>
                                 <TextBlock x:Name="ColorSummary" Foreground="#75DFC7" TextWrapping="Wrap" Margin="0,14,0,8"/>
-                                <ListBox x:Name="ColorPaletteList" MaxHeight="110" Background="#111B29" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"><ListBox.ItemTemplate><DataTemplate><StackPanel Orientation="Horizontal" Margin="4"><Border Width="22" Height="22" Background="{Binding Brush}" BorderBrush="#A0A0A0" BorderThickness="1" CornerRadius="3"/><TextBlock Text="{Binding ColorLabel}" FlowDirection="LeftToRight" Margin="8,0" VerticalAlignment="Center"/></StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox>
-                                <Button x:Name="SaveColorButton" Content="ذخیره خروجی رنگ" Click="Save_Click" Margin="0,10,0,0" IsEnabled="False"/>
-                                <Button x:Name="ToPatternButton" Content="مرحله بعد: بافت ←" Click="PatternStep_Click" Margin="0,14,0,0" IsEnabled="False"/>
-                            </StackPanel>
-                            <Grid x:Name="PatternPanel" Visibility="Collapsed"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                                <StackPanel><TextBlock x:Name="PatternTitle" Text="مرحله ۳ · اختصاص بافت" FontSize="18" FontWeight="SemiBold"/><TextBlock x:Name="PatternHint" Text="برای هر رنگ یک پترن سیاه‌وسفید انتخاب کنید؛ بافت در تمام نقاط آن رنگ تکرار می‌شود." TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,8,0,12"/><TextBlock x:Name="AssignedText" Foreground="#75DFC7" Margin="0,0,0,12"/></StackPanel>
-                                <Button Grid.Row="1" x:Name="SaveButton" Content="ذخیره تصویر نهایی" Click="Save_Click" IsEnabled="False" Background="#36C9AB" BorderBrush="#36C9AB" Foreground="#082621" FontWeight="Bold" Margin="0,0,0,12"/>
-                                <ListView Grid.Row="2" x:Name="PaletteList" Background="#111B29" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                                <ListView x:Name="ColorPaletteList" Height="175" Background="#111B29" BorderThickness="0" SelectionMode="Single" SelectionChanged="ColorSelection_Changed" FlowDirection="RightToLeft" ScrollViewer.HorizontalScrollBarVisibility="Auto">
                                     <ListView.View><GridView>
-                                        <GridViewColumn x:Name="ColorColumn" Header="رنگ" Width="120"><GridViewColumn.CellTemplate><DataTemplate><StackPanel Orientation="Horizontal"><Border Width="24" Height="24" Background="{Binding Brush}" BorderBrush="#A0A0A0" BorderThickness="1" CornerRadius="4"/><TextBlock Text="{Binding ColorLabel}" FlowDirection="LeftToRight" Margin="7,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/></StackPanel></DataTemplate></GridViewColumn.CellTemplate></GridViewColumn>
-                                        <GridViewColumn x:Name="PatternColumn" Header="بافت" Width="155"><GridViewColumn.CellTemplate><DataTemplate><StackPanel Orientation="Horizontal"><Border Width="36" Height="36" Background="#0C1420" BorderBrush="#526376" BorderThickness="1" CornerRadius="3"><Image Source="{Binding PatternPreview}" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor"/></Border><TextBlock Text="{Binding PatternLabel}" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis" MaxWidth="70" Margin="6,0" VerticalAlignment="Center"/><Button Content="..." ToolTip="Choose pattern" Padding="6,3" Click="Pattern_Click"/></StackPanel></DataTemplate></GridViewColumn.CellTemplate></GridViewColumn>
+                                        <GridViewColumn x:Name="ColorSwatchColumn" Header="رنگ" Width="46"><GridViewColumn.CellTemplate><DataTemplate><Border Width="25" Height="25" Background="{Binding Brush}" BorderBrush="#A0A0A0" BorderThickness="1" CornerRadius="4"/></DataTemplate></GridViewColumn.CellTemplate></GridViewColumn>
+                                        <GridViewColumn x:Name="ColorCodeColumn" Header="کد رنگ" Width="80" DisplayMemberBinding="{Binding ColorCode}"/>
+                                        <GridViewColumn x:Name="ColorCountColumn" Header="پیکسل" Width="75" DisplayMemberBinding="{Binding PixelCountText}"/>
+                                        <GridViewColumn x:Name="ColorPercentColumn" Header="درصد" Width="55" DisplayMemberBinding="{Binding PercentText}"/>
                                     </GridView></ListView.View>
                                 </ListView>
-                            </Grid>
+                                <TextBlock x:Name="MergeTargetLabel" Text="رنگ مقصد برای ادغام" Margin="0,10,0,4" Foreground="{StaticResource Muted}"/>
+                                <ComboBox x:Name="MergeTarget" DisplayMemberPath="ColorCode" SelectionChanged="ColorSelection_Changed" MinHeight="32" FlowDirection="LeftToRight"/>
+                                <Grid Margin="0,10,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Button x:Name="DeleteColorButton" Content="حذف رنگ انتخابی" Click="DeleteColor_Click" IsEnabled="False" Margin="0,0,4,0" Padding="6,8"/>
+                                    <Button x:Name="MergeColorButton" Grid.Column="1" Content="ادغام با مقصد" Click="MergeColor_Click" IsEnabled="False" Padding="6,8"/>
+                                </Grid>
+                                <Button x:Name="SaveColorButton" Content="ذخیره خروجی رنگ" Click="Save_Click" Margin="0,10,0,0" IsEnabled="False"/>
+                                <Button x:Name="ToPatternButton" Content="مرحله بعد: بافت ←" Click="PatternStep_Click" Margin="0,14,0,0" IsEnabled="False"/>
+                            </StackPanel></ScrollViewer>
                             <ScrollViewer x:Name="MachineScroll" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel x:Name="MachinePanel" Visibility="Collapsed">
                                 <TextBlock x:Name="MachineTitle" Text="مرحله ۴ · فایل ماشین" FontSize="18" FontWeight="SemiBold"/>
                                 <TextBlock x:Name="MachineHint" Text="خواندن و نوشتن قالب‌های زیر هنوز تأیید و پیاده‌سازی نشده است. تغییر پسوند، تبدیل فایل نیست." TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,8,0,16"/>
@@ -81,16 +95,17 @@
                         </Grid>
                         <TextBlock Grid.Row="2" x:Name="SafetyText" Text="خروجی تصویر است، نه فایل دستگاه بافندگی." Foreground="#B4E5D7" TextWrapping="Wrap" FontSize="12" Margin="0,12,0,0"/>
                     </Grid>
-                </Border>
-                <Grid Grid.Column="0" FlowDirection="RightToLeft">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                    <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock x:Name="CanvasTitle" Text="پیش‌نمایش طرح" FontSize="21" FontWeight="SemiBold"/><TextBlock x:Name="CanvasSubtitle" Text="خروجی هر مرحله در این قسمت نمایش داده می‌شود" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0"/></StackPanel><StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" FlowDirection="LeftToRight"><Button Content="−" Click="ZoomOut_Click" Width="40" Padding="6"/><TextBlock x:Name="ZoomText" Text="100%" Width="58" TextAlignment="Center" VerticalAlignment="Center"/><Button Content="+" Click="ZoomIn_Click" Width="40" Padding="6"/><Button Content="100%" Click="ZoomReset_Click" Padding="10,6" Margin="6,0,0,0"/></StackPanel></Grid>
-                    <Border x:Name="PatternGallery" Grid.Row="1" Visibility="Collapsed" Background="#172432" BorderBrush="#354B5C" BorderThickness="1" CornerRadius="10" Padding="8" Margin="0,0,0,10" FlowDirection="LeftToRight">
-                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False">
+                    <Grid x:Name="PatternWorkspace" Visibility="Collapsed"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="AssignedText" Foreground="#75DFC7" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                            <Button Grid.Column="1" x:Name="SaveButton" Content="ذخیره تصویر" Click="Save_Click" IsEnabled="False" Background="#36C9AB" BorderBrush="#36C9AB" Foreground="#082621" Padding="10,7"/>
+                        </Grid>
+                    <Border x:Name="PatternGallery" Grid.Row="1" Background="#172432" BorderBrush="#354B5C" BorderThickness="1" CornerRadius="10" Padding="8" Margin="0" FlowDirection="RightToLeft">
+                        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" CanContentScroll="False">
                             <ItemsControl x:Name="PatternCards">
-                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate><DataTemplate>
-                                    <Border Background="#EDF0F1" BorderBrush="#7F929D" BorderThickness="1" CornerRadius="4" Margin="3" Width="156">
+                                    <Border Background="#EDF0F1" BorderBrush="#7F929D" BorderThickness="1" CornerRadius="4" Margin="3" Width="138">
                                         <StackPanel>
                                             <Border Background="White" Height="115" Margin="5" BorderBrush="#ADB7BA" BorderThickness="1"><Image Source="{Binding PatternGridPreview}" Width="105" Height="105" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor"/></Border>
                                             <Grid Height="28" Background="#D6DBDD"><Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Background="{Binding Brush}"><TextBlock Text="{Binding ColorNumber}" Foreground="{Binding ColorNumberForeground}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/></Border><TextBlock Grid.Column="1" Text="{Binding PatternSize}" Foreground="#172432" HorizontalAlignment="Center" VerticalAlignment="Center" FlowDirection="LeftToRight"/></Grid>
@@ -102,11 +117,17 @@
                             </ItemsControl>
                         </ScrollViewer>
                     </Border>
+                    </Grid>
+                    </Grid>
+                </Border>
+                <Grid Grid.Column="0" FlowDirection="RightToLeft">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock x:Name="CanvasTitle" Text="پیش‌نمایش طرح" FontSize="21" FontWeight="SemiBold"/><TextBlock x:Name="CanvasSubtitle" Text="خروجی هر مرحله در این قسمت نمایش داده می‌شود" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0"/></StackPanel><StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" FlowDirection="LeftToRight"><Button Content="−" Click="ZoomOut_Click" Width="40" Padding="6"/><TextBlock x:Name="ZoomText" Text="100%" Width="58" TextAlignment="Center" VerticalAlignment="Center"/><Button Content="+" Click="ZoomIn_Click" Width="40" Padding="6"/><Button Content="100%" Click="ZoomReset_Click" Padding="10,6" Margin="6,0,0,0"/></StackPanel></Grid>
                     <Border Grid.Row="2" Background="#0B121D" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="12" ClipToBounds="True"><Grid><ScrollViewer x:Name="ImageScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" FlowDirection="LeftToRight" Visibility="Collapsed"><Image x:Name="PreviewImage" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="None" RenderOptions.BitmapScalingMode="NearestNeighbor"/></ScrollViewer><StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Width="350"><Border Width="72" Height="72" Background="#172A36" BorderBrush="#2E5C5C" BorderThickness="1" CornerRadius="22"><TextBlock Text="▦" Foreground="#59DBBF" FontSize="40" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="EmptyTitle" Text="طرح خود را وارد کنید" FontSize="20" FontWeight="SemiBold" TextAlignment="Center" Margin="0,22,0,8"/><TextBlock x:Name="EmptyHint" Text="یک تصویر BMP یا TIFF انتخاب کنید." TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource Muted}"/><Button x:Name="EmptyButton" Content="انتخاب تصویر" Click="Open_Click" HorizontalAlignment="Center" Margin="0,20,0,0"/></StackPanel></Grid></Border>
                     <TextBlock Grid.Row="3" x:Name="PreviewDetails" Foreground="{StaticResource Muted}" FontSize="12" Margin="2,10,2,0" FlowDirection="LeftToRight"/>
                 </Grid>
             </Grid>
         </Grid>
-        <Border Grid.Row="2" Background="#111B29" BorderBrush="#27384B" BorderThickness="0,1,0,0"><Grid Margin="24,0"><TextBlock x:Name="StatusText" Text="آماده برای باز کردن تصویر" VerticalAlignment="Center" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock x:Name="VersionText" FlowDirection="LeftToRight" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="#73879B" FontSize="11"/></Grid></Border>
+        <Border Grid.Row="3" Background="#111B29" BorderBrush="#27384B" BorderThickness="0,1,0,0"><Grid Margin="24,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="StatusText" Text="آماده برای باز کردن تصویر" VerticalAlignment="Center" Foreground="{StaticResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="DeveloperText" Grid.Column="1" Text="برنامه‌نویس: میرخلیلی" VerticalAlignment="Center" Foreground="#9BAFC3" FontSize="11" Margin="16,0"/><TextBlock x:Name="VersionText" Grid.Column="2" FlowDirection="LeftToRight" VerticalAlignment="Center" Foreground="#73879B" FontSize="11"/></Grid></Border>
     </Grid>
 </Window>
