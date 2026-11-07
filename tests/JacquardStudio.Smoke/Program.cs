@@ -209,6 +209,8 @@ internal static class Program
             weaveEditor.Redo(); Check(weaveEditor.Snapshot().Values.SequenceEqual(diagonal), "redo helper");
             weaveEditor.ApplyHelper("invert"); Check(!weaveEditor.CanRedo && weaveEditor.Snapshot().Values.Count(v => v == 0) == 56, "new edit clears redo");
             weaveEditor.ApplyHelper("plain"); Check(weaveEditor.Snapshot().Values.Count(v => v == 0) == 32, "plain weave helper");
+            weaveEditor.MarkSaved(); var savedEditor = weaveEditor.Snapshot(); weaveEditor.ApplyHelper("invert"); weaveEditor.DiscardChanges();
+            Check(!weaveEditor.IsDirty && !weaveEditor.CanUndo && weaveEditor.Snapshot().Values.SequenceEqual(savedEditor.Values), "discard restores saved editor state");
             var hit = PreviewHitTest.Find(pipeline.Palette!, 1.5, 1.0, 6, 4);
             Check(hit is { X: 1, Y: 1 } && hit.Value.ColorIndex == pipeline.Palette!.Indices[7], "hover maps scaled image coordinates to palette");
             Check(PreviewHitTest.Find(pipeline.Palette!, 6, 1, 6, 4) is null, "hover excludes outside edge");

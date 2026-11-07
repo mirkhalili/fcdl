@@ -388,7 +388,7 @@ public partial class MainWindow : Window
     private async void Bank_Click(object sender, RoutedEventArgs e)
     {
         if (busy) return;
-        if (bankOpen) { if (ConfirmDiscardDrawing()) { bankOpen = false; bankTargetIndex = null; WeaveCanvas.MarkSaved(); ShowStage(); } return; }
+        if (bankOpen) { if (ConfirmDiscardDrawing()) { bankOpen = false; bankTargetIndex = null; WeaveCanvas.DiscardChanges(); ShowStage(); } return; }
         bankTargetIndex = null; bankOpen = true; ShowStage(); await ReloadBankAsync();
     }
     private async void PatternBank_Click(object sender, RoutedEventArgs e)
@@ -399,7 +399,7 @@ public partial class MainWindow : Window
     private void BankBack_Click(object sender, RoutedEventArgs e)
     {
         if (busy || !ConfirmDiscardDrawing()) return;
-        WeaveCanvas.MarkSaved(); bankOpen = false; bankTargetIndex = null; ShowStage();
+        WeaveCanvas.DiscardChanges(); bankOpen = false; bankTargetIndex = null; ShowStage();
     }
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     { if (bankOpen && !ConfirmDiscardDrawing()) e.Cancel = true; }
@@ -483,7 +483,7 @@ public partial class MainWindow : Window
         try
         {
             await Task.Run(() => session.AssignPattern(index, item.Pattern)); RecordHistory(before);
-            entry.Restore(item.Name, item.Pattern); WeaveCanvas.MarkSaved(); bankOpen = false; bankTargetIndex = null; ShowStage();
+            entry.Restore(item.Name, item.Pattern); WeaveCanvas.DiscardChanges(); bankOpen = false; bankTargetIndex = null; ShowStage();
             StatusText.Text = T("بافت بانک به رنگ انتخاب‌شده اختصاص یافت.", "Library weave applied to the selected color.");
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)

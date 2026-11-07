@@ -37,6 +37,7 @@ public sealed class WeaveEditor : FrameworkElement
         SetPattern(new WeavePattern(w, h, Enumerable.Repeat((byte)255, w * h).ToArray()), true);
     }
     public void MarkSaved() { saved = Snapshot(); Changed?.Invoke(this, EventArgs.Empty); }
+    public void DiscardChanges() { undo.Clear(); redo.Clear(); Restore(saved); }
     public void ApplyHelper(string operation, int stepX = 1, int stepY = 1)
     {
         if (stepX < 1 || stepY < 1 || stepX > MaxSide || stepY > MaxSide) throw new ArgumentOutOfRangeException(nameof(stepX));
