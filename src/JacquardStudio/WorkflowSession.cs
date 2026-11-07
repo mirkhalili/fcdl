@@ -76,6 +76,28 @@ public sealed class WorkflowSession
         var image = new WriteableBitmap(PatternPreview); image.WritePixels(new System.Windows.Int32Rect(x, y, 1, 1), new byte[] {v,v,v,255}, 4, 0); image.Freeze();
         PixelOverrides = next; PatternPreview = image;
     }
+    /// <summary>Atomically toggle unique design pixels; this creates one immutable history state.</summary>
+    public void TogglePixels(IEnumerable<PixelPoint> points)
+    {
+        if (!CanSave || Palette is null || PatternPreview is null) throw new InvalidOperationException("Assign every weave before editing pixels.");
+        var unique = new HashSet<int>();
+        foreach (var point in points)
+        {
+            if ((uint)point.X >= Palette.Width || (uint)point.Y >= Palette.Height) throw new ArgumentOutOfRangeException(nameof(points));
+            unique.Add(point.Y * Palette.Width + point.X);
+        }
+        if (unique.Count == 0) return;
+        int stride = checked(Palette.Width * 4); var bytes = new byte[checked(stride * Palette.Height)];
+        new FormatConvertedBitmap(PatternPreview, System.Windows.Media.PixelFormats.Bgra32, null, 0).CopyPixels(bytes, stride, 0);
+        var next = PixelOverrides is null ? new byte[Palette.Width * Palette.Height] : (byte[])PixelOverrides.Clone();
+        foreach (int index in unique)
+        {
+            int i = index * 4; byte v = bytes[i] == 0 ? (byte)255 : (byte)0;
+            bytes[i] = bytes[i + 1] = bytes[i + 2] = v; next[index] = v == 0 ? (byte)1 : (byte)2;
+        }
+        var output = BitmapSource.Create(Palette.Width, Palette.Height, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, bytes, stride); output.Freeze();
+        PixelOverrides = next; PatternPreview = output;
+    }
     // Stage results are replaced, never modified in place; share them for bounded undo snapshots.
     public WorkflowSession Snapshot() => new(Source) { Resized = Resized, Palette = Palette, ColorPreview = ColorPreview, AppliedColorLimit = AppliedColorLimit, Patterns = Patterns, PatternPreview = PatternPreview, PixelOverrides = PixelOverrides };
     public bool CanSave => Palette is not null && Patterns.Length > 0 && Patterns.All(p => p is not null);

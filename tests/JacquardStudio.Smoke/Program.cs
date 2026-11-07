@@ -260,6 +260,17 @@ internal static class Program
             Check(DesignAnalysis.FindFloats(analysisPixels, 3, 4, 5, FloatDirection.Warp).Count == 0, "float threshold longer than line");
             var alternating = new byte[] {0,255,0,255};
             Check(DesignAnalysis.FindFloats(alternating, 4, 1, 1, FloatDirection.Weft).Count == 4 && DesignAnalysis.FindFloats(alternating, 4, 1, 2, FloatDirection.Weft).Count == 0, "single-cell runs and no edge wrapping");
+            var floatPlan = FloatAutoCorrection.Plan(new[] { new FloatRun(11, 0, 3, true, FloatDirection.Warp), new FloatRun(10, 1, 2, false, FloatDirection.Weft), new FloatRun(7, 0, 3, true, FloatDirection.Weft), new FloatRun(12, 0, 2, true, FloatDirection.Warp) }, 10, 3, 3, new[] {12});
+            Check(floatPlan.Points.SequenceEqual(new[] {new PixelPoint(1,1), new PixelPoint(0,1)}) && floatPlan.Skipped == 2, "float centers, even tie and reserved/edge exclusions");
+            var autoSession = new WorkflowSession(image); autoSession.ApplySize(3,2); autoSession.ApplyColors(50);
+            for (int i = 0; i < autoSession.Patterns.Length; i++) autoSession.AssignPattern(i, new WeavePattern(1,1,new byte[]{0}));
+            var autoBefore = autoSession.Snapshot(); autoSession.TogglePixels(new[] {new PixelPoint(1,1), new PixelPoint(0,1), new PixelPoint(1,1)});
+            Check(DesignAnalysis.ReadBinary(autoSession.PatternPreview!).SequenceEqual(new byte[]{0,0,0,255,255,0}) && DesignAnalysis.ReadBinary(autoBefore.PatternPreview!).All(v => v == 0), "batch correction toggles unique centers and keeps undo snapshot");
+            var autoBytes = DesignAnalysis.ReadBinary(autoSession.PatternPreview!); Expect<ArgumentOutOfRangeException>(() => autoSession.TogglePixels(new[] {new PixelPoint(0,0),new PixelPoint(8,8)}));
+            Check(DesignAnalysis.ReadBinary(autoSession.PatternPreview!).SequenceEqual(autoBytes), "invalid batch is atomic");
+            string autoFile = Path.Combine(dir,"auto-floats.sam"); ProjectFile.Save(autoFile, new ProjectState(autoSession,"sample.bmp","3","2","50","Floats",false,1,autoSession.Patterns.Select(_ => (string?)"pattern").ToArray()), new[] {bmpPath});
+            Check(DesignAnalysis.ReadBinary(ProjectFile.Load(autoFile).Session.PatternPreview!).SequenceEqual(autoBytes), "automatic float corrections survive SAM");
+            Check(PreviewViewport.ZoomOffset(100, 50, 2) == 150 && PreviewViewport.PanOffset(120, 40, 70) == 90 && PreviewViewport.PanOffset(1, 0, 20) == 0, "anchored zoom and pan geometry");
             byte beforeToggle = DesignAnalysis.ReadBinary(bankSession.PatternPreview!)[0];
             var historySnapshot = bankSession.Snapshot(); bankSession.TogglePixel(0,0);
             Check(DesignAnalysis.ReadBinary(bankSession.PatternPreview!)[0] != beforeToggle && DesignAnalysis.ReadBinary(historySnapshot.PatternPreview!)[0] == beforeToggle, "edited pixel and history snapshot are independent");
@@ -316,6 +327,9 @@ internal static class Program
             var draftFile = Path.Combine(dir, "draft.sam");
             ProjectFile.Save(draftFile, new ProjectState(bankSession,"sample.bmp","۳","۲","۵۰","Weft",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,absolute,draft), new[] {bmpPath});
             var draftLoaded = ProjectFile.Load(draftFile); Check(draftLoaded.Machine!.WeftStart == "1" && draftLoaded.DraftWeft == draft && draftLoaded.WidthInput == "۳", "SAM persists applied settings and Persian draft independently");
+            var stripMap = MachineComposer.Compose(image, new MachineSetup(AbsoluteLayout:true, TotalHooks:"7", DesignStart:"2"));
+            var strip = CompositionView.HeatStrip(new WarpAnalysis(new[] {0,1,2},1,new double[] {-100,0,100}), stripMap); var stripBytes = new byte[28]; strip.CopyPixels(stripBytes, 28, 0);
+            Check(strip.PixelWidth == 7 && strip.PixelHeight == 1 && stripBytes[0] == 120 && stripBytes[8] == 240 && stripBytes[10] == 70 && stripBytes[12] == 240 && stripBytes[16] == 70 && stripBytes[18] == 240 && stripBytes[24] == 120, "heat strip colors, fabric alignment and excluded padding");
             var absoluteFile = Path.Combine(dir,"positioned.sam"); ProjectFile.Save(absoluteFile, new ProjectState(bankSession,"sample.bmp","3","2","50","Weft",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,absolute), new[] {bmpPath});
             var absoluteLoaded = ProjectFile.Load(absoluteFile).Machine!; Check(absoluteLoaded.AbsoluteLayout && absoluteLoaded.TotalHooks == "30" && absoluteLoaded.WeftStart == "1" && DesignAnalysis.ReadBinary(MachineComposer.Compose(image, absoluteLoaded).Image).SequenceEqual(positionedPixels), "absolute layout persists and reproduces map");
             var v4File = Path.Combine(dir, "legacy-v4.sam"); File.Copy(absoluteFile, v4File);
@@ -372,7 +386,7 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            Check(AppVersion.Display == "015.2.12.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "016.2.13.1-a1", "QAVNS version from version.txt");
             var reportEntries = bankSession.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = bankSession.Palette.Counts[index], Percent = 100d * bankSession.Palette.Counts[index] / bankSession.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; if (bankSession.Patterns[index] is { } p) e.Restore("sample", p); return e; }).ToArray();
             var fullEntries = fullProject.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = fullProject.Palette.Counts[index], Percent = 100d * fullProject.Palette.Counts[index] / fullProject.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; e.Restore("sample", fullProject.Patterns[index]!); return e; }).ToArray();
             var fullMap = MachineComposer.Compose(fullProject.PatternPreview!, new MachineSetup("2", "1", edgeLeft, edgeRight, "left", "right", AbsoluteLayout: true, TotalHooks: "54", DesignStart: "3"));
@@ -413,6 +427,7 @@ internal static class Program
             Check(window.FindName("BankWorkspace") is System.Windows.FrameworkElement && window.FindName("WeaveCanvas") is WeaveEditor && window.FindName("BankButton") is System.Windows.Controls.Button, "embedded weave bank and drawing section");
             Check(window.FindName("SaveProjectAsButton") is System.Windows.Controls.Button && window.FindName("ThemeButton") is System.Windows.Controls.Button, "save as and theme controls");
             Check(window.FindName("UndoButton") is System.Windows.Controls.Button && window.FindName("RedoButton") is System.Windows.Controls.Button && window.FindName("ReportButton") is System.Windows.Controls.Button && window.FindName("HoverCard") is System.Windows.Controls.Border, "history, report and hover controls");
+            Check(window.FindName("FloatAutoButton") is System.Windows.Controls.Button && window.FindName("AnalysisStripImage") is System.Windows.Controls.Image && window.FindName("HoverSwatch") is System.Windows.Controls.Border, "automatic float, heat strip and color swatch controls");
             Check(window.FindName("InfoButton") is System.Windows.Controls.Button && window.FindName("AnalysisPanel") is System.Windows.Controls.ScrollViewer && window.FindName("FloatPanel") is System.Windows.Controls.ScrollViewer, "design info, analysis and float controls");
             Check(window.FindName("SelvedgePanel") is System.Windows.Controls.ScrollViewer && window.FindName("WeftPanel") is System.Windows.Controls.ScrollViewer && window.FindName("MachinePreviewButton") is System.Windows.Controls.Button, "integrated machine selvedge and box settings");
             var title = (System.Windows.Controls.TextBlock)window.FindName("WindowTitleText");
