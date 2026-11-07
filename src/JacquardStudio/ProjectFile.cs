@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public sealed record ProjectState(WorkflowSession Session, string SourceName, string WidthInput, string HeightInput, string ColorInput, string Stage, bool English, int MachineFormatIndex, string?[] PatternNames);
+public sealed record ProjectState(WorkflowSession Session, string SourceName, string WidthInput, string HeightInput, string ColorInput, string Stage, bool English, int MachineFormatIndex, string?[] PatternNames, DateTimeOffset? CreatedAt = null);
 
 /// <summary>Self-contained, versioned SAM archive. Never extracts paths from the archive.</summary>
 public static class ProjectFile
@@ -21,6 +21,7 @@ public static class ProjectFile
         public int SourceWidth { get; set; } public int SourceHeight { get; set; }
         public int ResizeWidth { get; set; } public int ResizeHeight { get; set; }
         public string SourceName { get; set; } = "";
+        public DateTimeOffset? CreatedAt { get; set; }
         public string WidthInput { get; set; } = ""; public string HeightInput { get; set; } = ""; public string ColorInput { get; set; } = "50";
         public string Stage { get; set; } = "Size"; public bool English { get; set; } public int MachineFormatIndex { get; set; }
         public int? ColorLimit { get; set; } public int SourceColors { get; set; }
@@ -72,7 +73,7 @@ public static class ProjectFile
         {
             SourceWidth = session.Source.PixelWidth, SourceHeight = session.Source.PixelHeight,
             ResizeWidth = session.Resized?.PixelWidth ?? 0, ResizeHeight = session.Resized?.PixelHeight ?? 0,
-            SourceName = Bounded(state.SourceName, 255), WidthInput = Bounded(state.WidthInput, 32), HeightInput = Bounded(state.HeightInput, 32), ColorInput = Bounded(state.ColorInput, 32),
+            CreatedAt = state.CreatedAt, SourceName = Bounded(state.SourceName, 255), WidthInput = Bounded(state.WidthInput, 32), HeightInput = Bounded(state.HeightInput, 32), ColorInput = Bounded(state.ColorInput, 32),
             Stage = Bounded(state.Stage, 16), English = state.English, MachineFormatIndex = state.MachineFormatIndex, ColorLimit = session.AppliedColorLimit,
             SourceColors = palette?.SourceColorCount ?? 0, Colors = palette?.Colors,
             Patterns = palette is null ? null : session.Patterns.Select((p, i) => p is null ? null : new PatternInfo { Width = p.Width, Height = p.Height, Name = Bounded(state.PatternNames[i], 255) }).ToArray()
@@ -140,6 +141,6 @@ public static class ProjectFile
         if (stage is not ("Size" or "Colors" or "Patterns" or "Machine")) throw new InvalidDataException("Invalid workflow stage.");
         if ((stage == "Colors" && resized is null) || (stage == "Patterns" && palette is null)) throw new InvalidDataException("Stage lacks required data.");
         var session = WorkflowSession.Restore(source, resized, palette, m.ColorLimit, patterns);
-        return new ProjectState(session, Bounded(m.SourceName, 255), Bounded(m.WidthInput, 32), Bounded(m.HeightInput, 32), Bounded(m.ColorInput, 32, "50"), stage, m.English, m.MachineFormatIndex, names);
+        return new ProjectState(session, Bounded(m.SourceName, 255), Bounded(m.WidthInput, 32), Bounded(m.HeightInput, 32), Bounded(m.ColorInput, 32, "50"), stage, m.English, m.MachineFormatIndex, names, m.CreatedAt);
     }
 }

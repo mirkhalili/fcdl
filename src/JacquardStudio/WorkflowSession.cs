@@ -56,5 +56,7 @@ public sealed class WorkflowSession
         }
         return session;
     }
+    // Stage results are replaced, never modified in place; share them for bounded undo snapshots.
+    public WorkflowSession Snapshot() => new(Source) { Resized = Resized, Palette = Palette, ColorPreview = ColorPreview, AppliedColorLimit = AppliedColorLimit, Patterns = Patterns, PatternPreview = PatternPreview };
     public bool CanSave => Palette is not null && Patterns.Length > 0 && Patterns.All(p => p is not null);
 }

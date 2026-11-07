@@ -203,6 +203,17 @@ internal static class Program
             weaveEditor.SetPattern(new WeavePattern(2, 2, new byte[] {0,255,255,0})); var editorCopy = weaveEditor.Snapshot(); editorCopy.Values[0] = 255;
             Check(weaveEditor.Snapshot().Values[0] == 0 && !weaveEditor.IsDirty, "editor copies selected patterns");
             Expect<ArgumentOutOfRangeException>(() => weaveEditor.Reset(65, 1));
+            weaveEditor.Reset(8, 8); weaveEditor.ApplyHelper("NE");
+            Check(weaveEditor.Snapshot().Values.Count(v => v == 0) == 8 && weaveEditor.CanUndo, "diagonal helper and undo history");
+            var diagonal = weaveEditor.Snapshot().Values; weaveEditor.Undo(); Check(weaveEditor.Snapshot().Values.All(v => v == 255) && weaveEditor.CanRedo, "undo helper");
+            weaveEditor.Redo(); Check(weaveEditor.Snapshot().Values.SequenceEqual(diagonal), "redo helper");
+            weaveEditor.ApplyHelper("invert"); Check(!weaveEditor.CanRedo && weaveEditor.Snapshot().Values.Count(v => v == 0) == 56, "new edit clears redo");
+            weaveEditor.ApplyHelper("plain"); Check(weaveEditor.Snapshot().Values.Count(v => v == 0) == 32, "plain weave helper");
+            var hit = PreviewHitTest.Find(pipeline.Palette!, 1.5, 1.0, 6, 4);
+            Check(hit is { X: 1, Y: 1 } && hit.Value.ColorIndex == pipeline.Palette!.Indices[7], "hover maps scaled image coordinates to palette");
+            Check(PreviewHitTest.Find(pipeline.Palette!, 6, 1, 6, 4) is null, "hover excludes outside edge");
+            var savedSnapshot = pipeline.Snapshot(); var originalPattern = savedSnapshot.Patterns[0]; pipeline.AssignPattern(0, new WeavePattern(1, 1, new byte[] {255}));
+            Check(ReferenceEquals(savedSnapshot.Patterns[0], originalPattern) && !ReferenceEquals(savedSnapshot.Patterns, pipeline.Patterns), "workflow snapshot survives reassignment");
             Check(ProjectSavePolicy.RequiresDialog(null, false) && !ProjectSavePolicy.RequiresDialog("project.sam", false) && ProjectSavePolicy.RequiresDialog("project.sam", true), "save existing vs save as policy");
             var entry = new PaletteEntry(); entry.Assign("weave.bmp", new WeavePattern(2, 1, new byte[] { 0, 255 }));
             var thumbnail = new byte[2]; entry.PatternPreview!.CopyPixels(thumbnail, 2, 0);
@@ -238,7 +249,19 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            Check(AppVersion.Display == "009.2.6.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "010.2.7.1-a1", "QAVNS version from version.txt");
+            var reportEntries = bankSession.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = bankSession.Palette.Counts[index], Percent = 100d * bankSession.Palette.Counts[index] / bankSession.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; if (bankSession.Patterns[index] is { } p) e.Restore("sample", p); return e; }).ToArray();
+            Check(DesignReport.PersianDate(new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero)) == "1403/01/01", "solar Hijri report date");
+            Check(DesignReport.PersianDate(null).Contains("نامشخص"), "legacy creation date not invented");
+            var reportImage = DesignReport.Render(DesignReport.CreatePage(bankSession, reportEntries, "نمونه", new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero), false));
+            Check(reportImage.PixelWidth == 1240 && reportImage.PixelHeight == 1754, "single A4 report renders");
+            string reportPath = Path.Combine(dir, "report.pdf"); DesignReport.SavePdf(reportImage, reportPath, new[] {bmpPath});
+            byte[] pdfBytes = File.ReadAllBytes(reportPath); string pdfText = System.Text.Encoding.Latin1.GetString(pdfBytes);
+            Check(pdfText.StartsWith("%PDF-1.4") && pdfText.Contains("/Count 1") && pdfText.Contains("/DCTDecode") && pdfText.TrimEnd().EndsWith("%%EOF"), "single-page PDF created");
+            Expect<IOException>(() => DesignReport.SavePdf(reportImage, reportPath, new[] {reportPath}));
+            var stamped = new ProjectState(bankSession, "sample.bmp", "3", "2", "50", "Patterns", false, 1, bankSession.Patterns.Select(_ => (string?)"sample").ToArray(), new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero));
+            string datedPath = Path.Combine(dir, "dated.sam"); ProjectFile.Save(datedPath, stamped, new[] {bmpPath});
+            Check(ProjectFile.Load(datedPath).CreatedAt == stamped.CreatedAt, "project creation timestamp retained");
             var window = new MainWindow();
             Check(window.FontFamily.Source.Contains("Vazirmatn"), "embedded font selected in main window");
             var nav = (System.Windows.Controls.Grid)window.FindName("Navigation");
@@ -252,6 +275,7 @@ internal static class Program
             Check(list.SelectedItems.Count == 2, "two colors can be selected at once");
             Check(window.FindName("BankWorkspace") is System.Windows.FrameworkElement && window.FindName("WeaveCanvas") is WeaveEditor && window.FindName("BankButton") is System.Windows.Controls.Button, "embedded weave bank and drawing section");
             Check(window.FindName("SaveProjectAsButton") is System.Windows.Controls.Button && window.FindName("ThemeButton") is System.Windows.Controls.Button, "save as and theme controls");
+            Check(window.FindName("UndoButton") is System.Windows.Controls.Button && window.FindName("RedoButton") is System.Windows.Controls.Button && window.FindName("ReportButton") is System.Windows.Controls.Button && window.FindName("HoverCard") is System.Windows.Controls.Border, "history, report and hover controls");
             var title = (System.Windows.Controls.TextBlock)window.FindName("WindowTitleText");
             Check(System.Windows.Controls.Grid.GetColumn(title) == 0 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)System.Windows.Media.VisualTreeHelper.GetParent((System.Windows.DependencyObject)window.FindName("CloseWindowButton"))) == 1, "title and caption button positions swapped");
             ThemeManager.Apply(true, false);
