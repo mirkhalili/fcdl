@@ -10,7 +10,7 @@ public sealed record MachineSetup(
     string LeftWidth = "0", string RightWidth = "0", WeavePattern? LeftPattern = null, WeavePattern? RightPattern = null,
     string LeftName = "", string RightName = "", bool BoxEnabled = false, int BoxPlacement = 0,
     string BoxHooks = "", string BoxCodes = "", string Sequence = "", bool StartFromBottom = false, bool UseSource = false, bool RedAsBlack = false, bool AbsoluteLayout = false, string TotalHooks = "", string DesignStart = "", string WeftStart = "0", string WeftCount = "0");
-public sealed record MachineComposition(BitmapSource Image, int[] SignalHooks, string[] RowWefts, int LeftWidth, int RightWidth);
+public sealed record MachineComposition(BitmapSource Image, int[] SignalHooks, string[] RowWefts, int LeftWidth, int RightWidth, int DesignStart, int FabricStart, int FabricWidth);
 
 public static class MachineComposer
 {
@@ -61,7 +61,7 @@ public static class MachineComposer
             if (count > 0) { int selected = sequence[(setup.StartFromBottom ? h - 1 - y : y) % sequence.Length]; rows[y] = selected.ToString(CultureInfo.InvariantCulture); output[y * total + weftStart + selected - 1] = 0; }
         }
         var result = BitmapSource.Create(total, h, 96, 96, PixelFormats.Gray8, null, output, total); result.Freeze();
-        return new MachineComposition(result, hooks, rows, left, right);
+        return new MachineComposition(result, hooks, rows, left, right, start, start - left, left + frame.PixelWidth + right);
     }
     public static MachineComposition Compose(BitmapSource frame, MachineSetup setup, bool redAsBlack = false)
     {
@@ -128,6 +128,6 @@ public static class MachineComposer
             }
         }
         var image = BitmapSource.Create(w, h, 96, 96, PixelFormats.Gray8, null, output, w); image.Freeze();
-        return new MachineComposition(image, signalHooks, rowWefts, left, right);
+        return new MachineComposition(image, signalHooks, rowWefts, left, right, bodyStart, prefix, left + frame.PixelWidth + right);
     }
 }

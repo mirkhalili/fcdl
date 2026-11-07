@@ -12,7 +12,7 @@ public partial class MainWindow : Window
 {
     private enum Stage { Size, Colors, Patterns, Machine, Analysis, Floats, Selvedge, Weft }
     private Stage stage = Stage.Size;
-    private bool english, busy, bankOpen, lightTheme;
+    private bool english, busy, bankOpen, lightTheme, projectDirty, allowClose, closePromptActive;
     private int? bankTargetIndex;
     private string? bankSelvedgeSide;
     private readonly WeaveBank bank = new();
@@ -24,36 +24,38 @@ public partial class MainWindow : Window
     private WorkflowSession? session;
     private List<PaletteEntry> entries = new();
     private double zoom = 1;
-    private BitmapSource? machinePreview;
+    private BitmapSource? machinePreview, redPreview;
+    private MachineComposition? composedMap;
     private bool loadingMachineSettings, absoluteLayout;
     private System.Windows.Threading.DispatcherTimer? selvedgeTimer;
     private DateTimeOffset? projectCreated;
     private DesignMetadata metadata = new();
     private WarpAnalysis? warpAnalysis;
-    private BitmapSource? heatmap;
     private List<FloatRun>? floatRuns;
     private int floatIndex, lastFloatMinimum;
     private FloatDirection lastFloatDirection;
     private sealed record HistoryState(WorkflowSession Session, Stage Stage, string?[] Names, string?[] Paths);
     private readonly List<HistoryState> undoHistory = new(), redoHistory = new();
 
-    public MainWindow() { InitializeComponent(); selvedgeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) }; selvedgeTimer.Tick += async (_, _) => { selvedgeTimer.Stop(); if (stage == Stage.Selvedge && !busy && !bankOpen) await PreviewSelvedgesAsync(false); }; WeaveCanvas.Changed += (_, _) => RefreshControls(); lightTheme = ThemeManager.ReadLight(); ThemeManager.Apply(lightTheme, false); VersionText.Text = AppVersion.Display; LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); UpdateLabels(); RefreshControls(); UpdateWindowTitle(); }
-    private void UpdateWindowTitle() => Title = $"Jacquard Studio ({(projectPath is null ? T("پروژه جدید", "New project") : Path.GetFileNameWithoutExtension(projectPath))})";
+    public MainWindow() { InitializeComponent(); selvedgeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) }; selvedgeTimer.Tick += async (_, _) => { selvedgeTimer.Stop(); if (!busy && !bankOpen) { if (stage == Stage.Selvedge) await PreviewSelvedgesAsync(false); else if (stage is Stage.Weft or Stage.Machine) await ComposeMachineAsync(false); } }; WeaveCanvas.Changed += (_, _) => RefreshControls(); lightTheme = ThemeManager.ReadLight(); ThemeManager.Apply(lightTheme, false); VersionText.Text = AppVersion.Display; LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); UpdateLabels(); RefreshControls(); UpdateWindowTitle(); }
+    private void UpdateWindowTitle() => Title = $"Jacquard Studio ({(projectPath is null ? T("پروژه جدید", "New project") : Path.GetFileNameWithoutExtension(projectPath))}{(projectDirty && session is not null ? " *" : "")})";
+    private void MarkProjectDirty() { if (session is not null) { projectDirty = true; UpdateWindowTitle(); } }
     private string T(string fa, string en) => english ? en : fa;
     private bool SizeDirty => session?.Resized is null || !int.TryParse(WidthInput.Text, out int w) || !int.TryParse(HeightInput.Text, out int h) || w != session.Resized.PixelWidth || h != session.Resized.PixelHeight;
     private bool ColorsDirty => session?.Palette is null || !int.TryParse(ColorInput.Text, out int colors) || colors != session.AppliedColorLimit;
 
-    private bool ConfirmDiscard()
+    private async Task<bool> ConfirmDiscardAsync()
     {
-        if (session?.Resized is null) return true;
-        return MessageBox.Show(this, T("با تغییر فایل یا صفحه، مراحل انجام‌شده پاک می‌شوند. ادامه می‌دهید؟", "Opening another file or page discards the current stages. Continue?"), Title,
-            MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+        if (bankOpen && !ConfirmDiscardDrawing()) return false;
+        if (session is null || !projectDirty) return true;
+        var answer = MessageBox.Show(this, T("تغییرات پروژه ذخیره نشده است. پیش از ادامه ذخیره شود؟", "The project has unsaved changes. Save before continuing?"), Title, MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+        return answer == MessageBoxResult.No || (answer == MessageBoxResult.Yes && await SaveProjectAsync(false));
     }
-    private void Open_Click(object sender, RoutedEventArgs e)
+    private async void Open_Click(object sender, RoutedEventArgs e)
     {
         if (busy) return;
         var dialog = new OpenFileDialog { Filter = "BMP and TIFF|*.bmp;*.tif;*.tiff|All files|*.*", CheckFileExists = true, Multiselect = false };
-        if (dialog.ShowDialog(this) == true && ConfirmDiscard()) _ = LoadAsync(dialog.FileName, 0);
+        if (dialog.ShowDialog(this) == true && await ConfirmDiscardAsync()) await LoadAsync(dialog.FileName, 0);
     }
     private async Task LoadAsync(string filename, int page)
     {
@@ -64,23 +66,23 @@ public partial class MainWindow : Window
             path = filename; projectPath = null; projectCreated = DateTimeOffset.Now; metadata = new(); LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); ClearHistory(); sourceName = Path.GetFileName(filename); current = result; session = new WorkflowSession(result.Image); RebuildPaletteEntries();
             WidthInput.Text = result.Image.PixelWidth.ToString(); HeightInput.Text = result.Image.PixelHeight.ToString(); ColorInput.Text = "50";
             FileValue.Text = Path.GetFileName(filename); FormatValue.Text = $"{result.Format} · {result.Image.Format.BitsPerPixel} bpp";
-            zoom = 1; SetZoom(1); stage = Stage.Size; ShowStage();
+            zoom = 1; SetZoom(1); stage = Stage.Size; projectDirty = true; ShowStage();
             StatusText.Text = T("اندازه را تعیین و اعمال کنید.", "Set and apply the image size.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException or System.Runtime.InteropServices.COMException)
         { MessageBox.Show(this, T("باز کردن تصویر ممکن نشد.\n", "Could not open the image.\n") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("باز کردن تصویر ناموفق بود.", "Could not open image."); }
         finally { SetBusy(false); }
     }
-    private void PreviousPage_Click(object sender, RoutedEventArgs e) { if (!busy && path is not null && current is not null && current.PageIndex > 0 && ConfirmDiscard()) _ = LoadAsync(path, current.PageIndex - 1); }
-    private void NextPage_Click(object sender, RoutedEventArgs e) { if (!busy && path is not null && current is not null && current.PageIndex + 1 < current.PageCount && ConfirmDiscard()) _ = LoadAsync(path, current.PageIndex + 1); }
+    private async void PreviousPage_Click(object sender, RoutedEventArgs e) { if (!busy && path is not null && current is not null && current.PageIndex > 0 && await ConfirmDiscardAsync()) await LoadAsync(path, current.PageIndex - 1); }
+    private async void NextPage_Click(object sender, RoutedEventArgs e) { if (!busy && path is not null && current is not null && current.PageIndex + 1 < current.PageCount && await ConfirmDiscardAsync()) await LoadAsync(path, current.PageIndex + 1); }
     private void Window_DragOver(object sender, DragEventArgs e) { e.Effects = !busy && !bankOpen && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; }
-    private void Window_Drop(object sender, DragEventArgs e)
+    private async void Window_Drop(object sender, DragEventArgs e)
     {
-        if (busy || bankOpen || e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files || !ConfirmDiscard()) return;
-        if (Path.GetExtension(files[0]).Equals(".sam", StringComparison.OrdinalIgnoreCase)) _ = LoadProjectAsync(files[0]);
-        else _ = LoadAsync(files[0], 0);
+        if (busy || bankOpen || e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files || !await ConfirmDiscardAsync()) return;
+        if (Path.GetExtension(files[0]).Equals(".sam", StringComparison.OrdinalIgnoreCase)) await LoadProjectAsync(files[0]);
+        else await LoadAsync(files[0], 0);
     }
-    private void Inputs_Changed(object sender, TextChangedEventArgs e) { if (IsInitialized) RefreshControls(); }
+    private void Inputs_Changed(object sender, TextChangedEventArgs e) { if (IsInitialized) { MarkProjectDirty(); RefreshControls(); } }
     private void SetBusy(bool value) { busy = value; RefreshControls(); }
     private void RefreshControls()
     {
@@ -123,11 +125,11 @@ public partial class MainWindow : Window
             pair.Item1.BorderBrush = active ? (Brush)FindResource("Accent") : (Brush)FindResource("ButtonBorder");
         }
     }
-    private void OpenProject_Click(object sender, RoutedEventArgs e)
+    private async void OpenProject_Click(object sender, RoutedEventArgs e)
     {
         if (busy) return;
         var dialog = new OpenFileDialog { Filter = "SAM project (*.sam)|*.sam", CheckFileExists = true };
-        if (dialog.ShowDialog(this) == true && ConfirmDiscard()) _ = LoadProjectAsync(dialog.FileName);
+        if (dialog.ShowDialog(this) == true && await ConfirmDiscardAsync()) await LoadProjectAsync(dialog.FileName);
     }
     private async Task LoadProjectAsync(string filename)
     {
@@ -142,7 +144,7 @@ public partial class MainWindow : Window
             english = state.English; stage = Enum.Parse<Stage>(state.Stage); machineFormatIndex = state.MachineFormatIndex;
             switch (machineFormatIndex) { case 0: FormatJC4.IsChecked = true; break; case 1: FormatJC5.IsChecked = true; break; case 2: FormatZC5.IsChecked = true; break; case 3: FormatEP.IsChecked = true; break; case 4: FormatJC6.IsChecked = true; break; }
             RebuildPaletteEntries(state.PatternNames);
-            FileValue.Text = Path.GetFileName(filename); FormatValue.Text = "SAM"; SetZoom(1); UpdateLabels(); ShowStage();
+            FileValue.Text = Path.GetFileName(filename); FormatValue.Text = "SAM"; SetZoom(1); projectDirty = false; UpdateLabels(); ShowStage();
             StatusText.Text = T("پروژه باز شد؛ تصویر و پترن‌ها در پروژه قرار دارند.", "Project opened; the image and patterns are embedded.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException or System.Text.Json.JsonException or OverflowException or FormatException)
@@ -151,17 +153,17 @@ public partial class MainWindow : Window
     }
     private async void SaveProject_Click(object sender, RoutedEventArgs e) => await SaveProjectAsync(false);
     private async void SaveProjectAs_Click(object sender, RoutedEventArgs e) => await SaveProjectAsync(true);
-    private async Task SaveProjectAsync(bool saveAs)
+    private async Task<bool> SaveProjectAsync(bool saveAs)
     {
-        if (busy || session is null || path is null) return;
+        if (busy || session is null || path is null) return false;
         string? destination = projectPath;
         if (ProjectSavePolicy.RequiresDialog(destination, saveAs))
         {
             var dialog = new SaveFileDialog { Filter = "SAM project (*.sam)|*.sam", AddExtension = true, DefaultExt = ".sam", OverwritePrompt = true, FileName = projectPath is null ? Path.GetFileNameWithoutExtension(sourceName) + ".sam" : Path.GetFileName(projectPath) };
-            if (dialog.ShowDialog(this) != true) return;
+            if (dialog.ShowDialog(this) != true) return false;
             destination = dialog.FileName;
         }
-        if (string.IsNullOrEmpty(destination)) return;
+        if (string.IsNullOrEmpty(destination)) return false;
         var names = session.Patterns.Select((p, i) => p is null ? null : entries[i].PatternLabel).ToArray();
         var state = new ProjectState(session, sourceName, WidthInput.Text, HeightInput.Text, ColorInput.Text, stage.ToString(), english, machineFormatIndex, names, projectCreated, metadata, ReadMachineSettings());
         var protectedPaths = entries.Select(x => x.PatternPath).OfType<string>().ToList();
@@ -170,16 +172,16 @@ public partial class MainWindow : Window
         try
         {
             await Task.Run(() => ProjectFile.Save(destination, state, protectedPaths));
-            projectPath = destination; UpdateWindowTitle(); StatusText.Text = T("پروژه ذخیره شد.", "Project saved.");
+            projectPath = destination; projectDirty = false; UpdateWindowTitle(); StatusText.Text = T("پروژه ذخیره شد.", "Project saved."); return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException)
-        { MessageBox.Show(this, T("ذخیره پروژه ممکن نشد: ", "Could not save project: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("ذخیره پروژه ناموفق بود.", "Project save failed."); }
+        { MessageBox.Show(this, T("ذخیره پروژه ممکن نشد: ", "Could not save project: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("ذخیره پروژه ناموفق بود.", "Project save failed."); return false; }
         finally { SetBusy(false); }
     }
     private void MachineFormat_Checked(object sender, RoutedEventArgs e)
     {
         if ((sender as RadioButton)?.Tag is string tag && int.TryParse(tag, out int selected)) machineFormatIndex = selected;
-        if (IsInitialized) RefreshControls();
+        if (IsInitialized) { MarkProjectDirty(); RefreshControls(); }
     }
     private void MachineSource_Changed(object sender, RoutedEventArgs e) { if (IsInitialized && !loadingMachineSettings) MachineSettingsChanged(); }
     private void SizeStep_Click(object sender, RoutedEventArgs e) { if (!busy && session is not null) { stage = Stage.Size; ShowStage(); } }
@@ -194,7 +196,7 @@ public partial class MainWindow : Window
         if (busy || session?.Palette is null || SizeDirty || ColorsDirty) return;
         stage = Stage.Patterns; ShowStage();
     }
-    private async void MachineStep_Click(object sender, RoutedEventArgs e) { if (!busy) { stage = Stage.Machine; ShowStage(); await RefreshMachineBankAsync(); } }
+    private async void MachineStep_Click(object sender, RoutedEventArgs e) { if (!busy) { stage = Stage.Machine; ShowStage(); await RefreshMachineBankAsync(); if (!busy && MachineInput() is not null) await ComposeMachineAsync(false); } }
     private void OpenNavigation_Click(object sender, RoutedEventArgs e)
     {
         if (busy || sender is not Button button) return;
@@ -209,10 +211,12 @@ public partial class MainWindow : Window
         stage = Stage.Selvedge; machinePreview = null; ShowStage(); await RefreshMachineBankAsync();
         if (!busy) await PreviewSelvedgesAsync(false);
     }
-    private void WeftStep_Click(object sender, RoutedEventArgs e)
-    { if (!busy && session?.CanSave == true && !SizeDirty && !ColorsDirty) { stage = Stage.Weft; machinePreview = null; ShowStage(); } }
-    private void AnalysisStep_Click(object sender, RoutedEventArgs e) { if (!busy && session?.CanSave == true && !SizeDirty && !ColorsDirty) { stage = Stage.Analysis; ShowStage(); } }
-    private void FloatStep_Click(object sender, RoutedEventArgs e) { if (!busy && session?.CanSave == true && !SizeDirty && !ColorsDirty) { stage = Stage.Floats; ShowStage(); } }
+    private async void WeftStep_Click(object sender, RoutedEventArgs e)
+    { if (!busy && session?.CanSave == true && !SizeDirty && !ColorsDirty) { stage = Stage.Weft; ShowStage(); await ComposeMachineAsync(false); } }
+    private async void AnalysisStep_Click(object sender, RoutedEventArgs e)
+    { if (!busy && session?.CanSave == true && !SizeDirty && !ColorsDirty) { stage = Stage.Analysis; ShowStage(); await ComposeMachineAsync(true); } }
+    private async void FloatStep_Click(object sender, RoutedEventArgs e)
+    { if (!busy && session?.CanSave == true && !SizeDirty && !ColorsDirty) { stage = Stage.Floats; ShowStage(); await ComposeMachineAsync(true); } }
     private void ShowStage()
     {
         HoverCard.Visibility = Visibility.Collapsed;
@@ -241,10 +245,9 @@ public partial class MainWindow : Window
                 Stage.Size => session.Resized ?? session.Source,
                 Stage.Colors => session.ColorPreview ?? session.Resized ?? session.Source,
                 Stage.Selvedge or Stage.Weft => machinePreview ?? session.PatternPreview ?? session.Source,
-                Stage.Analysis => heatmap ?? session.PatternPreview ?? session.Source,
-                Stage.Floats => session.PatternPreview ?? session.Source,
+                Stage.Analysis or Stage.Floats => machinePreview ?? session.PatternPreview ?? session.Source,
                 Stage.Patterns => session.PatternPreview ?? session.ColorPreview ?? session.Source,
-                Stage.Machine => machinePreview ?? (MachineUseSource.IsChecked == true ? session.Source : session.PatternPreview ?? session.ColorPreview ?? session.Resized ?? session.Source),
+                Stage.Machine => (MachineRedAsBlack.IsChecked == true ? redPreview : machinePreview) ?? (MachineUseSource.IsChecked == true ? session.Source : session.PatternPreview ?? session.ColorPreview ?? session.Resized ?? session.Source),
                 _ => session.Source
             };
             PreviewImage.Source = view; ImageScroll.Visibility = Visibility.Visible; EmptyState.Visibility = Visibility.Collapsed;
@@ -256,8 +259,8 @@ public partial class MainWindow : Window
             Stage.Colors => T("پیش‌نمایش رنگ‌ها", "Color preview"),
             Stage.Selvedge => T("پیش‌نمایش کناره‌ها", "Selvedge preview"),
             Stage.Weft => T("پیش‌نمایش پودگذاری", "Weft layout preview"),
-            Stage.Analysis => T("نقشه حرارتی تارها", "Warp heatmap"),
-            Stage.Floats => T("پیش‌نمایش و اصلاح فلوت", "Float inspection and editing"),
+            Stage.Analysis => composedMap is null ? T("نقشه ترکیبی آماده نیست", "Composite map unavailable") : T("تحلیل درصد تارها", "Warp percentage analysis"),
+            Stage.Floats => composedMap is null ? T("نقشه ترکیبی آماده نیست", "Composite map unavailable") : T("پیش‌نمایش و اصلاح فلوت", "Float inspection and editing"),
             _ => T("پیش‌نمایش بافت", "Pattern preview")
         };
         SafetyText.Text = stage == Stage.Machine
@@ -364,11 +367,11 @@ public partial class MainWindow : Window
     }
     private HistoryState CaptureHistory() => new(session!.Snapshot(), stage, entries.Select(x => (string?)x.PatternLabel).ToArray(), entries.Select(x => x.PatternPath).ToArray());
     private void ClearHistory() { undoHistory.Clear(); redoHistory.Clear(); InvalidateAnalysis(); }
-    private void InvalidateAnalysis() { machinePreview = null; warpAnalysis = null; heatmap = null; floatRuns = null; floatIndex = 0; if (IsInitialized) { AnalysisResultText.Text = T("برای محاسبه، دکمه بالا را بزنید.", "Run analysis to calculate."); FloatResultText.Text = T("هنوز بررسی نشده است.", "Not scanned yet."); FloatCurrentText.Text = ""; } }
-    private void RecordHistory(HistoryState state) { InvalidateAnalysis(); undoHistory.Add(state); if (undoHistory.Count > 3) undoHistory.RemoveAt(0); redoHistory.Clear(); }
+    private void InvalidateAnalysis() { machinePreview = null; redPreview = null; composedMap = null; warpAnalysis = null; floatRuns = null; floatIndex = 0; if (IsInitialized) { AnalysisResultText.Text = T("برای محاسبه، دکمه بالا را بزنید.", "Run analysis to calculate."); FloatResultText.Text = T("هنوز بررسی نشده است.", "Not scanned yet."); FloatCurrentText.Text = ""; } }
+    private void RecordHistory(HistoryState state) { MarkProjectDirty(); InvalidateAnalysis(); undoHistory.Add(state); if (undoHistory.Count > 3) undoHistory.RemoveAt(0); redoHistory.Clear(); }
     private void RestoreHistory(HistoryState state)
     {
-        session = state.Session.Snapshot(); stage = state.Stage; InvalidateAnalysis();
+        session = state.Session.Snapshot(); stage = state.Stage; MarkProjectDirty(); InvalidateAnalysis();
         if (session.Resized is not null) { WidthInput.Text = session.Resized.PixelWidth.ToString(); HeightInput.Text = session.Resized.PixelHeight.ToString(); }
         if (session.AppliedColorLimit is int limit) ColorInput.Text = limit.ToString();
         RebuildPaletteEntries(state.Names);
@@ -391,10 +394,36 @@ public partial class MainWindow : Window
     }
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0 || Keyboard.FocusedElement is TextBox) return;
-        if (e.Key == Key.Z && (Keyboard.Modifiers & ModifierKeys.Shift) != 0) { Redo_Click(sender, e); e.Handled = true; }
-        else if (e.Key == Key.Z) { Undo_Click(sender, e); e.Handled = true; }
-        else if (e.Key == Key.Y) { Redo_Click(sender, e); e.Handled = true; }
+        if (busy) return;
+        if (e.Key == Key.F1) { Help_Click(sender, e); e.Handled = true; return; }
+        var mods = Keyboard.Modifiers;
+        if (mods == ModifierKeys.Alt && (int)e.Key >= (int)Key.D1 && (int)e.Key <= (int)Key.D9 && !bankOpen)
+        {
+            Button[] buttons = { OpenButton, SizeStepButton, ColorStepButton, PatternStepButton, SelvedgeStepButton, FloatStepButton, AnalysisStepButton, WeftStepButton, MachineStepButton };
+            var button = buttons[(int)e.Key - (int)Key.D1]; if (button.IsEnabled) button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); e.Handled = true; return;
+        }
+        if ((mods & ModifierKeys.Control) == 0 || (mods & ModifierKeys.Alt) != 0) return;
+        bool shift = (mods & ModifierKeys.Shift) != 0;
+        if (e.Key == Key.O && !bankOpen) { if (shift) OpenProject_Click(sender, e); else Open_Click(sender, e); }
+        else if (e.Key == Key.S && !bankOpen) { if (shift) SaveProjectAs_Click(sender, e); else SaveProject_Click(sender, e); }
+        else if (e.Key == Key.P && ReportButton.IsEnabled) Report_Click(sender, e);
+        else if (e.Key == Key.B) Bank_Click(sender, e);
+        else if (e.Key == Key.Z && Keyboard.FocusedElement is not TextBox) { if (shift) Redo_Click(sender, e); else Undo_Click(sender, e); }
+        else if (e.Key == Key.Y && Keyboard.FocusedElement is not TextBox) Redo_Click(sender, e);
+        else if (e.Key is Key.Add or Key.OemPlus) ZoomIn_Click(sender, e);
+        else if (e.Key is Key.Subtract or Key.OemMinus) ZoomOut_Click(sender, e);
+        else if (e.Key is Key.D0 or Key.NumPad0) ZoomReset_Click(sender, e);
+        else return;
+        e.Handled = true;
+    }
+    private void Help_Click(object sender, RoutedEventArgs e)
+    {
+        var resource = Application.GetResourceStream(new Uri("pack://application:,,,/JacquardStudio;component/Help.fa.txt", UriKind.Absolute));
+        if (resource is null) { MessageBox.Show(this, T("راهنما یافت نشد.", "Help file not found.")); return; }
+        using var reader = new StreamReader(resource.Stream); string text = reader.ReadToEnd();
+        var body = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 14, LineHeight = 26, Margin = new Thickness(24), Foreground = (Brush)FindResource("PrimaryText") };
+        var scroll = new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        new Window { Title = T("راهنمای برنامه", "User guide (Persian)"), Owner = this, Width = 820, Height = 720, MinWidth = 440, MinHeight = 350, WindowStartupLocation = WindowStartupLocation.CenterOwner, FlowDirection = FlowDirection.RightToLeft, Background = (Brush)FindResource("AppBackground"), Content = scroll }.ShowDialog();
     }
     private void EditorHelper_Click(object sender, RoutedEventArgs e)
     {
@@ -413,35 +442,39 @@ public partial class MainWindow : Window
     private void EditorGrid_Click(object sender, RoutedEventArgs e) => WeaveCanvas.GridVisible = !WeaveCanvas.GridVisible;
     private void PreviewImage_MouseMove(object sender, MouseEventArgs e)
     {
-        if ((stage is Stage.Machine or Stage.Selvedge or Stage.Weft) && machinePreview is { } map)
+        if ((stage is Stage.Machine or Stage.Selvedge or Stage.Weft or Stage.Floats or Stage.Analysis) && machinePreview is { } map)
         {
             var local = e.GetPosition(PreviewImage);
             if (local.X < 0 || local.Y < 0 || local.X >= PreviewImage.ActualWidth || local.Y >= PreviewImage.ActualHeight) { HoverCard.Visibility = Visibility.Collapsed; return; }
             int hx = (int)(local.X * map.PixelWidth / PreviewImage.ActualWidth), hy = (int)(local.Y * map.PixelHeight / PreviewImage.ActualHeight);
             var pixel = new byte[1]; map.CopyPixels(new Int32Rect(hx, hy, 1, 1), pixel, 1, 0);
-            HoverDetails.Text = T($"ستون / قلاب منطقی: {hx} · رج: {hy}\nبیت فایل: {(pixel[0] == 0 ? 1 : 0)}", $"Logical hook: {hx} · row: {hy}\nFile bit: {(pixel[0] == 0 ? 1 : 0)}"); HoverCard.Visibility = Visibility.Visible; return;
+            if (stage == Stage.Analysis && composedMap is { } composition && warpAnalysis is { } analysis && hx >= composition.FabricStart && hx < composition.FabricStart + composition.FabricWidth)
+            {
+                double d = analysis.DeviationPercent[hx - composition.FabricStart];
+                HoverDetails.Text = T($"تار {hx} · شل‌شدگی {Math.Max(0, -d):0.##}% · کشیدگی {Math.Max(0, d):0.##}%", $"Warp {hx} · looseness {Math.Max(0, -d):0.##}% · tightness {Math.Max(0, d):0.##}%");
+            }
+            else HoverDetails.Text = T($"ستون / قلاب منطقی: {hx} · رج: {hy}\nبیت فایل: {(pixel[0] == 0 ? 1 : 0)}", $"Logical hook: {hx} · row: {hy}\nFile bit: {(pixel[0] == 0 ? 1 : 0)}");
+            HoverCard.Visibility = Visibility.Visible; return;
         }
-        if (session?.Palette is not { } palette || SizeDirty || ColorsDirty || stage is not (Stage.Patterns or Stage.Analysis or Stage.Floats)) { HoverCard.Visibility = Visibility.Collapsed; return; }
-        var point = e.GetPosition(PreviewImage);
-        var hit = PreviewHitTest.Find(palette, point.X, point.Y, PreviewImage.ActualWidth, PreviewImage.ActualHeight);
+        if (session?.Palette is not { } palette || SizeDirty || ColorsDirty || stage != Stage.Patterns) { HoverCard.Visibility = Visibility.Collapsed; return; }
+        var point = e.GetPosition(PreviewImage); var hit = PreviewHitTest.Find(palette, point.X, point.Y, PreviewImage.ActualWidth, PreviewImage.ActualHeight);
         if (hit is null) { HoverCard.Visibility = Visibility.Collapsed; return; }
         var (x, y, index) = hit.Value; var entry = entries[index];
-        if (stage == Stage.Analysis && warpAnalysis is { } analysis)
-            HoverDetails.Text = T($"تار {x} · سیاه: {analysis.Counts[x]:N0}\nمیانگین: {analysis.Mean:0.##} · اختلاف: {analysis.DeviationPercent[x]:+0.##;-0.##;0}%", $"Warp {x} · black: {analysis.Counts[x]:N0}\nMean: {analysis.Mean:0.##} · deviation: {analysis.DeviationPercent[x]:+0.##;-0.##;0}%");
-        else
-            HoverDetails.Text = T($"رنگ: {entry.ColorCode}\nتعداد پیکسل رنگ: {entry.PixelCount:N0} ({entry.PercentText})\nبافت: {entry.PatternLabel} · {entry.PatternSize}\nمختصات از بالا-چپ: X={x}, Y={y}", $"Color: {entry.ColorCode}\nColor pixels: {entry.PixelCount:N0} ({entry.PercentText})\nWeave: {entry.PatternLabel} · {entry.PatternSize}\nTop-left origin: X={x}, Y={y}");
+        HoverDetails.Text = T($"رنگ: {entry.ColorCode}\nتعداد پیکسل رنگ: {entry.PixelCount:N0} ({entry.PercentText})\nبافت: {entry.PatternLabel} · {entry.PatternSize}\nمختصات از بالا-چپ: X={x}, Y={y}", $"Color: {entry.ColorCode}\nColor pixels: {entry.PixelCount:N0} ({entry.PercentText})\nWeave: {entry.PatternLabel} · {entry.PatternSize}\nTop-left origin: X={x}, Y={y}");
         HoverCard.Visibility = Visibility.Visible;
     }
     private void PreviewImage_MouseLeave(object sender, MouseEventArgs e) => HoverCard.Visibility = Visibility.Collapsed;
     private async void RunAnalysis_Click(object sender, RoutedEventArgs e)
     {
-        if (busy || session?.CanSave != true || SizeDirty || ColorsDirty || session.PatternPreview is not { } preview) return;
+        if (busy || session?.CanSave != true || SizeDirty || ColorsDirty) return;
+        var composition = composedMap ?? await ComposeMachineAsync(true); if (composition is null) return;
         SetBusy(true);
         try
         {
-            var result = await Task.Run(() => { var bytes = DesignAnalysis.ReadBinary(preview); var a = DesignAnalysis.Analyze(bytes, preview.PixelWidth, preview.PixelHeight); return (a, image: DesignAnalysis.Heatmap(a, preview.PixelHeight)); });
-            warpAnalysis = result.a; heatmap = result.image;
-            AnalysisResultText.Text = T($"میانگین نقاط سیاه هر تار: {result.a.Mean:0.##}\nقرمز: شاخص کشش · آبی: شاخص شل‌شدگی · خاکستری: برابر\nبرای اطلاعات هر تار، نشانگر را روی آن ببرید.", $"Mean black pixels per warp: {result.a.Mean:0.##}\nRed: above average · Blue: below · Gray: equal\nHover a warp for its values."); ShowStage();
+            var fabric = CompositionView.Fabric(composition);
+            warpAnalysis = await Task.Run(() => DesignAnalysis.Analyze(DesignAnalysis.ReadBinary(fabric), fabric.PixelWidth, fabric.PixelHeight));
+            var (loose, tight) = CompositionView.Extremes(warpAnalysis, 0, fabric.PixelWidth);
+            AnalysisResultText.Text = T($"بیشترین شل‌شدگی: {loose:0.##}%\nبیشترین کشیدگی: {tight:0.##}%", $"Maximum looseness: {loose:0.##}%\nMaximum tightness: {tight:0.##}%"); ShowStage();
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException) { MessageBox.Show(this, ex.Message, Title); }
         finally { SetBusy(false); }
@@ -463,10 +496,11 @@ public partial class MainWindow : Window
     }
     private async Task ScanFloatsAsync(int minimum, FloatDirection direction, int desiredIndex, bool focus)
     {
-        if (session?.PatternPreview is not { } preview) return; SetBusy(true);
+        var composition = composedMap ?? await ComposeMachineAsync(true); if (composition is null) return;
+        var preview = CompositionView.Fabric(composition); SetBusy(true);
         try
         {
-            var found = await Task.Run(() => DesignAnalysis.FindFloats(DesignAnalysis.ReadBinary(preview), preview.PixelWidth, preview.PixelHeight, minimum, direction));
+            var found = await Task.Run(() => DesignAnalysis.FindFloats(DesignAnalysis.ReadBinary(preview), preview.PixelWidth, preview.PixelHeight, minimum, direction).Select(r => r with { X = r.X + composition.FabricStart }).ToList());
             floatRuns = found; floatIndex = found.Count == 0 ? 0 : Math.Min(desiredIndex, found.Count - 1); lastFloatMinimum = minimum; lastFloatDirection = direction;
             FloatResultText.Text = T($"تعداد دنباله‌های پیوسته: {found.Count:N0} (طول حداقل {minimum})", $"Continuous runs: {found.Count:N0} (minimum {minimum})");
             ShowFloat(focus);
@@ -479,10 +513,10 @@ public partial class MainWindow : Window
     private void ShowFloat(bool focus)
     {
         ShowStage();
-        if (floatRuns is not { Count: > 0 } || session?.PatternPreview is not { } preview) { FloatCurrentText.Text = T("فلوتی با این طول پیدا نشد.", "No runs meet the threshold."); return; }
+        if (floatRuns is not { Count: > 0 } || machinePreview is not { } preview) { FloatCurrentText.Text = T("فلوتی با این طول پیدا نشد.", "No runs meet the threshold."); return; }
         var run = floatRuns[floatIndex];
         FloatCurrentText.Text = T($"مورد {floatIndex + 1:N0} از {floatRuns.Count:N0} · {(run.Black ? "سیاه" : "سفید")} · طول {run.Length:N0}\nشروع X={run.X}, Y={run.Y} · برای اصلاح روی نقطه کلیک کنید.", $"Run {floatIndex + 1:N0} / {floatRuns.Count:N0} · {(run.Black ? "black" : "white")} · length {run.Length:N0}\nStart X={run.X}, Y={run.Y} · click a pixel to toggle.");
-        var highlighted = new WriteableBitmap(preview); byte[] mark = new byte[run.Length * 4];
+        var highlighted = new WriteableBitmap(new FormatConvertedBitmap(preview, PixelFormats.Bgra32, null, 0)); byte[] mark = new byte[run.Length * 4];
         for (int i = 0; i < run.Length; i++) { mark[i * 4] = 20; mark[i * 4 + 1] = 115; mark[i * 4 + 2] = 255; mark[i * 4 + 3] = 255; }
         bool warp = run.Direction == FloatDirection.Warp;
         highlighted.WritePixels(new Int32Rect(run.X, run.Y, warp ? 1 : run.Length, warp ? run.Length : 1), mark, warp ? 4 : run.Length * 4, 0); highlighted.Freeze(); PreviewImage.Source = highlighted;
@@ -495,24 +529,24 @@ public partial class MainWindow : Window
     }
     private async void PreviewImage_Click(object sender, MouseButtonEventArgs e)
     {
-        if (busy || stage != Stage.Floats || session?.CanSave != true || SizeDirty || ColorsDirty || session.Palette is not { } palette) return;
-        Point p = e.GetPosition(PreviewImage); var hit = PreviewHitTest.Find(palette, p.X, p.Y, PreviewImage.ActualWidth, PreviewImage.ActualHeight); if (hit is null) return;
+        if (busy || stage != Stage.Floats || session?.CanSave != true || SizeDirty || ColorsDirty || composedMap is not { } map) return;
+        Point p = e.GetPosition(PreviewImage); if (p.X < 0 || p.Y < 0 || p.X >= PreviewImage.ActualWidth || p.Y >= PreviewImage.ActualHeight) return;
+        int x = (int)(p.X * map.Image.PixelWidth / PreviewImage.ActualWidth), y = (int)(p.Y * map.Image.PixelHeight / PreviewImage.ActualHeight);
+        int bodyX = x - map.DesignStart;
+        if (bodyX < 0 || bodyX >= session.Palette!.Width || map.SignalHooks.Contains(x))
+        { StatusText.Text = T("فقط نقاط خود طرح قابل ویرایش‌اند؛ کناره را از تنظیمات کناره تغییر دهید.", "Only design pixels can be edited; change selvedges in their settings."); return; }
         bool rescan = floatRuns is not null; int index = floatIndex, minimum = lastFloatMinimum; var direction = lastFloatDirection; var before = CaptureHistory(); SetBusy(true);
-        try
-        {
-            await Task.Run(() => session.TogglePixel(hit.Value.X, hit.Value.Y)); RecordHistory(before); ShowStage();
-            StatusText.Text = T("نقطه اصلاح شد؛ با ذخیره SAM و خروجی بافت یا ماشین حفظ می‌شود.", "Pixel edited; retained in SAM and final image or loom output.");
-        }
+        try { await Task.Run(() => session.TogglePixel(bodyX, y)); RecordHistory(before); StatusText.Text = T("نقطه اصلاح شد؛ پروژه را ذخیره کنید.", "Pixel edited; save the project."); }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException) { MessageBox.Show(this, ex.Message, Title); rescan = false; }
         finally { SetBusy(false); }
-        if (rescan) await ScanFloatsAsync(minimum, direction, index, false);
+        await ComposeMachineAsync(true); if (rescan) await ScanFloatsAsync(minimum, direction, index, false);
         e.Handled = true;
     }
     private void Info_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session is null) return;
         var dialog = new DesignInfoWindow(metadata, english) { Owner = this };
-        if (dialog.ShowDialog() == true) { metadata = dialog.Result; StatusText.Text = T("اطلاعات طرح ثبت شد؛ پروژه را ذخیره کنید.", "Design information updated; save the project."); }
+        if (dialog.ShowDialog() == true) { metadata = dialog.Result; MarkProjectDirty(); StatusText.Text = T("اطلاعات طرح ثبت شد؛ پروژه را ذخیره کنید.", "Design information updated; save the project."); }
     }
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -551,8 +585,14 @@ public partial class MainWindow : Window
         if (busy || !ConfirmDiscardDrawing()) return;
         WeaveCanvas.DiscardChanges(); bankOpen = false; bankTargetIndex = null; bankSelvedgeSide = null; ShowStage();
     }
-    private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
-    { if (bankOpen && !ConfirmDiscardDrawing()) e.Cancel = true; }
+    private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (allowClose) return;
+        e.Cancel = true; if (busy || closePromptActive) return;
+        closePromptActive = true;
+        try { if (await ConfirmDiscardAsync()) { allowClose = true; Dispatcher.BeginInvoke(new Action(Close)); } }
+        finally { closePromptActive = false; }
+    }
     private async Task ReloadBankAsync(string? selectedId = null)
     {
         SetBusy(true);
@@ -633,7 +673,7 @@ public partial class MainWindow : Window
         if (bankSelvedgeSide is string side)
         {
             var settings = ReadMachineSettings(); settings = side == "left" ? settings with { LeftPattern = item.Pattern, LeftName = item.Name } : settings with { RightPattern = item.Pattern, RightName = item.Name };
-            LoadMachineSettings(settings); WeaveCanvas.DiscardChanges(); bankOpen = false; bankSelvedgeSide = null; ShowStage();
+            LoadMachineSettings(settings); MarkProjectDirty(); InvalidateAnalysis(); WeaveCanvas.DiscardChanges(); bankOpen = false; bankSelvedgeSide = null; ShowStage();
             await PreviewSelvedgesAsync(false); return;
         }
         if (bankTargetIndex is not int index || session?.Palette is null || index < 0 || index >= entries.Count) return;
@@ -751,7 +791,7 @@ public partial class MainWindow : Window
             LeftSelvedgeWidth.Text = setup.LeftWidth; RightSelvedgeWidth.Text = setup.RightWidth; BoxEnabled.IsChecked = setup.BoxEnabled;
             BoxPlacement.SelectedIndex = setup.BoxPlacement; BoxHooks.Text = setup.BoxHooks; BoxCodes.Text = setup.BoxCodes; BoxSequence.Text = setup.Sequence; BoxBottom.IsChecked = setup.StartFromBottom; MachineUseSource.IsChecked = setup.UseSource; MachineRedAsBlack.IsChecked = setup.RedAsBlack;
             var presets = PatternLibrary.Presets.Select((p, index) => new BankItem { Id = "preset-" + index, Name = p.Name, Pattern = p.Pattern, IsPreset = true });
-            InstallMachineChoices(presets, setup); machinePreview = null; MachineSetupSummary.Text = "";
+            InstallMachineChoices(presets, setup); InvalidateAnalysis(); MachineSetupSummary.Text = "";
         }
         finally { loadingMachineSettings = false; }
     }
@@ -774,12 +814,12 @@ public partial class MainWindow : Window
     private void MachineSettingsChanged()
     {
         if (!IsInitialized || loadingMachineSettings) return;
-        machinePreview = null; MachineSetupSummary.Text = T("تنظیمات تغییر کرد؛ پیش‌نمایش را دوباره بسازید.", "Settings changed; regenerate the preview.");
+        MarkProjectDirty(); InvalidateAnalysis(); MachineSetupSummary.Text = T("تنظیمات تغییر کرد؛ پیش‌نمایش را دوباره بسازید.", "Settings changed; regenerate the preview.");
         if ((stage is Stage.Machine or Stage.Weft or Stage.Selvedge) && !busy) ShowStage();
-        if (stage == Stage.Selvedge && selvedgeTimer is not null) { selvedgeTimer.Stop(); selvedgeTimer.Start(); }
+        if ((stage is Stage.Selvedge or Stage.Weft or Stage.Machine) && selvedgeTimer is not null) { selvedgeTimer.Stop(); selvedgeTimer.Start(); }
     }
-    private BitmapSource? MachineInput() => session is null ? null : MachineUseSource.IsChecked == true ? session.Source : session.CanSave && !SizeDirty && !ColorsDirty ? session.PatternPreview : null;
-    private async Task<MachineComposition?> ComposeMachineAsync()
+    private BitmapSource? MachineInput() => session is null ? null : stage == Stage.Machine && MachineUseSource.IsChecked == true ? session.Source : session.CanSave && !SizeDirty && !ColorsDirty ? session.PatternPreview : null;
+    private async Task<MachineComposition?> ComposeMachineAsync(bool showErrors = true)
     {
         var frame = MachineInput(); if (frame is null) return null;
         var settings = ReadMachineSettings(); bool red = MachineRedAsBlack.IsChecked == true;
@@ -787,13 +827,13 @@ public partial class MainWindow : Window
         try
         {
             var result = await Task.Run(() => MachineComposer.Compose(frame, settings, red));
-            machinePreview = result.Image;
+            composedMap = result; machinePreview = result.Image; redPreview = stage == Stage.Machine && MachineRedAsBlack.IsChecked == true ? await Task.Run(() => CompositionView.RedPreview(result.Image)) : null;
             string signals = result.SignalHooks.Length == 0 ? T("غیرفعال", "off") : string.Join(", ", result.SignalHooks);
             MachineSetupSummary.Text = T($"نقشه نهایی: {result.Image.PixelWidth:N0} قلاب × {result.Image.PixelHeight:N0} رج · قلاب‌های فرمان: {signals}", $"Final map: {result.Image.PixelWidth:N0} hooks × {result.Image.PixelHeight:N0} picks · signal hooks: {signals}");
             ShowStage(); return result;
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
-        { MessageBox.Show(this, T("تنظیمات خروجی معتبر نیست: ", "Invalid machine setup: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); return null; }
+        { composedMap = null; machinePreview = null; redPreview = null; MachineSetupSummary.Text = T("تنظیمات معتبر نیست: ", "Invalid setup: ") + ex.Message; StatusText.Text = MachineSetupSummary.Text; if (showErrors) MessageBox.Show(this, MachineSetupSummary.Text, Title, MessageBoxButton.OK, MessageBoxImage.Warning); ShowStage(); return null; }
         finally { SetBusy(false); }
     }
     private void UpgradeLayout_Click(object sender, RoutedEventArgs e)
@@ -806,7 +846,7 @@ public partial class MainWindow : Window
         var frame = MachineInput(); if (busy || frame is null) return;
         var setup = ReadMachineSettings() with { AbsoluteLayout = false, BoxEnabled = false }; bool red = MachineRedAsBlack.IsChecked == true;
         SetBusy(true);
-        try { var result = await Task.Run(() => MachineComposer.Compose(frame, setup, red)); machinePreview = result.Image; SelvedgeSummary.Text = T($"عرض طرح همراه کناره‌ها: {result.Image.PixelWidth:N0} تار", $"Design with selvedges: {result.Image.PixelWidth:N0} hooks"); ShowStage(); }
+        try { var result = await Task.Run(() => MachineComposer.Compose(frame, setup, red)); composedMap = null; machinePreview = result.Image; redPreview = null; SelvedgeSummary.Text = T($"عرض طرح همراه کناره‌ها: {result.Image.PixelWidth:N0} تار", $"Design with selvedges: {result.Image.PixelWidth:N0} hooks"); ShowStage(); }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException) { SelvedgeSummary.Text = T("عرض یا بافت کناره معتبر نیست.", "Invalid selvedge width or weave."); if (showErrors) MessageBox.Show(this, SelvedgeSummary.Text + "\n" + ex.Message, Title); }
         finally { SetBusy(false); }
     }
@@ -840,7 +880,7 @@ public partial class MainWindow : Window
     {
         if (busy) return;
         var dialog = new OpenFileDialog { Filter = "JC5 / JC6 (*.jc5;*.jc6)|*.jc5;*.jc6", CheckFileExists = true };
-        if (dialog.ShowDialog(this) != true || !ConfirmDiscard()) return;
+        if (dialog.ShowDialog(this) != true || !await ConfirmDiscardAsync()) return;
         SetBusy(true);
         try
         {
@@ -850,7 +890,7 @@ public partial class MainWindow : Window
             session = next; path = dialog.FileName; projectPath = null; projectCreated = DateTimeOffset.Now; metadata = new(); LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); ClearHistory(); sourceName = Path.GetFileName(path);
             current = new ImageResult(image, 1, 0, "JC5 (experimental)"); RebuildPaletteEntries();
             WidthInput.Text = image.PixelWidth.ToString(); HeightInput.Text = image.PixelHeight.ToString(); ColorInput.Text = "50";
-            FileValue.Text = sourceName; FormatValue.Text = "JC5 · experimental"; stage = Stage.Size; SetZoom(1); ShowStage();
+            FileValue.Text = sourceName; FormatValue.Text = "JC5 · experimental"; stage = Stage.Size; SetZoom(1); projectDirty = true; ShowStage();
             StatusText.Text = T("JC5 باز شد؛ از مرحله اندازه می‌توانید نقشه را BMP یا TIFF ذخیره کنید. داده‌های غیرتصویری و بیت‌های اضافی حفظ نمی‌شوند.", "JC5 opened; save the hook map as BMP or TIFF from the size stage. Non-image data and padding bits are not preserved.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException or OverflowException)
@@ -868,11 +908,16 @@ public partial class MainWindow : Window
         SetBusy(true); BitmapSource? bitmap = null;
         try
         {
-            WarpAnalysis? reportAnalysis = null;
-            if (currentSession.CanSave && currentSession.PatternPreview is { } preview)
-                reportAnalysis = await Task.Run(() => DesignAnalysis.Analyze(DesignAnalysis.ReadBinary(preview), preview.PixelWidth, preview.PixelHeight));
+            WarpAnalysis? reportAnalysis = null; MachineComposition? reportMap = null;
+            if (currentSession.CanSave && currentSession.PatternPreview is { } pattern)
+            {
+                var input = setup.UseSource ? currentSession.Source : pattern;
+                reportMap = await Task.Run(() => MachineComposer.Compose(input, setup, setup.RedAsBlack));
+                var fabric = CompositionView.Fabric(reportMap);
+                reportAnalysis = await Task.Run(() => DesignAnalysis.Analyze(DesignAnalysis.ReadBinary(fabric), fabric.PixelWidth, fabric.PixelHeight));
+            }
             string name = projectPath is null ? T("پروژه جدید", "New project") : Path.GetFileNameWithoutExtension(projectPath);
-            var page = DesignReport.CreatePage(currentSession, entries, name, projectCreated, english, metadata, setup, reportAnalysis); bitmap = DesignReport.Render(page);
+            var page = DesignReport.CreatePage(currentSession, entries, name, projectCreated, english, metadata, setup, reportAnalysis, reportMap); bitmap = DesignReport.Render(page);
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
         { MessageBox.Show(this, T("ساخت گزارش ممکن نشد: ", "Could not prepare report: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
@@ -885,16 +930,16 @@ public partial class MainWindow : Window
         }
     }
     private void About_Click(object sender, RoutedEventArgs e) => new AboutWindow(english) { Owner = this }.ShowDialog();
-    private void Language_Click(object sender, RoutedEventArgs e) { english = !english; UpdateLabels(); ShowStage(); }
+    private void Language_Click(object sender, RoutedEventArgs e) { english = !english; MarkProjectDirty(); UpdateLabels(); ShowStage(); }
     private void Theme_Click(object sender, RoutedEventArgs e) { lightTheme = !lightTheme; ThemeManager.Apply(lightTheme, true); RefreshControls(); }
     private void UpdateLabels()
     {
         FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
         SettingsBorder.FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
-        LanguageButton.Content = english ? "FA" : "EN"; LanguageButton.ToolTip = T("تغییر زبان", "Change language"); AboutButton.ToolTip = T("درباره", "About"); OpenProjectButton.ToolTip = T("باز کردن پروژه", "Open project"); SaveProjectButton.ToolTip = T("ذخیره پروژه", "Save project"); SaveProjectAsButton.ToolTip = T("ذخیره با نام دیگر", "Save project as"); ThemeButton.ToolTip = T("تغییر تم", "Change theme"); BankButton.ToolTip = T("بانک و طراحی بافت", "Weave bank and editor"); UndoButton.ToolTip = T("بازگشت (Ctrl+Z)", "Undo (Ctrl+Z)"); RedoButton.ToolTip = T("بازانجام (Ctrl+Y)", "Redo (Ctrl+Y)"); ReportButton.ToolTip = T("گزارش PDF و چاپ", "PDF report and print"); InfoButton.Content = T("اطلاعات طرح", "Design info"); InfoButton.ToolTip = T("طراح، کاربرد و توضیحات", "Designer, use and description");
+        LanguageButton.Content = english ? "FA" : "EN"; LanguageButton.ToolTip = T("تغییر زبان", "Change language"); AboutButton.ToolTip = T("درباره", "About"); HelpButton.ToolTip = T("راهنمای برنامه (F1)", "Help (F1)"); OpenProjectButton.ToolTip = T("باز کردن پروژه", "Open project"); SaveProjectButton.ToolTip = T("ذخیره پروژه", "Save project"); SaveProjectAsButton.ToolTip = T("ذخیره با نام دیگر", "Save project as"); ThemeButton.ToolTip = T("تغییر تم", "Change theme"); BankButton.ToolTip = T("بانک و طراحی بافت", "Weave bank and editor"); UndoButton.ToolTip = T("بازگشت (Ctrl+Z)", "Undo (Ctrl+Z)"); RedoButton.ToolTip = T("بازانجام (Ctrl+Y)", "Redo (Ctrl+Y)"); ReportButton.ToolTip = T("گزارش PDF و چاپ", "PDF report and print"); InfoButton.Content = T("اطلاعات طرح", "Design info"); InfoButton.ToolTip = T("طراح، کاربرد و توضیحات", "Designer, use and description");
         OpenButton.ToolTip = T("باز کردن پروژه یا فایل", "Open project or image"); SizeStepButton.ToolTip = T("تنظیم اندازه", "Resize"); ColorStepButton.ToolTip = T("مدیریت رنگ", "Color management"); PatternStepButton.ToolTip = T("بافت‌ریزی", "Weave assignment"); SelvedgeStepButton.ToolTip = T("تعریف کناره", "Selvedges"); WeftStepButton.ToolTip = T("تعریف پودگذاری", "Weft / box motion"); FloatStepButton.ToolTip = T("فلوت‌گیری", "Float check"); AnalysisStepButton.ToolTip = T("تحلیل", "Analysis"); MachineStepButton.ToolTip = T("خروجی ماشین", "Machine output");
-        AnalysisTitle.Text = T("تحلیل تارها", "Warp analysis"); AnalysisHint.Text = T("تعداد نقاط سیاه هر ستون با میانگین همه ستون‌ها مقایسه می‌شود. قرمز: شاخص کشش بالاتر؛ آبی: شاخص شل‌شدگی. این شاخص اندازه‌گیری فیزیکی کشش نیست.", "Black pixels per column compared with the overall mean. Red: higher tension indicator; blue: looseness indicator. This is not a physical tension measurement."); RunAnalysisButton.Content = T("محاسبه نقشه حرارتی", "Calculate heatmap");
-        FloatTitle.Text = T("بررسی فلوت", "Float inspection"); FloatHint.Text = T("طول حداقل و جهت را انتخاب کنید؛ دنباله‌های سیاه یا سفید پیوسته شمرده می‌شوند. روی تصویر کلیک کنید تا نقطه عوض شود.", "Choose a minimum length and direction. Contiguous black and white runs are counted. Click the image to toggle a pixel."); FloatLengthLabel.Text = T("حداقل طول فلوت", "Minimum run length"); FloatWarp.Content = T("تار (ستون)", "Warp (column)"); FloatWeft.Content = T("پود (ردیف)", "Weft (row)"); FloatScanButton.Content = T("بررسی فلوت‌ها", "Scan floats"); FloatPreviousButton.Content = T("قبلی", "Previous"); FloatNextButton.Content = T("بعدی", "Next"); ColorSwatchColumn.Header = T("رنگ", "Color"); ColorCodeColumn.Header = T("کد رنگ", "Color code"); ColorCountColumn.Header = T("پیکسل", "Pixels"); ColorPercentColumn.Header = T("درصد", "Percent");
+        AnalysisTitle.Text = T("تحلیل تارها", "Warp analysis"); AnalysisHint.Text = T("درصدها شاخص نسبی‌اند، نه اندازه‌گیری فیزیکی.", "Percentages are relative indicators, not physical measurements."); RunAnalysisButton.Content = T("محاسبه درصدها", "Calculate percentages");
+        FloatTitle.Text = T("بررسی فلوت", "Float inspection"); FloatHint.Text = T("کناره‌ها نیز بررسی می‌شوند. فقط نقاط خود طرح قابل اصلاح‌اند؛ کناره را از تنظیمات آن تغییر دهید.", "Selvedges are included. Only design pixels can be edited; adjust selvedges in their settings."); FloatLengthLabel.Text = T("حداقل طول فلوت", "Minimum run length"); FloatWarp.Content = T("تار (ستون)", "Warp (column)"); FloatWeft.Content = T("پود (ردیف)", "Weft (row)"); FloatScanButton.Content = T("بررسی فلوت‌ها", "Scan floats"); FloatPreviousButton.Content = T("قبلی", "Previous"); FloatNextButton.Content = T("بعدی", "Next"); ColorSwatchColumn.Header = T("رنگ", "Color"); ColorCodeColumn.Header = T("کد رنگ", "Color code"); ColorCountColumn.Header = T("پیکسل", "Pixels"); ColorPercentColumn.Header = T("درصد", "Percent");
         FileCaption.Text = T("فایل ورودی", "INPUT FILE"); NoFileTitle.Text = T("شروع کار", "Get started"); NoFileHint.Text = T("ابتدا یک تصویر BMP یا TIFF باز کنید یا در پنجره رها کنید.", "Open or drop a BMP or TIFF image to start.");
         SizeTitle.Text = T("مرحله ۱ · تغییر اندازه", "Stage 1 · Resize"); SizeHint.Text = T("ابعاد خروجی را وارد و اعمال کنید. تصویر سمت چپ نتیجه همین مرحله است.", "Set and apply the output dimensions; the preview shows the result.");
         WidthLabel.Text = T("عرض (پیکسل)", "Width (px)"); HeightLabel.Text = T("ارتفاع (پیکسل)", "Height (px)"); ApplySizeButton.Content = T("اعمال اندازه", "Apply size"); SaveSizeButton.Content = T("ذخیره خروجی اندازه", "Save resized image"); ToColorButton.Content = T("مرحله بعد: رنگ ←", "Next: colors →");
@@ -910,7 +955,7 @@ public partial class MainWindow : Window
         UpdateWindowTitle();
         DeveloperText.Text = T("برنامه‌نویس: میرخلیلی", "Developer: Mirkhalili");
         MachineTitle.Text = T("خروجی ماشین", "Machine output"); MachineHint.Text = T("JC5 و JC6 تک‌ناحیه‌ای بر اساس نمونه DesignScope به‌صورت آزمایشی فعال هستند؛ سایر قالب‌ها پشتیبانی نمی‌شوند.", "Experimental single-area JC5 and JC6 based on DesignScope samples; other formats are not supported.");
-        MachineFormatLabel.Text = T("قالب هدف", "Target format"); MachineRedAsBlack.Content = T("نقشه قرمز و سفید: قرمز = بافت", "Red/white hook map: red = black"); MachineLegacyImport.Content = T("خواندن فایل خروجی نسخه قدیمی ۰۰۶", "Import a file created by old version 006"); MachineUseSource.Content = T("استفاده از نقشه اصلی به جای نتیجه بافت", "Use original hook map instead of pattern result"); MachineExportButton.Content = T("تبدیل و ذخیره فایل ماشین", "Convert and save loom file"); MachineImportButton.Content = T("انتخاب فایل ماشین", "Select loom file");
+        MachineFormatLabel.Text = T("قالب هدف", "Target format"); MachineRedAsBlack.Content = T("نمایش بافت به رنگ قرمز / قرمز = بیت فعال", "Display active pixels in red / red = active"); MachineLegacyImport.Content = T("خواندن فایل خروجی نسخه قدیمی ۰۰۶", "Import a file created by old version 006"); MachineUseSource.Content = T("استفاده از نقشه اصلی به جای نتیجه بافت", "Use original hook map instead of pattern result"); MachineExportButton.Content = T("تبدیل و ذخیره فایل ماشین", "Convert and save loom file"); MachineImportButton.Content = T("انتخاب فایل ماشین", "Select loom file");
         SelvedgeTitle.Text = T("تعریف کناره", "Selvedges"); WeftTitle.Text = T("تعریف پودگذاری", "Weft / box motion"); MachineSetupHint.Text = T("کناره‌ها به عرض طرح اضافه می‌شوند؛ برای هر سمت، پهنا و بافت بانک را انتخاب کنید.", "Selvedges are added to the design width; select a width and library weave for each side.");
         WeftHint.Text = T("شماره ستون‌ها از صفر و از چپ است؛ ستون‌های خالی سفید می‌مانند.", "Columns are zero-based from the left; unused columns stay white."); TotalHooksLabel.Text = T("تعداد کل تارها (خالی = خودکار)", "Total hooks (blank = automatic)"); DesignStartLabel.Text = T("شروع طرح (خالی = پس از کناره)", "Design start (blank = after selvedge)"); WeftCountLabel.Text = T("تعداد پود", "Number of wefts"); WeftStartLabel.Text = T("شروع پود از ستون", "Weft starting column"); SelvedgePreviewButton.Content = T("پیش‌نمایش کناره‌ها", "Preview selvedges"); LeftSelvedgeBank.Content = T("انتخاب کناره چپ از بانک", "Choose left weave from bank"); RightSelvedgeBank.Content = T("انتخاب کناره راست از بانک", "Choose right weave from bank"); LegacySetup.Header = T("تنظیمات قدیمی پروژه", "Legacy project settings"); UpgradeLayoutButton.Content = T("تغییر به چیدمان جدید", "Switch to new layout");
         LeftSelvedgeLabel.Text = T("کناره چپ: تعداد قلاب و بافت", "Left selvedge: hooks and weave"); RightSelvedgeLabel.Text = T("کناره راست: تعداد قلاب و بافت", "Right selvedge: hooks and weave"); RefreshMachineBankButton.Content = T("به‌روزرسانی فهرست بانک", "Refresh weave bank");

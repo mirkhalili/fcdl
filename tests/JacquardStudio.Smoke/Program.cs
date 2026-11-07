@@ -287,6 +287,13 @@ internal static class Program
             Expect<ArgumentException>(() => MachineComposer.Compose(image, setup with { LeftWidth = "4000000" }));
             var absolute = new MachineSetup("8", "2", edgeLeft, edgeRight, "left", "right", true, AbsoluteLayout: true, TotalHooks: "30", DesignStart: "20", WeftStart: "1", WeftCount: "3");
             var positioned = MachineComposer.Compose(image, absolute); var positionedPixels = DesignAnalysis.ReadBinary(positioned.Image);
+            Check(positioned.DesignStart == 20 && positioned.FabricStart == 12 && positioned.FabricWidth == 13, "absolute composite fabric geometry");
+            var fabricMap = CompositionView.Fabric(positioned); Check(fabricMap.PixelWidth == 13 && DesignAnalysis.ReadBinary(fabricMap)[0] == 0, "fabric crop includes selvedges but excludes signals and padding");
+            var redView = CompositionView.RedPreview(positioned.Image); var redBytes = new byte[30 * 2 * 4]; redView.CopyPixels(redBytes, 30 * 4, 0);
+            Check(redBytes[4] == 0 && redBytes[5] == 0 && redBytes[6] == 255 && redBytes[7] == 255 && redBytes[0] == 255, "red preview marks active weft while preserving white");
+            Check(DesignAnalysis.ReadBinary(Jc5Codec.Decode(Jc5Codec.Encode(positioned.Image, "test.jc5"))).SequenceEqual(positionedPixels), "red preview leaves machine bits unchanged");
+            var fabricStats = DesignAnalysis.Analyze(DesignAnalysis.ReadBinary(fabricMap), fabricMap.PixelWidth, fabricMap.PixelHeight); var extremes = CompositionView.Extremes(fabricStats, 0, fabricMap.PixelWidth);
+            Check(extremes.Looseness >= 0 && extremes.Tightness >= 0, "bounded relative percentage extremes");
             Check(positioned.Image.PixelWidth == 30 && positioned.SignalHooks.SequenceEqual(new[] {1,2,3}), "absolute total and weft columns");
             Check(positionedPixels[0] == 255 && positionedPixels[1] == 0 && positionedPixels[2] == 255 && positionedPixels[3] == 255 && positionedPixels.Skip(4).Take(8).All(v => v == 255), "first one-hot weft and white gap");
             Check(positionedPixels[12] == 0 && positionedPixels[19] == 255 && positionedPixels[20] == 0 && positionedPixels[21] == 255 && positionedPixels[23] == 0 && positionedPixels.Skip(25).Take(5).All(v => v == 255), "left edge at 12–19, design at 20 and white trailing hooks");
@@ -342,11 +349,11 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            Check(AppVersion.Display == "013.2.10.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "014.2.11.1-a1", "QAVNS version from version.txt");
             var reportEntries = bankSession.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = bankSession.Palette.Counts[index], Percent = 100d * bankSession.Palette.Counts[index] / bankSession.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; if (bankSession.Patterns[index] is { } p) e.Restore("sample", p); return e; }).ToArray();
             Check(DesignReport.PersianDate(new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero)) == "1403/01/01", "solar Hijri report date");
             Check(DesignReport.PersianDate(null).Contains("نامشخص"), "legacy creation date not invented");
-            var reportImage = DesignReport.Render(DesignReport.CreatePage(bankSession, reportEntries, "نمونه", new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero), false));
+            var reportImage = DesignReport.Render(DesignReport.CreatePage(bankSession, reportEntries, "نمونه", new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero), false, machine: absolute, analysis: fabricStats, composition: positioned));
             Check(reportImage.PixelWidth == 1240 && reportImage.PixelHeight == 1754, "single A4 report renders");
             string reportPath = Path.Combine(dir, "report.pdf"); DesignReport.SavePdf(reportImage, reportPath, new[] {bmpPath});
             byte[] pdfBytes = File.ReadAllBytes(reportPath); string pdfText = System.Text.Encoding.Latin1.GetString(pdfBytes);
@@ -359,6 +366,7 @@ internal static class Program
             Check(window.FontFamily.Source.Contains("Vazirmatn"), "embedded font selected in main window");
             var nav = (System.Windows.Controls.Grid)window.FindName("Navigation");
             var settings = (System.Windows.FrameworkElement)window.FindName("SettingsBorder");
+            Check(System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("WeftStepButton")) == 7 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("MachineStepButton")) == 8 && window.FindName("HelpButton") is System.Windows.Controls.Button, "weft immediately before machine and in-app help present");
             Check(nav.FlowDirection == System.Windows.FlowDirection.RightToLeft && System.Windows.Controls.Grid.GetColumn(settings) == 2, "right-to-left workflow and right settings panel");
             var list = (System.Windows.Controls.ListView)window.FindName("ColorPaletteList");
             Check(list.View is System.Windows.Controls.GridView grid && grid.Columns.Count == 4, "four-column color statistics table");

@@ -21,7 +21,7 @@ public static class DesignReport
         catch (ArgumentOutOfRangeException) { return "نامشخص / Unknown"; }
     }
     private static TextBlock Text(string text, double size, Brush? color = null, FontWeight? weight = null) => new() { Text = text, FontSize = size, Foreground = color ?? Ink, FontWeight = weight ?? FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-    public static FrameworkElement CreatePage(WorkflowSession session, IReadOnlyList<PaletteEntry> entries, string projectName, DateTimeOffset? created, bool english, DesignMetadata? metadata = null, MachineSetup? machine = null, WarpAnalysis? analysis = null)
+    public static FrameworkElement CreatePage(WorkflowSession session, IReadOnlyList<PaletteEntry> entries, string projectName, DateTimeOffset? created, bool english, DesignMetadata? metadata = null, MachineSetup? machine = null, WarpAnalysis? analysis = null, MachineComposition? composition = null)
     {
         var palette = session.Palette ?? throw new InvalidOperationException("A color palette is required for a report.");
         if (entries.Count != palette.Colors.Length) throw new ArgumentException("Palette metadata does not match.");
@@ -29,7 +29,7 @@ public static class DesignReport
         System.Windows.Documents.TextElement.SetFontFamily(page, (FontFamily)Application.Current.FindResource("VazirFont"));
         page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(215) });
         page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(52) });
-        page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(90) });
+        page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(170) });
         page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(35) });
         page.Margin = new Thickness(0);
@@ -55,27 +55,57 @@ public static class DesignReport
             Grid.SetColumn(stack, column); header.Children.Add(stack);
         }
         AddImage(1, english ? "Color design" : "طرح رنگی", session.ColorPreview ?? session.Resized ?? session.Source);
-        AddImage(2, session.CanSave ? (english ? "Final woven image" : "تصویر نهایی بافت‌ریزی") : (english ? "Incomplete weave" : "بافت‌ریزی ناتمام"), session.PatternPreview ?? session.Source);
+        AddImage(2, session.CanSave ? (english ? "Final woven image" : "تصویر نهایی بافت‌ریزی") : (english ? "Incomplete weave" : "بافت‌ریزی ناتمام"), composition?.Image ?? session.PatternPreview ?? session.Source);
         page.Children.Add(header);
         var metrics = new Border { Margin = new Thickness(30, 4, 30, 4), Background = Brush("#EAF5F2"), CornerRadius = new CornerRadius(6), Padding = new Thickness(14, 5, 14, 5) };
         metrics.Child = Text(english ? $"WARP  {palette.Width:N0}     ·     WEFT  {palette.Height:N0}     ·     PIXELS  {(long)palette.Width * palette.Height:N0}     ·     COLORS  {entries.Count}" : $"تار: {palette.Width:N0}     ·     پود: {palette.Height:N0}     ·     کل پیکسل: {(long)palette.Width * palette.Height:N0}     ·     رنگ: {entries.Count}", 13, Ink, FontWeights.SemiBold);
         Grid.SetRow(metrics, 1); page.Children.Add(metrics);
         machine ??= new MachineSetup();
-        string layout = machine.AbsoluteLayout ? (english ? $"Total: {machine.TotalHooks}   Start: {machine.DesignStart}   Wefts: {machine.WeftCount} at {machine.WeftStart}" : $"کل تار: {machine.TotalHooks}   شروع طرح: {machine.DesignStart}   پود: {machine.WeftCount} از {machine.WeftStart}") : (english ? "Legacy box layout" : "چیدمان قدیمی پودگذاری");
-        string edges = english ? $"Left selvedge: {machine.LeftWidth} · {machine.LeftName}   |   Right: {machine.RightWidth} · {machine.RightName}" : $"کناره چپ: {machine.LeftWidth} · {machine.LeftName}   |   راست: {machine.RightWidth} · {machine.RightName}";
-        string stats = analysis is null ? (english ? "Analysis unavailable until all weaves are assigned." : "تحلیل پس از تخصیص همه بافت‌ها در دسترس است.") : (english ? $"Design warp black-count mean: {analysis.Mean:0.##}; min {analysis.Counts.Min()}, max {analysis.Counts.Max()} (geometric indicator)" : $"تحلیل تار طرح: میانگین نقاط سیاه {analysis.Mean:0.##}؛ کمینه {analysis.Counts.Min()}، بیشینه {analysis.Counts.Max()} (شاخص هندسی)");
+        string auto = english ? "auto" : "خودکار";
+        string total = composition is null ? (string.IsNullOrWhiteSpace(machine.TotalHooks) ? auto : machine.TotalHooks) : composition.Image.PixelWidth.ToString("N0");
+        string start = composition is null ? (string.IsNullOrWhiteSpace(machine.DesignStart) ? auto : machine.DesignStart) : composition.DesignStart.ToString();
+        string layout = machine.AbsoluteLayout ? (english ? $"Total hooks: {total}   Design start: {start}   Wefts: {machine.WeftCount} at {machine.WeftStart}" : $"کل تار: {total}   شروع طرح: {start}   پود: {machine.WeftCount} از {machine.WeftStart}") : (english ? "Legacy box layout" : "چیدمان قدیمی پودگذاری");
         var extra = new StackPanel { Margin = new Thickness(30, 1, 30, 2) };
-        extra.Children.Add(Text(edges, 10, Ink)); extra.Children.Add(Text(layout, 10, Ink));
+        var edges = new Grid { Height = 55 }; edges.ColumnDefinitions.Add(new ColumnDefinition()); edges.ColumnDefinitions.Add(new ColumnDefinition());
+        void AddEdge(int column, string caption, string width, string name, WeavePattern? pattern)
+        {
+            var card = new Grid { Margin = new Thickness(2), Background = Brush("#F5F9F8") }; card.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) }); card.ColumnDefinitions.Add(new ColumnDefinition());
+            if (pattern is not null)
+            {
+                var entry = new PaletteEntry(); entry.Restore(name, pattern);
+                var image = new Image { Source = entry.PatternGridPreview, Width = 46, Height = 46, Stretch = Stretch.Uniform }; RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.NearestNeighbor); card.Children.Add(image);
+            }
+            var details = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0) };
+            details.Children.Add(Text(caption + ": " + width, 10, Ink, FontWeights.SemiBold));
+            details.Children.Add(Text((string.IsNullOrWhiteSpace(name) ? "—" : name) + (pattern is null ? "" : $"  ({pattern.Width}×{pattern.Height})"), 9, Muted));
+            Grid.SetColumn(details, 1); card.Children.Add(details); Grid.SetColumn(card, column); edges.Children.Add(card);
+        }
+        AddEdge(0, english ? "Left selvedge" : "کناره چپ", machine.LeftWidth, machine.LeftName, machine.LeftPattern);
+        AddEdge(1, english ? "Right selvedge" : "کناره راست", machine.RightWidth, machine.RightName, machine.RightPattern);
+        extra.Children.Add(edges); extra.Children.Add(Text(layout, 10, Ink));
         extra.Children.Add(Text((english ? "Weft sequence: " : "توالی پود: ") + (string.IsNullOrWhiteSpace(machine.Sequence) ? (english ? "natural" : "طبیعی") : machine.Sequence) + (machine.StartFromBottom ? (english ? " · bottom" : " · شروع از پایین") : (english ? " · top" : " · شروع از بالا")), 10, Ink));
-        extra.Children.Add(Text(stats, 10, Muted));
-        if (analysis is not null) { var strip = new Image { Source = DesignAnalysis.Heatmap(analysis, 1), Height = 12, Stretch = Stretch.Fill }; RenderOptions.SetBitmapScalingMode(strip, BitmapScalingMode.NearestNeighbor); extra.Children.Add(strip); }
+        if (analysis is not null)
+        {
+            var groups = new Grid { Margin = new Thickness(0, 3, 0, 0) }; int n = Math.Min(5, analysis.Counts.Length);
+            for (int i = 0; i < n; i++) groups.ColumnDefinitions.Add(new ColumnDefinition());
+            for (int i = 0; i < n; i++)
+            {
+                int from = i * analysis.Counts.Length / n, to = (i + 1) * analysis.Counts.Length / n;
+                var (loose, tight) = CompositionView.Extremes(analysis, from, to - from); int offset = composition?.FabricStart ?? 0;
+                var text = new TextBlock { Text = english ? $"{from + offset}–{to - 1 + offset}\nLoose {loose:0.#}%\nTight {tight:0.#}%" : $"{from + offset}–{to - 1 + offset}\nشل {loose:0.#}%\nکش {tight:0.#}%", FontSize = 9, Foreground = Ink, TextAlignment = TextAlignment.Center, FlowDirection = FlowDirection.LeftToRight };
+                var cell = new Border { BorderBrush = Line, BorderThickness = new Thickness(1, 1, 0, 1), Padding = new Thickness(1), Child = text }; Grid.SetColumn(cell, i); groups.Children.Add(cell);
+            }
+            extra.Children.Add(groups);
+            extra.Children.Add(Text(english ? "Relative indicators; not physical tension measurements." : "شاخص نسبی؛ نه اندازه‌گیری فیزیکی کشش.", 9, Muted));
+        }
+        else extra.Children.Add(Text(english ? "Percentages unavailable until all weaves are assigned." : "درصدها پس از تکمیل بافت‌ریزی در دسترس‌اند.", 9, Muted));
         Grid.SetRow(extra, 2); page.Children.Add(extra);
         var body = new Grid { Margin = new Thickness(30, 3, 30, 0) };
         body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(28) }); body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         body.Children.Add(Text(english ? "COLORS  /  WEAVES  /  SHARE" : "رنگ‌ها  /  بافت‌های اختصاص‌یافته  /  درصد", 14, Accent, FontWeights.Bold));
         var columns = new Grid(); columns.ColumnDefinitions.Add(new ColumnDefinition()); columns.ColumnDefinitions.Add(new ColumnDefinition()); Grid.SetRow(columns, 1); body.Children.Add(columns);
         int rows = Math.Max(1, (entries.Count + 1) / 2);
-        double rowHeight = Math.Min(68, 690d / rows), pictureSize = Math.Max(25, rowHeight - 4);
+        double rowHeight = Math.Min(68, 605d / rows), pictureSize = Math.Max(18, rowHeight - 4);
         for (int c = 0; c < 2; c++)
         {
             var list = new StackPanel { Margin = new Thickness(c == 0 ? 0 : 8, 0, c == 0 ? 8 : 0, 0) };
