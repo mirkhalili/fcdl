@@ -34,19 +34,18 @@ public sealed class PaletteEntry : INotifyPropertyChanged
         preview.Freeze();
         patternName = name; PatternPath = path; PatternPreview = preview;
         PatternSize = $"{pattern.Width} × {pattern.Height}";
-        if (pattern.Width <= 64 && pattern.Height <= 64)
+        // Draw a bounded number of major lines even for large or very wide weaves.
+        // The card is only 105px across; sub-pixel lines would be indistinguishable.
+        int step = Math.Max(1, (Math.Max(pattern.Width, pattern.Height) + 63) / 64);
+        var group = new DrawingGroup();
+        using (var drawing = group.Open())
         {
-            var group = new DrawingGroup();
-            using (var drawing = group.Open())
-            {
-                var gridPen = new Pen(new SolidColorBrush(Color.FromArgb(100, 100, 110, 120)), 0.06);
-                for (int y = 0; y < pattern.Height; y++)
-                for (int x = 0; x < pattern.Width; x++)
-                    drawing.DrawRectangle(pattern.Values[y * pattern.Width + x] == 0 ? Brushes.Black : Brushes.White, gridPen, new System.Windows.Rect(x, y, 1, 1));
-            }
-            group.Freeze(); var visual = new DrawingImage(group); visual.Freeze(); PatternGridPreview = visual;
+            drawing.DrawImage(preview, new System.Windows.Rect(0, 0, pattern.Width, pattern.Height));
+            var gridPen = new Pen(new SolidColorBrush(Color.FromArgb(130, 100, 110, 120)), .06 * step);
+            for (int x = 0; x <= pattern.Width; x += step) drawing.DrawLine(gridPen, new System.Windows.Point(x, 0), new System.Windows.Point(x, pattern.Height));
+            for (int y = 0; y <= pattern.Height; y += step) drawing.DrawLine(gridPen, new System.Windows.Point(0, y), new System.Windows.Point(pattern.Width, y));
         }
-        else PatternGridPreview = preview;
+        group.Freeze(); var visual = new DrawingImage(group); visual.Freeze(); PatternGridPreview = visual;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PatternGridPreview)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DisplayPatternPreview)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PatternSize)));

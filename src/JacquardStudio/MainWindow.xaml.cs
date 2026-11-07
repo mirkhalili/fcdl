@@ -1131,7 +1131,7 @@ public partial class MainWindow : Window
         var inverse = PreviewImage.TransformToVisual(presenter).Inverse;
         if (inverse is null) return;
         GridOverlay.Zoom = zoom; GridOverlay.VisibleImage = inverse.TransformBounds(new Rect(0, 0, presenter.ActualWidth, presenter.ActualHeight));
-        int step = GridOverlay.GridStep(); GridStepText.Text = step == 1 ? T("هر پیکسل", "1 px") : T($"هر {step} پیکسل", $"every {step} px");
+        int step = GridOverlay.GridStep(); GridStepText.Text = step == 1 ? T("هر خانه", "each cell") : T($"هر {step} خانه", $"every {step} cells");
         GridOverlay.InvalidateVisual();
     }
     private void ZoomIn_Click(object sender, RoutedEventArgs e) => SetZoom(zoom * 2);

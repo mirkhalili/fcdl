@@ -471,6 +471,8 @@ internal static class Program
             var cardEntry = new PaletteEntry(); cardEntry.Restore("card", new WeavePattern(2,2,new byte[]{0,255,255,0}));
             cardEntry.ShowGrid = false; Check(ReferenceEquals(cardEntry.DisplayPatternPreview, cardEntry.PatternPreview), "pattern card hides grid");
             cardEntry.ShowGrid = true; Check(ReferenceEquals(cardEntry.DisplayPatternPreview, cardEntry.PatternGridPreview), "pattern card displays grid");
+            cardEntry.Restore("wide", new WeavePattern(200, 2, Enumerable.Repeat((byte)0, 400).ToArray()));
+            Check(cardEntry.PatternGridPreview is System.Windows.Media.DrawingImage && cardEntry.PatternPreview!.PixelWidth == 200, "large weave card uses bounded major grid lines without altering bitmap");
             var nav = (System.Windows.Controls.Grid)window.FindName("Navigation");
             var settings = (System.Windows.FrameworkElement)window.FindName("SettingsBorder");
             Check(System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("WeftStepButton")) == 7 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("SimulationStepButton")) == 8 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("MachineStepButton")) == 9 && window.FindName("HelpButton") is System.Windows.Controls.Button, "weft, simulation, machine and in-app help are ordered");
