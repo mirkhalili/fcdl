@@ -297,6 +297,13 @@ internal static class Program
             string multiFile = Path.Combine(dir, "multi-weft.sam");
             ProjectFile.Save(multiFile, new ProjectState(autoSession,"sample.bmp","3","2","50","Simulation",false,1,autoSession.Patterns.Select(_ => (string?)"pattern").ToArray(), Simulation:multiSettings), Array.Empty<string>());
             var multiRestored = ProjectFile.Load(multiFile); Check(multiRestored.Simulation!.Wefts!.SequenceEqual(multiSettings.Wefts!), "multi-weft yarns survive SAM v7");
+            string simV6 = Path.Combine(dir, "simulation-v6.sam"); File.Copy(multiFile, simV6);
+            using (var zip = ZipFile.Open(simV6, ZipArchiveMode.Update))
+            {
+                var manifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(manifest.Open())) json = reader.ReadToEnd();
+                manifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":7", "\"Version\":6"));
+            }
+            Check(ProjectFile.Load(simV6).Simulation!.Wefts is null, "SAM v6 uses its original single-weft fallback");
             var invalidPosition = new MachineSetup(BoxEnabled:true, AbsoluteLayout:true, DesignStart:"3", WeftStart:PositionNumbers.ToStored("0"), WeftCount:"1"); Expect<ArgumentException>(() => MachineComposer.Compose(image, invalidPosition));
             var firstHook = MachineComposer.Compose(image, invalidPosition with { WeftStart = PositionNumbers.ToStored("1") });
             Check(firstHook.SignalHooks.SequenceEqual(new[]{0}) && DesignAnalysis.ReadBinary(firstHook.Image)[0] == 0, "weft one occupies the first physical hook");
@@ -452,6 +459,18 @@ internal static class Program
             var pendingTotal = (System.Windows.Controls.TextBox)window.FindName("TotalHooksInput"); pendingTotal.Text = "۳۰";
             var readSetup = typeof(MainWindow).GetMethod("ReadMachineSettings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
             Check(((MachineSetup)readSetup.Invoke(window, null)!).TotalHooks == "" && window.FindName("ApplyWeftButton") is System.Windows.Controls.Button, "typing weft draft does not apply it");
+            var loadMachineSettings = typeof(MainWindow).GetMethod("LoadMachineSettings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            loadMachineSettings.Invoke(window, new object?[] { absolute, null });
+            Check(((System.Windows.Controls.TextBox)window.FindName("DesignStartInput")).Text == "21" && ((System.Windows.Controls.TextBox)window.FindName("WeftStartInput")).Text == "2", "old zero-based applied locations display without changing the stored map");
+            var loadSimSettings = typeof(MainWindow).GetMethod("LoadSimulationSettings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            loadSimSettings.Invoke(window, new object?[] { multiSettings });
+            Check(((System.Windows.Controls.StackPanel)window.FindName("SimulationWeftRows")).Children.Count == 3, "simulation editor has exactly the applied weft count");
+            ((System.Windows.Controls.TextBox)window.FindName("WeftStartInput")).Text = "۱";
+            var readDraft = typeof(MainWindow).GetMethod("ReadWeftDraft", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            Check(((WeftSettings)readDraft.Invoke(window, null)!).WeftStart == "0", "first displayed weft maps to actual first physical hook");
+            var cardEntry = new PaletteEntry(); cardEntry.Restore("card", new WeavePattern(2,2,new byte[]{0,255,255,0}));
+            cardEntry.ShowGrid = false; Check(ReferenceEquals(cardEntry.DisplayPatternPreview, cardEntry.PatternPreview), "pattern card hides grid");
+            cardEntry.ShowGrid = true; Check(ReferenceEquals(cardEntry.DisplayPatternPreview, cardEntry.PatternGridPreview), "pattern card displays grid");
             var nav = (System.Windows.Controls.Grid)window.FindName("Navigation");
             var settings = (System.Windows.FrameworkElement)window.FindName("SettingsBorder");
             Check(System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("WeftStepButton")) == 7 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("SimulationStepButton")) == 8 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("MachineStepButton")) == 9 && window.FindName("HelpButton") is System.Windows.Controls.Button, "weft, simulation, machine and in-app help are ordered");

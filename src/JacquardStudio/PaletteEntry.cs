@@ -19,6 +19,9 @@ public sealed class PaletteEntry : INotifyPropertyChanged
     public string? PatternPath { get; private set; }
     public BitmapSource? PatternPreview { get; private set; }
     public ImageSource? PatternGridPreview { get; private set; }
+    private bool showGrid = true;
+    public bool ShowGrid { get => showGrid; set { if (showGrid == value) return; showGrid = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DisplayPatternPreview))); } }
+    public ImageSource? DisplayPatternPreview => ShowGrid ? PatternGridPreview : PatternPreview;
     public string PatternSize { get; private set; } = "—";
     private string? patternName;
     public string PatternLabel => patternName ?? "—";
@@ -45,6 +48,7 @@ public sealed class PaletteEntry : INotifyPropertyChanged
         }
         else PatternGridPreview = preview;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PatternGridPreview)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DisplayPatternPreview)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PatternSize)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PatternLabel)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PatternPreview)));

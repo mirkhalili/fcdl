@@ -337,7 +337,7 @@ public partial class MainWindow : Window
         for (int i = 0; i < palette.Colors.Length; i++)
         {
             int c = palette.Colors[i], count = palette.Counts[i];
-            var entry = new PaletteEntry { Index = i, ColorCode = $"#{c:X6}", PixelCount = count, Percent = 100d * count / palette.Indices.Length,
+            var entry = new PaletteEntry { ShowGrid = GridToggle.IsChecked == true, Index = i, ColorCode = $"#{c:X6}", PixelCount = count, Percent = 100d * count / palette.Indices.Length,
                 ColorLabel = $"#{c:X6} · {count:N0} px", Brush = new SolidColorBrush(Color.FromRgb((byte)(c >> 16), (byte)(c >> 8), (byte)c)) };
             if (session.Patterns[i] is { } pattern)
             {
@@ -1121,7 +1121,7 @@ public partial class MainWindow : Window
     { if (panning && e.ChangedButton == MouseButton.Middle) { ImageScroll.ReleaseMouseCapture(); e.Handled = true; } }
     private void ImageScroll_LostMouseCapture(object sender, MouseEventArgs e) { panning = false; ImageScroll.ClearValue(CursorProperty); }
     private void SetZoom(double value) { zoom = Math.Clamp(value, 0.125, 8); PreviewContent.LayoutTransform = new ScaleTransform(zoom, zoom); ZoomText.Text = $"{zoom * 100:0}%"; Dispatcher.BeginInvoke(new Action(UpdatePixelGrid), System.Windows.Threading.DispatcherPriority.Loaded); }
-    private void GridToggle_Changed(object sender, RoutedEventArgs e) { if (!IsInitialized) return; GridOverlay.Visibility = GridToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed; GridStepText.Text = ""; UpdatePixelGrid(); }
+    private void GridToggle_Changed(object sender, RoutedEventArgs e) { if (!IsInitialized) return; foreach (var entry in entries) entry.ShowGrid = GridToggle.IsChecked == true; GridOverlay.Visibility = GridToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed; GridStepText.Text = ""; UpdatePixelGrid(); }
     private void ImageScroll_ScrollChanged(object sender, ScrollChangedEventArgs e) { if (IsInitialized) UpdatePixelGrid(); }
     private void UpdatePixelGrid()
     {
