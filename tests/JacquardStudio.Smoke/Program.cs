@@ -58,6 +58,13 @@ internal static class Program
             var beforeProject = new byte[6 * 4 * 4]; var afterProject = new byte[6 * 4 * 4];
             pipeline.PatternPreview!.CopyPixels(beforeProject, 24, 0); restored.Session.PatternPreview!.CopyPixels(afterProject, 24, 0);
             Check(beforeProject.SequenceEqual(afterProject), "SAM exact pattern preview");
+            string legacySam = Path.Combine(dir, "legacy-v1.sam"); File.Copy(projectPath, legacySam);
+            using (var zip = ZipFile.Open(legacySam, ZipArchiveMode.Update))
+            {
+                var entryManifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(entryManifest.Open())) json = reader.ReadToEnd();
+                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":2", "\"Version\":1"));
+            }
+            Check(ProjectFile.Load(legacySam).Session.CanSave, "legacy SAM version one loads");
             Expect<IOException>(() => ProjectFile.Save(projectPath, projectState, new[] { projectPath }));
             string broken = Path.Combine(dir, "broken.sam"); File.WriteAllBytes(broken, new byte[] { 1, 2, 3 });
             Expect<InvalidDataException>(() => ProjectFile.Load(broken));
@@ -216,6 +223,39 @@ internal static class Program
             Check(PreviewHitTest.Find(pipeline.Palette!, 6, 1, 6, 4) is null, "hover excludes outside edge");
             var savedSnapshot = pipeline.Snapshot(); var originalPattern = savedSnapshot.Patterns[0]; pipeline.AssignPattern(0, new WeavePattern(1, 1, new byte[] {255}));
             Check(ReferenceEquals(savedSnapshot.Patterns[0], originalPattern) && !ReferenceEquals(savedSnapshot.Patterns, pipeline.Patterns), "workflow snapshot survives reassignment");
+            var rowEditor = new WeaveEditor(); rowEditor.SetPattern(new WeavePattern(4, 4, new byte[] {0,0,255,255, 255,255,255,255, 255,255,255,255, 255,255,255,255}));
+            rowEditor.ApplyHelper("twillRight");
+            Check(rowEditor.Snapshot().Values.SequenceEqual(new byte[] {0,0,255,255, 0,255,255,0, 255,255,0,0, 255,0,0,255}), "automatic weave continues the first row upwards");
+            rowEditor.Undo(); rowEditor.ApplyHelper("twillLeft");
+            Check(rowEditor.Snapshot().Values.SequenceEqual(new byte[] {0,0,255,255, 255,0,0,255, 255,255,0,0, 0,255,255,0}), "automatic weave continues the first row downwards");
+            rowEditor.ApplyHelper("panama"); Check(rowEditor.Snapshot().Values.SequenceEqual(new byte[] {0,0,255,255, 0,0,255,255, 255,255,0,0, 255,255,0,0}), "2x2 Panama repeat");
+            Expect<ArgumentException>(() => rowEditor.ApplyHelper("satin"));
+            rowEditor.Reset(5,5); rowEditor.ApplyHelper("satin");
+            Check(rowEditor.Snapshot().Values.Count(v => v == 0) == 5 && Enumerable.Range(0,5).All(y => rowEditor.Snapshot().Values[y*5 + (y*2)%5] == 0), "five end satin with step two");
+            var analysisPixels = new byte[] {0,255,0, 0,255,0, 0,0,255, 255,0,255};
+            var warp = DesignAnalysis.Analyze(analysisPixels, 3, 4);
+            Check(warp.Counts.SequenceEqual(new[] {3,2,2}) && Math.Abs(warp.Mean - 7d/3) < 0.00001 && Math.Abs(warp.DeviationPercent[0] - 200d/7) < 0.00001, "warp count, mean and percent deviation");
+            Check(DesignAnalysis.Analyze(Enumerable.Repeat((byte)255, 6).ToArray(), 3, 2).DeviationPercent.All(v => v == 0), "zero mean does not divide by zero");
+            var verticalFloats = DesignAnalysis.FindFloats(analysisPixels, 3, 4, 2, FloatDirection.Warp);
+            var horizontalFloats = DesignAnalysis.FindFloats(analysisPixels, 3, 4, 2, FloatDirection.Weft);
+            Check(verticalFloats.Count == 5 && verticalFloats[0] == new FloatRun(0,0,3,true,FloatDirection.Warp), "maximal warp floats including edge");
+            Check(horizontalFloats.Count == 1 && horizontalFloats[0] == new FloatRun(0,2,2,true,FloatDirection.Weft), "maximal weft floats");
+            Check(DesignAnalysis.FindFloats(analysisPixels, 3, 4, 5, FloatDirection.Warp).Count == 0, "float threshold longer than line");
+            byte beforeToggle = DesignAnalysis.ReadBinary(bankSession.PatternPreview!)[0];
+            var historySnapshot = bankSession.Snapshot(); bankSession.TogglePixel(0,0);
+            Check(DesignAnalysis.ReadBinary(bankSession.PatternPreview!)[0] != beforeToggle && DesignAnalysis.ReadBinary(historySnapshot.PatternPreview!)[0] == beforeToggle, "edited pixel and history snapshot are independent");
+            var changedPixel = DesignAnalysis.ReadBinary(bankSession.PatternPreview!)[0];
+            var info = new DesignMetadata("طراح نمونه", "پارچه", "شرح طرح");
+            string editedPath = Path.Combine(dir,"edited.sam");
+            ProjectFile.Save(editedPath, new ProjectState(bankSession, "sample.bmp", "3", "2", "50", "Floats", false, 1, bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(), null, info), new[] {bmpPath});
+            var edited = ProjectFile.Load(editedPath);
+            Check(edited.Metadata == info && edited.Stage == "Floats" && DesignAnalysis.ReadBinary(edited.Session.PatternPreview!)[0] == changedPixel, "SAM metadata and edited pixel round-trip");
+            bankSession.AssignPattern(0, new WeavePattern(1,1,new byte[]{255}));
+            Check(DesignAnalysis.ReadBinary(bankSession.PatternPreview!)[0] == changedPixel, "individual edits survive weave reassignment");
+            string editedImage = Path.Combine(dir,"edited.bmp"); ImageExporter.Save(edited.Session.PatternPreview!, editedImage, false, new[] {bmpPath});
+            Check(DesignAnalysis.ReadBinary(ImageLoader.Load(editedImage, 0).Image)[0] == changedPixel, "edited pixel exported to bitmap");
+            string editedMachine = Path.Combine(dir, "edited.jc5"); Jc5Codec.Save(edited.Session.PatternPreview!, editedMachine, new[] {bmpPath});
+            Check(DesignAnalysis.ReadBinary(Jc5Codec.Load(editedMachine)).SequenceEqual(DesignAnalysis.ReadBinary(edited.Session.PatternPreview!)), "edited pixels exported to JC5");
             Check(ProjectSavePolicy.RequiresDialog(null, false) && !ProjectSavePolicy.RequiresDialog("project.sam", false) && ProjectSavePolicy.RequiresDialog("project.sam", true), "save existing vs save as policy");
             var entry = new PaletteEntry(); entry.Assign("weave.bmp", new WeavePattern(2, 1, new byte[] { 0, 255 }));
             var thumbnail = new byte[2]; entry.PatternPreview!.CopyPixels(thumbnail, 2, 0);
@@ -251,7 +291,7 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            Check(AppVersion.Display == "010.2.7.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "011.2.8.1-a1", "QAVNS version from version.txt");
             var reportEntries = bankSession.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = bankSession.Palette.Counts[index], Percent = 100d * bankSession.Palette.Counts[index] / bankSession.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; if (bankSession.Patterns[index] is { } p) e.Restore("sample", p); return e; }).ToArray();
             Check(DesignReport.PersianDate(new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero)) == "1403/01/01", "solar Hijri report date");
             Check(DesignReport.PersianDate(null).Contains("نامشخص"), "legacy creation date not invented");
@@ -278,6 +318,7 @@ internal static class Program
             Check(window.FindName("BankWorkspace") is System.Windows.FrameworkElement && window.FindName("WeaveCanvas") is WeaveEditor && window.FindName("BankButton") is System.Windows.Controls.Button, "embedded weave bank and drawing section");
             Check(window.FindName("SaveProjectAsButton") is System.Windows.Controls.Button && window.FindName("ThemeButton") is System.Windows.Controls.Button, "save as and theme controls");
             Check(window.FindName("UndoButton") is System.Windows.Controls.Button && window.FindName("RedoButton") is System.Windows.Controls.Button && window.FindName("ReportButton") is System.Windows.Controls.Button && window.FindName("HoverCard") is System.Windows.Controls.Border, "history, report and hover controls");
+            Check(window.FindName("InfoButton") is System.Windows.Controls.Button && window.FindName("AnalysisPanel") is System.Windows.Controls.ScrollViewer && window.FindName("FloatPanel") is System.Windows.Controls.ScrollViewer, "design info, analysis and float controls");
             var title = (System.Windows.Controls.TextBlock)window.FindName("WindowTitleText");
             Check(System.Windows.Controls.Grid.GetColumn(title) == 0 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)System.Windows.Media.VisualTreeHelper.GetParent((System.Windows.DependencyObject)window.FindName("CloseWindowButton"))) == 1, "title and caption button positions swapped");
             ThemeManager.Apply(true, false);

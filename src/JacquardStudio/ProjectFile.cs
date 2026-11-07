@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public sealed record ProjectState(WorkflowSession Session, string SourceName, string WidthInput, string HeightInput, string ColorInput, string Stage, bool English, int MachineFormatIndex, string?[] PatternNames, DateTimeOffset? CreatedAt = null);
+public sealed record ProjectState(WorkflowSession Session, string SourceName, string WidthInput, string HeightInput, string ColorInput, string Stage, bool English, int MachineFormatIndex, string?[] PatternNames, DateTimeOffset? CreatedAt = null, DesignMetadata? Metadata = null);
 
 /// <summary>Self-contained, versioned SAM archive. Never extracts paths from the archive.</summary>
 public static class ProjectFile
@@ -17,7 +17,9 @@ public static class ProjectFile
     private sealed class Manifest
     {
         public Manifest() { }
-        public int Version { get; set; } = 1;
+        public int Version { get; set; } = 2;
+        public bool HasOverrides { get; set; }
+        public string? Designer { get; set; } public string? Usage { get; set; } public string? Description { get; set; }
         public int SourceWidth { get; set; } public int SourceHeight { get; set; }
         public int ResizeWidth { get; set; } public int ResizeHeight { get; set; }
         public string SourceName { get; set; } = "";
@@ -73,6 +75,8 @@ public static class ProjectFile
         {
             SourceWidth = session.Source.PixelWidth, SourceHeight = session.Source.PixelHeight,
             ResizeWidth = session.Resized?.PixelWidth ?? 0, ResizeHeight = session.Resized?.PixelHeight ?? 0,
+            HasOverrides = session.PixelOverrides is not null,
+            Designer = Bounded(state.Metadata?.Designer, 100), Usage = Bounded(state.Metadata?.Usage, 100), Description = Bounded(state.Metadata?.Description, 300),
             CreatedAt = state.CreatedAt, SourceName = Bounded(state.SourceName, 255), WidthInput = Bounded(state.WidthInput, 32), HeightInput = Bounded(state.HeightInput, 32), ColorInput = Bounded(state.ColorInput, 32),
             Stage = Bounded(state.Stage, 16), English = state.English, MachineFormatIndex = state.MachineFormatIndex, ColorLimit = session.AppliedColorLimit,
             SourceColors = palette?.SourceColorCount ?? 0, Colors = palette?.Colors,
@@ -90,6 +94,7 @@ public static class ProjectFile
                 if (palette is not null)
                 {
                     WriteEntry(zip, "indices.bin", palette.Indices);
+                    if (session.PixelOverrides is { } overrides) { if (overrides.Length != palette.Indices.Length || overrides.Any(v => v > 2)) throw new InvalidDataException("Invalid overrides."); WriteEntry(zip, "overrides.bin", overrides); }
                     for (int i = 0; i < session.Patterns.Length; i++) if (session.Patterns[i] is { } p) WriteEntry(zip, $"patterns/{i}.bin", p.Values);
                 }
             }
@@ -105,12 +110,13 @@ public static class ProjectFile
         if (file.Length > MaxArchiveBytes) throw new InvalidDataException("Project exceeds 128 MiB.");
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
-        if (zip.Entries.Count > 54) throw new InvalidDataException("Too many project entries.");
+        if (zip.Entries.Count > 55) throw new InvalidDataException("Too many project entries.");
         var m = JsonSerializer.Deserialize<Manifest>(ReadEntry(zip, "manifest.json", MaxManifestBytes)) ?? throw new InvalidDataException("Missing project manifest.");
-        if (m.Version != 1) throw new NotSupportedException("Unsupported SAM project version.");
+        if (m.Version is not (1 or 2)) throw new NotSupportedException("Unsupported SAM project version.");
+        if (m.Version == 1 && m.HasOverrides) throw new InvalidDataException("Overrides require SAM version 2.");
         CheckDimensions(m.SourceWidth, m.SourceHeight, DesignProcessor.MaxPixels);
         var source = MakeBitmap(m.SourceWidth, m.SourceHeight, ReadEntry(zip, "source.bgra", checked(m.SourceWidth * m.SourceHeight * 4), checked(m.SourceWidth * m.SourceHeight * 4)));
-        BitmapSource? resized = null; PaletteResult? palette = null; WeavePattern?[] patterns = Array.Empty<WeavePattern?>(); string?[] names = Array.Empty<string?>();
+        BitmapSource? resized = null; PaletteResult? palette = null; WeavePattern?[] patterns = Array.Empty<WeavePattern?>(); string?[] names = Array.Empty<string?>(); byte[]? overrides = null;
         if (m.ResizeWidth != 0 || m.ResizeHeight != 0)
         {
             CheckDimensions(m.ResizeWidth, m.ResizeHeight, DesignProcessor.MaxPixels);
@@ -125,6 +131,7 @@ public static class ProjectFile
             byte[] indices = ReadEntry(zip, "indices.bin", pixels, pixels); int[] counts = new int[m.Colors.Length];
             foreach (byte index in indices) { if (index >= counts.Length) throw new InvalidDataException("Invalid color index."); counts[index]++; }
             palette = new PaletteResult(m.ResizeWidth, m.ResizeHeight, m.SourceColors, m.Colors, indices, counts);
+            if (m.HasOverrides) { overrides = ReadEntry(zip, "overrides.bin", pixels, pixels); if (overrides.Any(v => v > 2)) throw new InvalidDataException("Invalid pixel overrides."); }
             patterns = new WeavePattern?[m.Colors.Length]; names = new string?[m.Colors.Length];
             for (int i = 0; i < patterns.Length; i++)
             {
@@ -135,12 +142,13 @@ public static class ProjectFile
                 patterns[i] = new WeavePattern(p.Width, p.Height, values); names[i] = Bounded(p.Name, 255);
             }
         }
-        else if (m.ColorLimit is not null || m.Patterns is not null) throw new InvalidDataException("Invalid project state.");
+        else if (m.ColorLimit is not null || m.Patterns is not null || m.HasOverrides) throw new InvalidDataException("Invalid project state.");
         if (m.MachineFormatIndex is < 0 or > 4) throw new InvalidDataException("Invalid machine format selection.");
         string stage = Bounded(m.Stage, 16, "Size");
-        if (stage is not ("Size" or "Colors" or "Patterns" or "Machine")) throw new InvalidDataException("Invalid workflow stage.");
-        if ((stage == "Colors" && resized is null) || (stage == "Patterns" && palette is null)) throw new InvalidDataException("Stage lacks required data.");
-        var session = WorkflowSession.Restore(source, resized, palette, m.ColorLimit, patterns);
-        return new ProjectState(session, Bounded(m.SourceName, 255), Bounded(m.WidthInput, 32), Bounded(m.HeightInput, 32), Bounded(m.ColorInput, 32, "50"), stage, m.English, m.MachineFormatIndex, names, m.CreatedAt);
+        if (stage is not ("Size" or "Colors" or "Patterns" or "Machine" or "Analysis" or "Floats")) throw new InvalidDataException("Invalid workflow stage.");
+        if ((stage == "Colors" && resized is null) || ((stage is "Patterns" or "Analysis" or "Floats") && palette is null)) throw new InvalidDataException("Stage lacks required data.");
+        if ((stage is "Analysis" or "Floats") && patterns.Any(p => p is null)) throw new InvalidDataException("Analysis requires a complete weave.");
+        var session = WorkflowSession.Restore(source, resized, palette, m.ColorLimit, patterns, overrides);
+        return new ProjectState(session, Bounded(m.SourceName, 255), Bounded(m.WidthInput, 32), Bounded(m.HeightInput, 32), Bounded(m.ColorInput, 32, "50"), stage, m.English, m.MachineFormatIndex, names, m.CreatedAt, new DesignMetadata(Bounded(m.Designer, 100), Bounded(m.Usage, 100), Bounded(m.Description, 300)));
     }
 }

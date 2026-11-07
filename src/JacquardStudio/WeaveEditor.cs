@@ -51,19 +51,30 @@ public sealed class WeaveEditor : FrameworkElement
             var visited = new HashSet<int>();
             while (visited.Add(y * width + x)) { next[y * width + x] = 0; x = (x + (right ? stepX : -stepX) % width + width) % width; y = (y + (down ? stepY : -stepY) % height + height) % height; }
         }
-        else for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
+        else if (operation is "twillRight" or "twillLeft")
+        {
+            // Continue the current first row, shifting one cell per successive row, with wrap.
+            for (int y = 1; y < height; y++) for (int x = 0; x < width; x++)
+                next[y * width + x] = values[(x + (operation == "twillRight" ? y : -y) % width + width) % width];
+        }
+        else
+        {
+        if (operation == "panama" && (width % 4 != 0 || height % 4 != 0)) throw new ArgumentException("Panama repeat requires dimensions that are multiples of 4.");
+        if (operation == "satin" && (width % 5 != 0 || height % 5 != 0)) throw new ArgumentException("Five-end satin requires dimensions that are multiples of 5.");
+        for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
         {
             int i = y * width + x;
             next[i] = operation switch {
                 "plain" => (byte)((x + y) % 2 == 0 ? 0 : 255),
-                "twillRight" => (byte)(((x + y) % 4) < 2 ? 0 : 255),
-                "twillLeft" => (byte)(((x - y + height * 4) % 4) < 2 ? 0 : 255),
+                "panama" => (byte)(((x / 2 + y / 2) % 2) == 0 ? 0 : 255),
+                "satin" => (byte)(x % 5 == (y * 2) % 5 ? 0 : 255),
                 "invert" => values[i] == 0 ? (byte)255 : (byte)0,
                 "mirrorX" => values[y * width + (width - 1 - x)],
                 "mirrorY" => values[(height - 1 - y) * width + x],
                 "clear" => (byte)255,
                 _ => throw new ArgumentException("Unknown helper operation.", nameof(operation))
             };
+        }
         }
         if (next.SequenceEqual(values)) return;
         BeginEdit(); values = next; InvalidateVisual(); Changed?.Invoke(this, EventArgs.Empty);
