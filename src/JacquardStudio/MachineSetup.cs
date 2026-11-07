@@ -33,7 +33,7 @@ public static class MachineComposer
         int start = string.IsNullOrWhiteSpace(setup.DesignStart) ? left : Nonnegative(setup.DesignStart, "Design start");
         long needed = (long)start + frame.PixelWidth + right;
         int total = string.IsNullOrWhiteSpace(setup.TotalHooks) ? (needed <= int.MaxValue ? (int)needed : throw new ArgumentException("Invalid width.")) : Nonnegative(setup.TotalHooks, "Total hooks");
-        if (start < left) throw new ArgumentException("Left selvedge would extend before column zero.");
+        if (start < left) throw new ArgumentException("Left selvedge would extend before the first column.");
         if (total < needed || total < 1 || (long)total * frame.PixelHeight > DesignProcessor.MaxPixels) throw new ArgumentException("Total hooks must fit the design and both selvedges, within the pixel limit.");
         int count = setup.BoxEnabled ? Nonnegative(setup.WeftCount, "Weft count") : 0;
         int weftStart = count == 0 ? 0 : Nonnegative(setup.WeftStart, "Weft start");

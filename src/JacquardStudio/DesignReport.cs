@@ -63,8 +63,8 @@ public static class DesignReport
         machine ??= new MachineSetup();
         string auto = english ? "auto" : "خودکار";
         string total = composition is null ? (string.IsNullOrWhiteSpace(machine.TotalHooks) ? auto : machine.TotalHooks) : composition.Image.PixelWidth.ToString("N0");
-        string start = composition is null ? (string.IsNullOrWhiteSpace(machine.DesignStart) ? auto : machine.DesignStart) : composition.DesignStart.ToString();
-        string layout = machine.AbsoluteLayout ? (english ? $"Total hooks: {total}   Design start: {start}   Wefts: {machine.WeftCount} at {machine.WeftStart}" : $"کل تار: {total}   شروع طرح: {start}   پود: {machine.WeftCount} از {machine.WeftStart}") : (english ? "Legacy box layout" : "چیدمان قدیمی پودگذاری");
+        string start = composition is null ? (string.IsNullOrWhiteSpace(machine.DesignStart) ? auto : PositionNumbers.ToDisplay(machine.DesignStart)) : (composition.DesignStart + 1).ToString();
+        string layout = machine.AbsoluteLayout ? (english ? $"Total hooks: {total}   Design start: {start}   Wefts: {machine.WeftCount} at {PositionNumbers.ToDisplay(machine.WeftStart)}" : $"کل تار: {total}   شروع طرح: {start}   پود: {machine.WeftCount} از {PositionNumbers.ToDisplay(machine.WeftStart)}") : (english ? "Legacy box layout" : "چیدمان قدیمی پودگذاری");
         var extra = new StackPanel { Margin = new Thickness(30, 1, 30, 2) };
         var edges = new Grid { Height = 55 }; edges.ColumnDefinitions.Add(new ColumnDefinition()); edges.ColumnDefinitions.Add(new ColumnDefinition());
         void AddEdge(int column, string caption, string width, string name, WeavePattern? pattern)
@@ -86,7 +86,7 @@ public static class DesignReport
         extra.Children.Add(Text((english ? "Weft sequence: " : "توالی پود: ") + (string.IsNullOrWhiteSpace(machine.Sequence) ? (english ? "natural" : "طبیعی") : machine.Sequence) + (machine.StartFromBottom ? (english ? " · bottom" : " · شروع از پایین") : (english ? " · top" : " · شروع از بالا")), 10, Ink));
         if (analysis is not null)
         {
-            var summary = WarpRanges.Summarize(analysis, composition?.FabricStart ?? 0);
+            var summary = WarpRanges.Summarize(analysis, (composition?.FabricStart ?? 0) + 1);
             var groups = new Grid { Margin = new Thickness(0, 2, 0, 0) }; groups.ColumnDefinitions.Add(new ColumnDefinition()); groups.ColumnDefinitions.Add(new ColumnDefinition());
             void AddRanges(int column, string heading, IReadOnlyList<WarpRange> ranges, int count)
             {
@@ -134,31 +134,75 @@ public static class DesignReport
         var footer = new Border { Margin = new Thickness(30, 0, 30, 5), BorderBrush = Line, BorderThickness = new Thickness(0, 1, 0, 0), Child = Text(english ? "Jacquard Studio  •  Design summary  •  Mirkhalili" : "ژاکارد استودیو  •  خلاصه طرح  •  میرخلیلی", 10, Muted) }; Grid.SetRow(footer, 4); page.Children.Add(footer);
         return page;
     }
+    /// <summary>Additional A4 pages with the fabric preview and every applied weft, without truncating at high counts.</summary>
+    public static IReadOnlyList<FrameworkElement> CreateSimulationPages(BitmapSource preview, SimulationSettings settings, IReadOnlyList<string> ids, bool english)
+    {
+        FabricSimulation.Validate(settings);
+        if (ids.Count is < 1 or > 256) throw new ArgumentException("Invalid weft count for report.");
+        const int perPage = 46; int pageCount = (ids.Count + perPage - 1) / perPage;
+        var result = new List<FrameworkElement>();
+        for (int pageNumber = 0; pageNumber < pageCount; pageNumber++)
+        {
+            var page = new Grid { Width = 793.7, Height = 1122.5, Background = Brushes.White, FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft, Margin = new Thickness(0) };
+            System.Windows.Documents.TextElement.SetFontFamily(page, (FontFamily)Application.Current.FindResource("VazirFont"));
+            page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(60) }); page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(320) }); page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(70) }); page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(35) });
+            page.Children.Add(new TextBlock { Text = (english ? "Fabric simulation · " : "شبیه‌سازی پارچه · ") + $"{pageNumber + 1}/{pageCount}", Margin = new Thickness(30, 18, 30, 0), Foreground = Accent, FontSize = 20, FontWeight = FontWeights.Bold });
+            var image = new Image { Source = preview, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, Height = 300, MaxWidth = 720 };
+            RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality); Grid.SetRow(image, 1); page.Children.Add(image);
+            string warpName = FabricSimulation.YarnNames[settings.WarpYarn];
+            var info = new TextBlock { Text = (english ? "Warp: " : "نخ تار: ") + warpName + "   " + settings.WarpColor + "   ·   " + (settings.Weave == 0 ? (english ? "project weave" : "بافت پروژه") : settings.Weave == 1 ? (english ? "plain" : "ساده") : (english ? "twill" : "جناغی")) + "   ·   " + settings.Shadow + "%\n" + (english ? "Stylized appearance, not a physical simulation." : "تصویرسازی تقریبی است، نه شبیه‌سازی فیزیکی."), Foreground = Ink, FontSize = 12, Margin = new Thickness(30, 4, 30, 0), TextWrapping = TextWrapping.Wrap };
+            Grid.SetRow(info, 2); page.Children.Add(info);
+            var list = new Grid { Margin = new Thickness(30, 0, 30, 0) }; list.ColumnDefinitions.Add(new ColumnDefinition()); list.ColumnDefinitions.Add(new ColumnDefinition());
+            for (int column = 0; column < 2; column++)
+            {
+                var rows = new StackPanel { Margin = new Thickness(4, 0, 4, 0) }; Grid.SetColumn(rows, column); list.Children.Add(rows);
+                foreach (string id in ids.Skip(pageNumber * perPage).Take(perPage).Where((_, index) => index % 2 == column))
+                {
+                    var yarn = FabricSimulation.YarnFor(settings, id); Color color = FabricSimulation.ParseColor(yarn.Color);
+                    var row = new Grid { Height = 25, Background = Brush("#F5F9F8"), Margin = new Thickness(0, 0, 0, 1) };
+                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) }); row.ColumnDefinitions.Add(new ColumnDefinition());
+                    row.Children.Add(new Border { Width = 17, Height = 17, Background = new SolidColorBrush(color), BorderBrush = Line, BorderThickness = new Thickness(1) });
+                    var label = Text((english ? "Weft " : "پود ") + id + " · " + FabricSimulation.YarnNames[yarn.Yarn] + " · " + yarn.Color, 9, Ink); Grid.SetColumn(label, 1); row.Children.Add(label); rows.Children.Add(row);
+                }
+            }
+            Grid.SetRow(list, 3); page.Children.Add(list);
+            var footer = new Border { Margin = new Thickness(30, 0, 30, 5), BorderBrush = Line, BorderThickness = new Thickness(0, 1, 0, 0), Child = Text(english ? "Jacquard Studio • Fabric preview • Mirkhalili" : "ژاکارد استودیو • نمای پارچه • میرخلیلی", 10, Muted) }; Grid.SetRow(footer, 4); page.Children.Add(footer);
+            result.Add(page);
+        }
+        return result;
+    }
     public static BitmapSource Render(FrameworkElement page)
     {
         page.Measure(new Size(793.7, 1122.5)); page.Arrange(new Rect(0, 0, 793.7, 1122.5)); page.UpdateLayout();
         var bitmap = new RenderTargetBitmap(PixelWidth, PixelHeight, 150, 150, PixelFormats.Pbgra32); bitmap.Render(page); bitmap.Freeze(); return bitmap;
     }
-    public static void SavePdf(BitmapSource bitmap, string path, IEnumerable<string> protectedPaths)
+    public static void SavePdf(BitmapSource bitmap, string path, IEnumerable<string> protectedPaths) => SavePdf(new[] { bitmap }, path, protectedPaths);
+    public static void SavePdf(IReadOnlyList<BitmapSource> pages, string path, IEnumerable<string> protectedPaths)
     {
+        if (pages.Count is < 1 or > 16) throw new ArgumentException("Invalid number of report pages.");
         string target = Path.GetFullPath(path);
         if (!target.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("Report extension must be .pdf.");
         if (protectedPaths.Any(p => string.Equals(Path.GetFullPath(p), target, StringComparison.OrdinalIgnoreCase))) throw new IOException("Cannot overwrite a source or project file.");
-        var encoder = new JpegBitmapEncoder { QualityLevel = 92 }; encoder.Frames.Add(BitmapFrame.Create(bitmap)); using var jpg = new MemoryStream(); encoder.Save(jpg); byte[] image = jpg.ToArray();
         string temp = Path.Combine(Path.GetDirectoryName(target)!, ".report-" + Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
             using (var f = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 void Write(string s) { byte[] data = Encoding.ASCII.GetBytes(s); f.Write(data); }
-                var offsets = new long[6]; Write("%PDF-1.4\n%----\n");
+                int count = 2 + pages.Count * 3; var offsets = new long[count + 1]; Write("%PDF-1.4\n%----\n");
                 void Obj(int n, string body) { offsets[n] = f.Position; Write($"{n} 0 obj\n{body}\nendobj\n"); }
-                Obj(1, "<< /Type /Catalog /Pages 2 0 R >>"); Obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
-                Obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>");
-                offsets[4] = f.Position; Write($"4 0 obj\n<< /Type /XObject /Subtype /Image /Width {bitmap.PixelWidth} /Height {bitmap.PixelHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {image.Length} >>\nstream\n"); f.Write(image); Write("\nendstream\nendobj\n");
-                string content = "q\n595 0 0 842 0 0 cm\n/Im0 Do\nQ\n"; Obj(5, $"<< /Length {Encoding.ASCII.GetByteCount(content)} >>\nstream\n{content}endstream");
-                long xref = f.Position; Write("xref\n0 6\n0000000000 65535 f \n"); for (int i = 1; i <= 5; i++) Write($"{offsets[i]:0000000000} 00000 n \n");
-                Write($"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+                Obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+                Obj(2, $"<< /Type /Pages /Kids [{string.Join(" ", Enumerable.Range(0, pages.Count).Select(i => $"{3 + i * 3} 0 R"))}] /Count {pages.Count} >>");
+                for (int i = 0; i < pages.Count; i++)
+                {
+                    var bitmap = pages[i]; int page = 3 + i * 3, picture = page + 1, contentId = page + 2;
+                    var encoder = new JpegBitmapEncoder { QualityLevel = 92 }; encoder.Frames.Add(BitmapFrame.Create(bitmap)); using var jpg = new MemoryStream(); encoder.Save(jpg); byte[] image = jpg.ToArray();
+                    Obj(page, $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im0 {picture} 0 R >> >> /Contents {contentId} 0 R >>");
+                    offsets[picture] = f.Position; Write($"{picture} 0 obj\n<< /Type /XObject /Subtype /Image /Width {bitmap.PixelWidth} /Height {bitmap.PixelHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {image.Length} >>\nstream\n"); f.Write(image); Write("\nendstream\nendobj\n");
+                    string content = "q\n595 0 0 842 0 0 cm\n/Im0 Do\nQ\n"; Obj(contentId, $"<< /Length {Encoding.ASCII.GetByteCount(content)} >>\nstream\n{content}endstream");
+                }
+                long xref = f.Position; Write($"xref\n0 {count + 1}\n0000000000 65535 f \n"); for (int i = 1; i <= count; i++) Write($"{offsets[i]:0000000000} 00000 n \n");
+                Write($"trailer\n<< /Size {count + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
             }
             File.Move(temp, target, true);
         }

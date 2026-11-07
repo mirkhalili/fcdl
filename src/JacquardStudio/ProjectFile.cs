@@ -27,7 +27,7 @@ public static class ProjectFile
     private sealed class Manifest
     {
         public Manifest() { }
-        public int Version { get; set; } = 6;
+        public int Version { get; set; } = 7;
         public MachineInfo? Machine { get; set; }
         public WeftSettings? DraftWeft { get; set; }
         public SimulationSettings? Simulation { get; set; }
@@ -85,7 +85,13 @@ public static class ProjectFile
     private static SimulationSettings BoundedSimulation(SimulationSettings s)
     {
         if ((uint)s.WarpYarn >= FabricSimulation.YarnNames.Length || (uint)s.WeftYarn >= FabricSimulation.YarnNames.Length || s.Weave is < 0 or > 2 || s.Shadow is < 0 or > 100) throw new InvalidDataException("Invalid simulation settings.");
-        return s with { WarpColor = Bounded(s.WarpColor, 16), WeftColor = Bounded(s.WeftColor, 16) };
+        SimulatedYarn[]? yarns = null;
+        if (s.Wefts is { } items)
+        {
+            if (items.Length > 256 || items.Any(y => y is null || string.IsNullOrWhiteSpace(y.Id) || (uint)y.Yarn >= FabricSimulation.YarnNames.Length) || items.Select(y => y.Id).Distinct(StringComparer.Ordinal).Count() != items.Length) throw new InvalidDataException("Invalid simulation wefts.");
+            yarns = items.Select(y => y with { Id = Bounded(y.Id, 32), Color = Bounded(y.Color, 16) }).ToArray();
+        }
+        return s with { WarpColor = Bounded(s.WarpColor, 16), WeftColor = Bounded(s.WeftColor, 16), Wefts = yarns };
     }
     public static void Save(string path, ProjectState state, IEnumerable<string> protectedPaths)
     {
@@ -153,7 +159,7 @@ public static class ProjectFile
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
         if (zip.Entries.Count > 57) throw new InvalidDataException("Too many project entries.");
         var m = JsonSerializer.Deserialize<Manifest>(ReadEntry(zip, "manifest.json", MaxManifestBytes)) ?? throw new InvalidDataException("Missing project manifest.");
-        if (m.Version is not (1 or 2 or 3 or 4 or 5 or 6)) throw new NotSupportedException("Unsupported SAM project version.");
+        if (m.Version is not (1 or 2 or 3 or 4 or 5 or 6 or 7)) throw new NotSupportedException("Unsupported SAM project version.");
         if (m.Version == 1 && m.HasOverrides) throw new InvalidDataException("Overrides require SAM version 2.");
         if (m.Version < 3 && m.Machine is not null) throw new InvalidDataException("Machine setup requires SAM version 3.");
         CheckDimensions(m.SourceWidth, m.SourceHeight, DesignProcessor.MaxPixels);
@@ -204,6 +210,6 @@ public static class ProjectFile
             setup = new MachineSetup(Bounded(settings.LeftWidth, 32, "0"), Bounded(settings.RightWidth, 32, "0"), ReadWeave(settings.LeftPattern, "machine/left.bin"), ReadWeave(settings.RightPattern, "machine/right.bin"), Bounded(settings.LeftPattern?.Name, 255), Bounded(settings.RightPattern?.Name, 255), settings.BoxEnabled, settings.BoxPlacement, Bounded(settings.BoxHooks, 256), Bounded(settings.BoxCodes, 8192), Bounded(settings.Sequence, 8192), settings.StartFromBottom, settings.UseSource, settings.RedAsBlack, m.Version >= 4 && settings.AbsoluteLayout, Bounded(settings.TotalHooks, 32), Bounded(settings.DesignStart, 32), Bounded(settings.WeftStart, 32, "0"), Bounded(settings.WeftCount, 32, "0"));
         }
         var session = WorkflowSession.Restore(source, resized, palette, m.ColorLimit, patterns, overrides);
-        return new ProjectState(session, Bounded(m.SourceName, 255), Bounded(m.WidthInput, 32), Bounded(m.HeightInput, 32), Bounded(m.ColorInput, 32, "50"), stage, m.English, m.MachineFormatIndex, names, m.CreatedAt, new DesignMetadata(Bounded(m.Designer, 100), Bounded(m.Usage, 100), Bounded(m.Description, 300)), setup, m.Version >= 5 && m.DraftWeft is { } draft ? BoundedDraft(draft) : null, m.Version >= 6 && m.Simulation is { } simulation ? BoundedSimulation(simulation) : null);
+        return new ProjectState(session, Bounded(m.SourceName, 255), Bounded(m.WidthInput, 32), Bounded(m.HeightInput, 32), Bounded(m.ColorInput, 32, "50"), stage, m.English, m.MachineFormatIndex, names, m.CreatedAt, new DesignMetadata(Bounded(m.Designer, 100), Bounded(m.Usage, 100), Bounded(m.Description, 300)), setup, m.Version >= 5 && m.DraftWeft is { } draft ? BoundedDraft(draft) : null, m.Version >= 6 && m.Simulation is { } simulation ? BoundedSimulation(m.Version < 7 ? simulation with { Wefts = null } : simulation) : null);
     }
 }

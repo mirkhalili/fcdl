@@ -62,14 +62,14 @@ internal static class Program
             using (var zip = ZipFile.Open(legacySam, ZipArchiveMode.Update))
             {
                 var entryManifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(entryManifest.Open())) json = reader.ReadToEnd();
-                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":6", "\"Version\":1"));
+                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":7", "\"Version\":1"));
             }
             Check(ProjectFile.Load(legacySam).Session.CanSave, "legacy SAM version one loads");
             string legacyV2 = Path.Combine(dir, "legacy-v2.sam"); File.Copy(projectPath, legacyV2);
             using (var zip = ZipFile.Open(legacyV2, ZipArchiveMode.Update))
             {
                 var old = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(old.Open())) json = reader.ReadToEnd();
-                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":6", "\"Version\":2"));
+                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":7", "\"Version\":2"));
             }
             Check(ProjectFile.Load(legacyV2).Session.CanSave, "legacy SAM version two loads");
             Expect<IOException>(() => ProjectFile.Save(projectPath, projectState, new[] { projectPath }));
@@ -274,16 +274,32 @@ internal static class Program
             var autoRestored = ProjectFile.Load(autoFile).Session;
             Check(DesignAnalysis.ReadBinary(autoRestored.BasePatternPreview!).All(v => v == 0) && DesignAnalysis.ReadBinary(autoRestored.PatternPreview!).SequenceEqual(autoBytes), "SAM reconstructs distinct base and corrected stage previews");
             Check(WarpDisplay.Deviation(0, false) == "متعادل" && !WarpDisplay.Deviation(-4, true).Contains("tightness") && WarpDisplay.Percentage(.001) == "<0.01%", "balanced and nonzero warp labels");
+            Check(PositionNumbers.ToStored("۱") == "0" && PositionNumbers.ToStored("۲۰") == "19" && PositionNumbers.ToDisplay("0") == "1" && PositionNumbers.ToStored("۰") == "-1", "one-based UI maps to zero-based storage without an empty first hook");
+            Check(PositionNumbers.ListToStored("۱،۳") == "0,2" && PositionNumbers.ListToDisplay("0,2") == "1,3", "legacy reserved hooks use one-based UI");
             var beforeWeft = MachineComposer.BeforeWeft(new MachineSetup(LeftWidth:"1", RightWidth:"1", LeftPattern:new WeavePattern(1,1,new byte[]{0}), RightPattern:new WeavePattern(1,1,new byte[]{255}), BoxEnabled:true, AbsoluteLayout:true, TotalHooks:"30", DesignStart:"20", WeftStart:"1", WeftCount:"3"));
             var earlyMap = MachineComposer.Compose(image, beforeWeft);
             Check(earlyMap.Image.PixelWidth == 5 && earlyMap.DesignStart == 1 && earlyMap.SignalHooks.Length == 0, "pre-weft stages exclude later absolute layout and signal columns");
             var simSettings = new SimulationSettings(1, 0, "#۱۲3ABC", "#AABBCC", 2, 75);
             var sim = FabricSimulation.Render(image, simSettings);
-            Check(sim.PixelWidth == 24 && sim.PixelHeight == 16 && sim.IsFrozen && DesignAnalysis.ReadBinary(image).SequenceEqual(pixels), "simulation is bounded, immutable and leaves machine bitmap unchanged");
+            Check(sim.PixelWidth == 48 && sim.PixelHeight == 32 && sim.IsFrozen && DesignAnalysis.ReadBinary(image).SequenceEqual(pixels), "simulation is bounded, immutable and leaves machine bitmap unchanged");
             Expect<ArgumentException>(() => FabricSimulation.Render(image, simSettings with { WarpColor = "bad" }));
             string simFile = Path.Combine(dir, "simulation.sam");
             ProjectFile.Save(simFile, new ProjectState(autoSession,"sample.bmp","3","2","50","Simulation",false,1,autoSession.Patterns.Select(_ => (string?)"pattern").ToArray(), Simulation:simSettings), Array.Empty<string>());
-            var simLoaded = ProjectFile.Load(simFile); Check(simLoaded.Stage == "Simulation" && simLoaded.Simulation == simSettings, "SAM v6 simulation settings round trip");
+            var simLoaded = ProjectFile.Load(simFile); Check(simLoaded.Stage == "Simulation" && simLoaded.Simulation == simSettings, "SAM v7 simulation settings round trip");
+            var weftCount = new WeftSettings(BoxEnabled:true, WeftCount:"3", Sequence:"3,1,2");
+            Check(FabricSimulation.WeftIds(weftCount).SequenceEqual(new[]{"1","2","3"}), "simulation defines one yarn per applied weft");
+            var multiSettings = simSettings with { Wefts = new[] { new SimulatedYarn("1", 1, "#FF0000"), new SimulatedYarn("2", 2, "#00FF00"), new SimulatedYarn("3", 0, "#0000FF") } };
+            var whiteMap = BitmapSource.Create(1, 2, 96, 96, PixelFormats.Gray8, null, new byte[]{255,255}, 1);
+            var multiImage = FabricSimulation.Render(whiteMap, multiSettings with { Weave = 0 }, new[]{"1","2"});
+            var simColors = new byte[multiImage.PixelWidth * multiImage.PixelHeight * 4]; multiImage.CopyPixels(simColors, multiImage.PixelWidth * 4, 0);
+            int redIndex = (8 * multiImage.PixelWidth + 8) * 4, greenIndex = (24 * multiImage.PixelWidth + 8) * 4;
+            Check(simColors[redIndex+2] > simColors[redIndex+1] && simColors[greenIndex+1] > simColors[greenIndex+2], "applied row sequence chooses the corresponding weft color");
+            string multiFile = Path.Combine(dir, "multi-weft.sam");
+            ProjectFile.Save(multiFile, new ProjectState(autoSession,"sample.bmp","3","2","50","Simulation",false,1,autoSession.Patterns.Select(_ => (string?)"pattern").ToArray(), Simulation:multiSettings), Array.Empty<string>());
+            var multiRestored = ProjectFile.Load(multiFile); Check(multiRestored.Simulation!.Wefts!.SequenceEqual(multiSettings.Wefts!), "multi-weft yarns survive SAM v7");
+            var invalidPosition = new MachineSetup(BoxEnabled:true, AbsoluteLayout:true, DesignStart:"3", WeftStart:PositionNumbers.ToStored("0"), WeftCount:"1"); Expect<ArgumentException>(() => MachineComposer.Compose(image, invalidPosition));
+            var firstHook = MachineComposer.Compose(image, invalidPosition with { WeftStart = PositionNumbers.ToStored("1") });
+            Check(firstHook.SignalHooks.SequenceEqual(new[]{0}) && DesignAnalysis.ReadBinary(firstHook.Image)[0] == 0, "weft one occupies the first physical hook");
             Check(PreviewViewport.ZoomOffset(100, 50, 2) == 150 && PreviewViewport.PanOffset(120, 40, 70) == 90 && PreviewViewport.PanOffset(1, 0, 20) == 0, "anchored zoom and pan geometry");
             byte beforeToggle = DesignAnalysis.ReadBinary(bankSession.PatternPreview!)[0];
             var historySnapshot = bankSession.Snapshot(); bankSession.TogglePixel(0,0);
@@ -350,7 +366,7 @@ internal static class Program
             using (var zip = ZipFile.Open(v4File, ZipArchiveMode.Update))
             {
                 var item = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(item.Open())) json = reader.ReadToEnd();
-                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":6", "\"Version\":4"));
+                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":7", "\"Version\":4"));
             }
             var oldV4 = ProjectFile.Load(v4File); Check(oldV4.DraftWeft is null && oldV4.Machine!.AbsoluteLayout && DesignAnalysis.ReadBinary(MachineComposer.Compose(image, oldV4.Machine).Image).SequenceEqual(positionedPixels), "SAM v4 absolute settings remain applied");
             var composedState = new ProjectState(bankSession,"sample.bmp","3","2","50","Machine",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,setup);
@@ -400,7 +416,7 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            Check(AppVersion.Display == "017.3.0.0-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "018.4.0.0-a1", "QAVNS version from version.txt");
             var reportEntries = bankSession.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = bankSession.Palette.Counts[index], Percent = 100d * bankSession.Palette.Counts[index] / bankSession.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; if (bankSession.Patterns[index] is { } p) e.Restore("sample", p); return e; }).ToArray();
             var fullEntries = fullProject.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = fullProject.Palette.Counts[index], Percent = 100d * fullProject.Palette.Counts[index] / fullProject.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; e.Restore("sample", fullProject.Patterns[index]!); return e; }).ToArray();
             var fullMap = MachineComposer.Compose(fullProject.PatternPreview!, new MachineSetup("2", "1", edgeLeft, edgeRight, "left", "right", AbsoluteLayout: true, TotalHooks: "54", DesignStart: "3"));
@@ -422,6 +438,14 @@ internal static class Program
             var stamped = new ProjectState(bankSession, "sample.bmp", "3", "2", "50", "Patterns", false, 1, bankSession.Patterns.Select(_ => (string?)"sample").ToArray(), new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero));
             string datedPath = Path.Combine(dir, "dated.sam"); ProjectFile.Save(datedPath, stamped, new[] {bmpPath});
             Check(ProjectFile.Load(datedPath).CreatedAt == stamped.CreatedAt, "project creation timestamp retained");
+            var reportIds = Enumerable.Range(1, 50).Select(x => x.ToString()).ToArray();
+            var simulationPages = DesignReport.CreateSimulationPages(multiImage, multiSettings, reportIds, false);
+            Check(simulationPages.Count == 2, "all weft yarn metadata is paginated");
+            var secondPage = DesignReport.Render(simulationPages[0]); string multiPdf = Path.Combine(dir, "multi-report.pdf");
+            DesignReport.SavePdf(new[]{reportImage, secondPage}, multiPdf, Array.Empty<string>());
+            Check(System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(multiPdf)).Contains("/Count 2"), "multi-page simulation PDF");
+            var detailWindow = new Fabric3DWindow(whiteMap, new[]{"1","2"}, multiSettings with { Weave = 0 }, false);
+            Check(detailWindow.Content is System.Windows.Controls.DockPanel, "Helix 3D detail window builds bounded geometry");
             var guide = new GuideWindow(false); Check(guide.Content is System.Windows.Controls.Grid && guide.Title.Contains("راهنمای"), "illustrated in-app guide loads with navigation");
             var window = new MainWindow();
             Check(window.FontFamily.Source.Contains("Vazirmatn"), "embedded font selected in main window");
@@ -442,6 +466,9 @@ internal static class Program
             Check(window.FindName("SaveProjectAsButton") is System.Windows.Controls.Button && window.FindName("ThemeButton") is System.Windows.Controls.Button, "save as and theme controls");
             Check(window.FindName("UndoButton") is System.Windows.Controls.Button && window.FindName("RedoButton") is System.Windows.Controls.Button && window.FindName("ReportButton") is System.Windows.Controls.Button && window.FindName("HoverCard") is System.Windows.Controls.Border, "history, report and hover controls");
             Check(window.FindName("FloatAutoButton") is System.Windows.Controls.Button && window.FindName("AnalysisStripImage") is System.Windows.Controls.Image && window.FindName("HoverSwatch") is System.Windows.Controls.Border, "automatic float, heat strip and color swatch controls");
+            var overlay = new PixelGridOverlay { PixelsWide = 10, PixelsHigh = 10, Zoom = 1, VisibleImage = new System.Windows.Rect(0,0,10,10) };
+            overlay.Measure(new System.Windows.Size(10,10)); overlay.Arrange(new System.Windows.Rect(0,0,10,10)); Check(overlay.GridStep() == 4, "low-zoom grid uses labelled major intervals");
+            overlay.Zoom = 8; Check(overlay.GridStep() == 1, "zoomed grid uses individual pixels");
             Check(window.FindName("GridToggle") is System.Windows.Controls.CheckBox && window.FindName("GridOverlay") is PixelGridOverlay && ReferenceEquals(System.Windows.Media.VisualTreeHelper.GetParent((System.Windows.DependencyObject)window.FindName("AnalysisStripImage")), window.FindName("PreviewContent")), "view-only grid and heat strip in shared zoom and scroll content");
             Check(window.FindName("InfoButton") is System.Windows.Controls.Button && window.FindName("AnalysisPanel") is System.Windows.Controls.ScrollViewer && window.FindName("FloatPanel") is System.Windows.Controls.ScrollViewer, "design info, analysis and float controls");
             Check(window.FindName("SelvedgePanel") is System.Windows.Controls.ScrollViewer && window.FindName("WeftPanel") is System.Windows.Controls.ScrollViewer && window.FindName("MachinePreviewButton") is System.Windows.Controls.Button, "integrated machine selvedge and box settings");
