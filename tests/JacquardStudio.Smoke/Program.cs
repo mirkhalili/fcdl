@@ -599,6 +599,11 @@ internal static class Program
             var pdfImport = ImageLoader.Load(multiPdf, 1); Check(pdfImport.Format == "PDF" && pdfImport.PageCount == 2 && pdfImport.PageIndex == 1, "PDF page rasterization");
             string compatibleAi = Path.Combine(dir, "compatible.ai"); File.Copy(multiPdf, compatibleAi); Check(ImageLoader.Load(compatibleAi, 0).Format == "AI (PDF compatible)", "PDF-compatible AI input");
             Expect<ArgumentOutOfRangeException>(() => ImageLoader.Load(multiPdf, 2));
+            var polarityWindow = new Fabric3DWindow(crossingMap, new[]{"1"}, structure with { Weave = 0 }, true);
+            var polarityRoot = (System.Windows.Controls.DockPanel)polarityWindow.Content; var polarityViewport = (HelixToolkit.Wpf.HelixViewport3D)polarityRoot.Children[3];
+            var polarityGroup = (System.Windows.Media.Media3D.Model3DGroup)((System.Windows.Media.Media3D.ModelVisual3D)polarityViewport.Children[1]).Content!;
+            System.Windows.Media.Media3D.MeshGeometry3D MeshAt(int i) => (System.Windows.Media.Media3D.MeshGeometry3D)((System.Windows.Media.Media3D.GeometryModel3D)polarityGroup.Children[i]).Geometry!;
+            Check(MeshAt(0).Positions[0].Z < 0 && MeshAt(1).Positions[0].Z > 0 && MeshAt(2).Positions[16].Z > 0 && MeshAt(2).Positions[48].Z < 0, "3D geometry puts weft over black cells and warp over white cells"); polarityWindow.Close();
             var widePattern = new WeavePattern(33, 2, Enumerable.Repeat((byte)255, 66).ToArray());
             var wideWindow = new Fabric3DWindow(Fabric3DWindow.PatternBitmap(widePattern), Array.Empty<string>(), new SimulationSettings(), true, new[] { "#FF0000", "#0000FF" });
             var wideRoot = (System.Windows.Controls.DockPanel)wideWindow.Content; var paging = (System.Windows.Controls.StackPanel)wideRoot.Children[1];
