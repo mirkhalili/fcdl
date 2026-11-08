@@ -15,6 +15,7 @@ public sealed class Fabric3DWindow : Window
     public Fabric3DWindow(BitmapSource fabric, IReadOnlyList<string> rowWefts, SimulationSettings settings, bool english, string[]? weftColors = null)
     {
         FabricSimulation.Validate(settings);
+        SetResourceReference(FontFamilyProperty, "VazirFont");
         string T(string fa, string en) => english ? en : fa;
         Title = T("نمای سه‌بعدی بافت", "3D weave detail"); Width = 1200; Height = 760; MinWidth = 740; MinHeight = 500; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var root = new DockPanel { Background = new SolidColorBrush(Color.FromRgb(24, 37, 45)) };

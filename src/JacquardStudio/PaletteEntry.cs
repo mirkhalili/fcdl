@@ -7,6 +7,9 @@ namespace JacquardStudio;
 public sealed class PaletteEntry : INotifyPropertyChanged
 {
     public int Index { get; init; }
+    private bool highlighted;
+    public bool Highlighted { get => highlighted; set { if (highlighted == value) return; highlighted = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HighlightIcon))); } }
+    public string HighlightIcon => highlighted ? "◉" : "◌";
     public string ColorLabel { get; init; } = "";
     public string ColorCode { get; init; } = "";
     public int PixelCount { get; init; }

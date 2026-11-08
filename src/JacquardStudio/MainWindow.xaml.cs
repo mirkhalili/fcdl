@@ -27,7 +27,8 @@ public partial class MainWindow : Window
     private bool panning;
     private Point panStart;
     private double panHorizontal, panVertical;
-    private BitmapSource? machinePreview, redPreview, simulationPreview;
+    private BitmapSource? machinePreview, redPreview, simulationPreview, colorHighlight;
+    private int? highlightedColor;
     private bool loadingSimulationSettings;
     private int simulationGridWidth, simulationGridHeight;
     private int defaultWeftYarn = 1; private string defaultWeftColor = "#537481";
@@ -79,14 +80,17 @@ public partial class MainWindow : Window
         try
         {
             var result = await Task.Run(() => ImageLoader.Load(filename, page));
-            var next = new WorkflowSession(result.Image); await Task.Run(() => next.ApplySize(result.Image.PixelWidth, result.Image.PixelHeight));
+            var next = new WorkflowSession(result.Image, result.Vector);
+            double scale = Math.Min(1, Math.Sqrt((double)DesignProcessor.MaxPixels / ((long)result.Image.PixelWidth * result.Image.PixelHeight)));
+            int initialWidth = Math.Max(1, (int)Math.Floor(result.Image.PixelWidth * scale)), initialHeight = Math.Max(1, (int)Math.Floor(result.Image.PixelHeight * scale));
+            await Task.Run(() => next.ApplySize(initialWidth, initialHeight));
             path = filename; projectPath = null; projectCreated = DateTimeOffset.Now; metadata = new(); LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); LoadSimulationSettings(new SimulationSettings()); ClearHistory(); sourceName = Path.GetFileName(filename); current = result; session = next; RebuildPaletteEntries();
-            WidthInput.Text = result.Image.PixelWidth.ToString(); HeightInput.Text = result.Image.PixelHeight.ToString(); ColorInput.Text = "50";
+            WidthInput.Text = initialWidth.ToString(); HeightInput.Text = initialHeight.ToString(); ColorInput.Text = "50";
             FileValue.Text = Path.GetFileName(filename); FormatValue.Text = $"{result.Format} · {result.Image.Format.BitsPerPixel} bpp";
             zoom = 1; SetZoom(1); stage = Stage.Size; projectDirty = true; ShowStage();
-            StatusText.Text = T("اندازه اولیه اعمال شد؛ در صورت نیاز آن را تغییر دهید.", "Original dimensions applied; change them if needed.");
+            StatusText.Text = scale < 1 ? T("تصویر بزرگ بود؛ اندازه اولیه متناسب با سقف ۴ میلیون پیکسل کاهش یافت.", "Image was scaled to fit the 4-million-pixel processing limit.") : T("اندازه اولیه اعمال شد؛ در صورت نیاز آن را تغییر دهید.", "Original dimensions applied; change them if needed.");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException or System.Runtime.InteropServices.COMException)
+        catch (Exception ex)
         { MessageBox.Show(this, T("باز کردن تصویر ممکن نشد.\n", "Could not open the image.\n") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("باز کردن تصویر ناموفق بود.", "Could not open image."); }
         finally { SetBusy(false); }
     }
@@ -258,7 +262,7 @@ public partial class MainWindow : Window
             BitmapSource view = stage switch
             {
                 Stage.Size => session.Resized ?? session.Source,
-                Stage.Colors => session.ColorPreview ?? session.Resized ?? session.Source,
+                Stage.Colors => colorHighlight ?? session.ColorPreview ?? session.Resized ?? session.Source,
                 Stage.Selvedge => machinePreview ?? session.BasePatternPreview ?? session.Source,
                 Stage.Weft => machinePreview ?? session.PatternPreview ?? session.Source,
                 Stage.Simulation => simulationPreview ?? session.PatternPreview ?? session.Source,
@@ -332,6 +336,7 @@ public partial class MainWindow : Window
     }
     private void RebuildPaletteEntries(string?[]? restoredNames = null, IReadOnlyList<PaletteEntry>? previous = null, int removedIndex = -1)
     {
+        highlightedColor = null; colorHighlight = null;
         if (session?.Palette is not { } palette) { entries.Clear(); ColorPaletteList.ItemsSource = null; PatternCards.ItemsSource = null; return; }
         var next = new List<PaletteEntry>();
         for (int i = 0; i < palette.Colors.Length; i++)
@@ -349,6 +354,21 @@ public partial class MainWindow : Window
             next.Add(entry);
         }
         entries = next; ColorPaletteList.ItemsSource = entries; PatternCards.ItemsSource = entries;
+    }
+    private async void HighlightColor_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || stage != Stage.Colors || SizeDirty || ColorsDirty || session?.Palette is not { } palette || sender is not Button { DataContext: PaletteEntry entry } || (uint)entry.Index >= (uint)palette.Colors.Length) return;
+        if (highlightedColor == entry.Index) { highlightedColor = null; colorHighlight = null; foreach (var item in entries) item.Highlighted = false; ShowStage(); return; }
+        SetBusy(true);
+        try
+        {
+            var image = await Task.Run(() => DesignProcessor.RenderHighlight(palette, entry.Index));
+            colorHighlight = image; highlightedColor = entry.Index;
+            foreach (var item in entries) item.Highlighted = item.Index == highlightedColor;
+            ShowStage();
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or OutOfMemoryException) { MessageBox.Show(this, T("نمایش رنگ ممکن نشد: ", "Could not highlight color: ") + ex.Message); }
+        finally { SetBusy(false); }
     }
     private void ColorSelection_Changed(object sender, SelectionChangedEventArgs e) { if (IsInitialized) RefreshControls(); }
     private async void DeleteColor_Click(object sender, RoutedEventArgs e)
@@ -1200,7 +1220,7 @@ public partial class MainWindow : Window
         GridToggle.Content = T("شبکه", "Grid"); GridToggle.ToolTip = T("در زوم کم، خطوط اصلی در فاصله نشان‌داده‌شده رسم می‌شوند؛ با زوم بیشتر هر پیکسل را ببینید.", "At low zoom major lines are shown at the displayed interval; zoom in for individual pixels.");
         OpenButton.ToolTip = T("باز کردن پروژه یا فایل", "Open project or image"); SizeStepButton.ToolTip = T("تنظیم اندازه", "Resize"); ColorStepButton.ToolTip = T("مدیریت رنگ", "Color management"); PatternStepButton.ToolTip = T("بافت‌ریزی", "Weave assignment"); SelvedgeStepButton.ToolTip = T("تعریف کناره", "Selvedges"); WeftStepButton.ToolTip = T("تعریف پودگذاری", "Weft / box motion"); FloatStepButton.ToolTip = T("فلوت‌گیری", "Float check"); AnalysisStepButton.ToolTip = T("تحلیل", "Analysis"); MachineStepButton.ToolTip = T("خروجی ماشین", "Machine output");
         AnalysisTitle.Text = T("تحلیل تارها", "Warp analysis"); AnalysisHint.Text = T("درصدها شاخص نسبی‌اند، نه اندازه‌گیری فیزیکی.", "Percentages are relative indicators, not physical measurements."); RunAnalysisButton.Content = T("محاسبه تحلیل", "Calculate analysis"); AnalysisLegendTitle.Text = T("راهنمای رنگ‌ها", "Color legend"); LegendExcluded.Text = T("خارج از بافت", "Outside fabric");
-        FloatTitle.Text = T("بررسی فلوت", "Float inspection"); FloatHint.Text = T("کناره‌ها نیز بررسی می‌شوند. اصلاح خودکار مرکز هر فلوت را در طرح تغییر می‌دهد؛ مراکز کناره و فرمان رد می‌شوند.", "Selvedges are scanned. Auto correction toggles each center in the design; selvedge and signal centers are skipped."); FloatLengthLabel.Text = T("حداقل طول فلوت", "Minimum run length"); FloatWarp.Content = T("تار (ستون)", "Warp (column)"); FloatWeft.Content = T("پود (ردیف)", "Weft (row)"); FloatScanButton.Content = T("بررسی فلوت‌ها", "Scan floats"); FloatAutoButton.Content = T("اصلاح خودکار مرکز فلوت‌ها", "Auto-correct float centers"); FloatPreviousButton.Content = T("قبلی", "Previous"); FloatNextButton.Content = T("بعدی", "Next"); ColorSwatchColumn.Header = T("رنگ", "Color"); ColorCodeColumn.Header = T("کد رنگ", "Color code"); ColorCountColumn.Header = T("پیکسل", "Pixels"); ColorPercentColumn.Header = T("درصد", "Percent");
+        FloatTitle.Text = T("بررسی فلوت", "Float inspection"); FloatHint.Text = T("کناره‌ها نیز بررسی می‌شوند. اصلاح خودکار مرکز هر فلوت را در طرح تغییر می‌دهد؛ مراکز کناره و فرمان رد می‌شوند.", "Selvedges are scanned. Auto correction toggles each center in the design; selvedge and signal centers are skipped."); FloatLengthLabel.Text = T("حداقل طول فلوت", "Minimum run length"); FloatWarp.Content = T("تار (ستون)", "Warp (column)"); FloatWeft.Content = T("پود (ردیف)", "Weft (row)"); FloatScanButton.Content = T("بررسی فلوت‌ها", "Scan floats"); FloatAutoButton.Content = T("اصلاح خودکار مرکز فلوت‌ها", "Auto-correct float centers"); FloatPreviousButton.Content = T("قبلی", "Previous"); FloatNextButton.Content = T("بعدی", "Next"); ColorShowColumn.Header = T("نمایش", "Show"); ColorSwatchColumn.Header = T("رنگ", "Color"); ColorCodeColumn.Header = T("کد رنگ", "Color code"); ColorCountColumn.Header = T("پیکسل", "Pixels"); ColorPercentColumn.Header = T("درصد", "Percent");
         FileCaption.Text = T("فایل ورودی", "INPUT FILE"); NoFileTitle.Text = T("شروع کار", "Get started"); NoFileHint.Text = T("تصویر، پروژه یا فایل ماشین پشتیبانی‌شده را باز کنید یا در پنجره رها کنید.", "Open or drop a supported image, project or loom file.");
         SizeTitle.Text = T("مرحله ۱ · تغییر اندازه", "Stage 1 · Resize"); SizeHint.Text = T("ابعاد خروجی را وارد و اعمال کنید. تصویر سمت چپ نتیجه همین مرحله است.", "Set and apply the output dimensions; the preview shows the result.");
         WidthLabel.Text = T("عرض (پیکسل)", "Width (px)"); HeightLabel.Text = T("ارتفاع (پیکسل)", "Height (px)"); ApplySizeButton.Content = T("اعمال اندازه", "Apply size"); SaveSizeButton.Content = T("ذخیره خروجی اندازه", "Save resized image"); ToColorButton.Content = T("مرحله بعد: رنگ ←", "Next: colors →");

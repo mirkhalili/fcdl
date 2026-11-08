@@ -6,6 +6,7 @@ namespace JacquardStudio;
 public sealed class WorkflowSession
 {
     public BitmapSource Source { get; }
+    public VectorDocument? Vector { get; }
     public BitmapSource? Resized { get; private set; }
     public PaletteResult? Palette { get; private set; }
     public BitmapSource? ColorPreview { get; private set; }
@@ -16,11 +17,12 @@ public sealed class WorkflowSession
     // 0=base weave, 1=black, 2=white. Immutable-by-replacement for undo snapshots.
     public byte[]? PixelOverrides { get; private set; }
 
-    public WorkflowSession(BitmapSource source) => Source = source;
+    public WorkflowSession(BitmapSource source, VectorDocument? vector = null) { Source = source; Vector = vector; }
     public void ApplySize(int width, int height)
     {
         // Commit only after successful processing so failures never discard previous work.
-        var image = DesignProcessor.Resize(Source, width, height);
+        if (width < 1 || height < 1 || (long)width * height > DesignProcessor.MaxPixels) throw new ArgumentOutOfRangeException(nameof(width));
+        var image = Vector is null ? DesignProcessor.Resize(Source, width, height) : PdfImageLoader.Render(Vector.PdfBytes, Vector.PageIndex, width, height).Image;
         Resized = image; Palette = null; ColorPreview = null; AppliedColorLimit = null;
         Patterns = Array.Empty<WeavePattern?>(); PatternPreview = null; BasePatternPreview = null; PixelOverrides = null;
     }
@@ -49,9 +51,9 @@ public sealed class WorkflowSession
         var basePreview = DesignProcessor.Render(palette, next); var preview = ApplyOverrides(basePreview, PixelOverrides);
         Patterns = next; BasePatternPreview = basePreview; PatternPreview = preview;
     }
-    internal static WorkflowSession Restore(BitmapSource source, BitmapSource? resized, PaletteResult? palette, int? limit, WeavePattern?[] patterns, byte[]? overrides = null)
+    internal static WorkflowSession Restore(BitmapSource source, BitmapSource? resized, PaletteResult? palette, int? limit, WeavePattern?[] patterns, byte[]? overrides = null, VectorDocument? vector = null)
     {
-        var session = new WorkflowSession(source) { Resized = resized, Palette = palette, AppliedColorLimit = limit, Patterns = patterns, PixelOverrides = overrides };
+        var session = new WorkflowSession(source, vector) { Resized = resized, Palette = palette, AppliedColorLimit = limit, Patterns = patterns, PixelOverrides = overrides };
         if (palette is not null)
         {
             session.ColorPreview = DesignProcessor.Render(palette, new WeavePattern?[palette.Colors.Length]);
@@ -100,6 +102,6 @@ public sealed class WorkflowSession
         PixelOverrides = next; PatternPreview = output;
     }
     // Stage results are replaced, never modified in place; share them for bounded undo snapshots.
-    public WorkflowSession Snapshot() => new(Source) { Resized = Resized, Palette = Palette, ColorPreview = ColorPreview, AppliedColorLimit = AppliedColorLimit, Patterns = Patterns, PatternPreview = PatternPreview, BasePatternPreview = BasePatternPreview, PixelOverrides = PixelOverrides };
+    public WorkflowSession Snapshot() => new(Source, Vector) { Resized = Resized, Palette = Palette, ColorPreview = ColorPreview, AppliedColorLimit = AppliedColorLimit, Patterns = Patterns, PatternPreview = PatternPreview, BasePatternPreview = BasePatternPreview, PixelOverrides = PixelOverrides };
     public bool CanSave => Palette is not null && Patterns.Length > 0 && Patterns.All(p => p is not null);
 }

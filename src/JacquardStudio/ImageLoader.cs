@@ -3,7 +3,8 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public record ImageResult(BitmapSource Image, int PageCount, int PageIndex, string Format);
+public sealed record VectorDocument(byte[] PdfBytes, int PageIndex);
+public record ImageResult(BitmapSource Image, int PageCount, int PageIndex, string Format, VectorDocument? Vector = null);
 
 /// <summary>Preview only; this class does not interpret images as loom instructions.</summary>
 public static class ImageLoader

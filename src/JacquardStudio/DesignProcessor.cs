@@ -13,14 +13,6 @@ public static class DesignProcessor
     public const int MaxPixels = 4_000_000;
     public const int MaxPatternPixels = 262_144;
 
-    private sealed record Sample(int Color, int Count);
-    private sealed class Bucket
-    {
-        public int Count; public long R, G, B;
-        public void Add(int color) { Count++; R += (color >> 16) & 255; G += (color >> 8) & 255; B += color & 255; }
-        public Sample Sample() => new(((int)(R / Count) << 16) | ((int)(G / Count) << 8) | (int)(B / Count), Count);
-    }
-
     private static byte[] GetPixels(BitmapSource source, int maxPixels)
     {
         if (source.PixelWidth <= 0 || source.PixelHeight <= 0 || (long)source.PixelWidth * source.PixelHeight > maxPixels)
@@ -37,17 +29,18 @@ public static class DesignProcessor
     {
         if (width < 1 || height < 1 || (long)width * height > MaxPixels)
             throw new ArgumentOutOfRangeException(nameof(width), "Output size must be positive and at most 4,000,000 pixels.");
-        byte[] pixels = GetPixels(source, MaxPixels);
-        for (int i = 3; i < pixels.Length; i += 4)
-            if (pixels[i] != 255) throw new InvalidDataException("Transparent pixels are not supported; flatten the image first.");
+        byte[] pixels = GetPixels(source, (int)ImageLoader.MaxPixels);
         int stride = checked(width * 4);
         byte[] output = new byte[checked(stride * height)];
         for (int y = 0; y < height; y++)
         for (int x = 0; x < width; x++)
         {
-            int sy = (int)((long)y * source.PixelHeight / height);
-            int sx = (int)((long)x * source.PixelWidth / width);
-            Buffer.BlockCopy(pixels, (sy * source.PixelWidth + sx) * 4, output, (y * width + x) * 4, 4);
+            int sy = (int)(((2L * y + 1) * source.PixelHeight) / (2L * height));
+            int sx = (int)(((2L * x + 1) * source.PixelWidth) / (2L * width));
+            int input = (sy * source.PixelWidth + sx) * 4, dest = (y * width + x) * 4;
+            if (pixels[input + 3] < 128) { output[dest] = output[dest + 1] = output[dest + 2] = 255; }
+            else { output[dest] = pixels[input]; output[dest + 1] = pixels[input + 1]; output[dest + 2] = pixels[input + 2]; }
+            output[dest + 3] = 255;
         }
         var result = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, output, stride);
         result.Freeze(); return result;
@@ -58,78 +51,52 @@ public static class DesignProcessor
         if (width < 1 || height < 1 || (long)width * height > MaxPixels)
             throw new ArgumentOutOfRangeException(nameof(width), "Output size must be positive and at most 4,000,000 pixels.");
         if (requestedColors is < 1 or > 50) throw new ArgumentOutOfRangeException(nameof(requestedColors));
-        byte[] original = GetPixels(source, MaxPixels);
+        byte[] original = GetPixels(source, (int)ImageLoader.MaxPixels);
         int total = checked(width * height);
-        int[] scaled = new int[total];
-        var unique = new HashSet<int>();
-        var histogram = new Bucket?[32768];
-        var exact = new Dictionary<int, int>();
-        for (int y = 0; y < height; y++)
+        var sparse = total <= 262_144 ? new Dictionary<int, int>() : null;
+        int[]? frequency = sparse is null ? new int[1 << 24] : null; int unique = 0;
+        int ColorAt(int x, int y)
         {
-            int sy = (int)((long)y * source.PixelHeight / height);
-            for (int x = 0; x < width; x++)
-            {
-                int sx = (int)((long)x * source.PixelWidth / width);
-                int o = (sy * source.PixelWidth + sx) * 4;
-                if (original[o + 3] != 255) throw new InvalidDataException("Transparent pixels are not supported; flatten the image first.");
-                int color = (original[o + 2] << 16) | (original[o + 1] << 8) | original[o];
-                scaled[y * width + x] = color;
-                unique.Add(color);
-                if (unique.Count <= 50) exact[color] = exact.GetValueOrDefault(color) + 1;
-                int bin = ((color >> 19) << 10) | (((color >> 11) & 31) << 5) | ((color >> 3) & 31);
-                (histogram[bin] ??= new Bucket()).Add(color);
-            }
+            int sy = (int)(((2L * y + 1) * source.PixelHeight) / (2L * height)), sx = (int)(((2L * x + 1) * source.PixelWidth) / (2L * width));
+            int o = (sy * source.PixelWidth + sx) * 4;
+            return original[o + 3] < 128 ? 0xffffff : (original[o + 2] << 16) | (original[o + 1] << 8) | original[o];
         }
-        // For <=50 exact colors retain them exactly when possible; for larger sets use 5-bit histogram buckets.
-        List<Sample> samples = unique.Count <= 50
-            ? exact.OrderBy(p => p.Key).Select(p => new Sample(p.Key, p.Value)).ToList()
-            : histogram.Where(b => b is not null).Select(b => b!.Sample()).ToList();
-        var boxes = new List<List<Sample>> { samples };
-        while (boxes.Count < requestedColors)
+        for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
         {
-            int best = -1, bestRange = -1, channel = 0;
-            for (int i = 0; i < boxes.Count; i++)
-            {
-                if (boxes[i].Count < 2) continue;
-                for (int c = 0; c < 3; c++)
-                {
-                    int shift = c * 8;
-                    int range = boxes[i].Max(s => (s.Color >> shift) & 255) - boxes[i].Min(s => (s.Color >> shift) & 255);
-                    if (range > bestRange) { best = i; bestRange = range; channel = shift; }
-                }
-            }
-            if (best < 0 || bestRange == 0) break;
-            var sorted = boxes[best].OrderBy(s => (s.Color >> channel) & 255).ThenBy(s => s.Color).ToList();
-            long half = sorted.Sum(s => (long)s.Count) / 2, acc = 0; int split = 0;
-            while (split < sorted.Count - 1 && acc < half) acc += sorted[split++].Count;
-            split = Math.Clamp(split, 1, sorted.Count - 1);
-            boxes[best] = sorted.Take(split).ToList();
-            boxes.Add(sorted.Skip(split).ToList());
+            int c = ColorAt(x, y);
+            if (sparse is not null) { int n = sparse.GetValueOrDefault(c); if (n == 0) unique++; sparse[c] = n + 1; }
+            else if (frequency![c]++ == 0) unique++;
         }
-        int[] palette = boxes.Select(box =>
-        {
-            long n = box.Sum(s => (long)s.Count);
-            int r = (int)(box.Sum(s => (long)((s.Color >> 16) & 255) * s.Count) / n);
-            int g = (int)(box.Sum(s => (long)((s.Color >> 8) & 255) * s.Count) / n);
-            int b = (int)(box.Sum(s => (long)(s.Color & 255) * s.Count) / n);
-            return (r << 16) | (g << 8) | b;
-        }).Distinct().OrderBy(c => c).ToArray();
-        // Cache mappings by exact color for small palettes or by 5-bit histogram bucket otherwise.
-        var lookup = new Dictionary<int, byte>();
-        var binColors = histogram.Select(b => b?.Sample().Color ?? 0).ToArray();
+        // Keep exact colors with highest pixel counts. Ties deterministically prefer the lower RGB value.
+        var top = new PriorityQueue<int, (int count, int inverseColor)>();
+        void Consider(int color, int count) { top.Enqueue(color, (count, -color)); if (top.Count > requestedColors) top.Dequeue(); }
+        if (sparse is not null) { foreach (var pair in sparse) Consider(pair.Key, pair.Value); }
+        else for (int c = 0; c < frequency!.Length; c++) if (frequency[c] > 0) Consider(c, frequency[c]);
+        int[] palette = new int[top.Count]; for (int i = 0; i < palette.Length; i++) palette[i] = top.Dequeue(); Array.Sort(palette);
+        // Reuse frequency as an exact-color -> palette index cache to avoid another unbounded dictionary.
         var indices = new byte[total]; var counts = new int[palette.Length];
-        for (int i = 0; i < total; i++)
+        for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
         {
-            int color = scaled[i];
-            int key = unique.Count <= 50 ? color : ((color >> 19) << 10) | (((color >> 11) & 31) << 5) | ((color >> 3) & 31);
-            if (!lookup.TryGetValue(key, out byte idx))
-            {
-                int candidate = unique.Count <= 50 ? color : binColors[key];
-                idx = (byte)Nearest(candidate, palette); lookup.Add(key, idx);
-            }
-            indices[i] = idx; counts[idx]++;
+            int color = ColorAt(x, y); int mapped = sparse is null ? frequency![color] : sparse[color];
+            if (mapped > 0) { mapped = -Nearest(color, palette) - 1; if (sparse is null) frequency![color] = mapped; else sparse[color] = mapped; }
+            int index = -mapped - 1; indices[y * width + x] = (byte)index; counts[index]++;
         }
-        return new PaletteResult(width, height, unique.Count, palette, indices, counts);
+        return new PaletteResult(width, height, unique, palette, indices, counts);
+    }
+
+    /// <summary>View-only highlight: keep the chosen color intact and mute all other regions.</summary>
+    public static BitmapSource RenderHighlight(PaletteResult design, int selected)
+    {
+        if ((uint)selected >= (uint)design.Colors.Length || design.Indices.Length != (long)design.Width * design.Height) throw new ArgumentException("Invalid highlighted color.");
+        int stride = checked(design.Width * 4); var pixels = new byte[checked(stride * design.Height)];
+        for (int i = 0; i < design.Indices.Length; i++)
+        {
+            int index = design.Indices[i]; if ((uint)index >= (uint)design.Colors.Length) throw new ArgumentException("Invalid palette index.");
+            int c = design.Colors[index], b = c & 255, g = (c >> 8) & 255, r = (c >> 16) & 255;
+            if (index != selected) { r = (r + 3 * 150) / 4; g = (g + 3 * 150) / 4; b = (b + 3 * 150) / 4; }
+            pixels[i * 4] = (byte)b; pixels[i * 4 + 1] = (byte)g; pixels[i * 4 + 2] = (byte)r; pixels[i * 4 + 3] = 255;
+        }
+        var result = BitmapSource.Create(design.Width, design.Height, 96, 96, PixelFormats.Bgra32, null, pixels, stride); result.Freeze(); return result;
     }
 
     /// <summary>Replace all pixels of one palette color with a selected surviving color.</summary>
