@@ -74,7 +74,7 @@ public partial class MainWindow : Window
         else if (ext is ".jc5" or ".jc6") await LoadMachineAsync(filename);
         else await LoadAsync(filename, 0);
     }
-    private async Task LoadAsync(string filename, int page)
+    private async Task LoadAsync(string filename, int page, bool showErrors = true)
     {
         SetBusy(true); StatusText.Text = T("در حال باز کردن تصویر…", "Loading image…");
         try
@@ -92,7 +92,11 @@ public partial class MainWindow : Window
             StatusText.Text = scale < 1 ? T("تصویر بزرگ بود؛ اندازه اولیه متناسب با سقف ۴ میلیون پیکسل کاهش یافت.", "Image was scaled to fit the 4-million-pixel processing limit.") : T("اندازه اولیه اعمال شد؛ در صورت نیاز آن را تغییر دهید.", "Original dimensions applied; change them if needed.");
         }
         catch (Exception ex)
-        { MessageBox.Show(this, T("باز کردن تصویر ممکن نشد.\n", "Could not open the image.\n") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("باز کردن تصویر ناموفق بود.", "Could not open image."); }
+        {
+            StatusText.Text = T("باز کردن تصویر ناموفق بود.", "Could not open image.");
+            if (!showErrors) throw;
+            MessageBox.Show(this, T("باز کردن تصویر ممکن نشد.\n", "Could not open the image.\n") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
         finally { SetBusy(false); }
     }
     private async void PreviousPage_Click(object sender, RoutedEventArgs e) { if (!busy && path is not null && current is not null && current.PageIndex > 0 && await ConfirmDiscardAsync()) await LoadAsync(path, current.PageIndex - 1); }

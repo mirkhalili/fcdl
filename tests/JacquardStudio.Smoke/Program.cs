@@ -550,7 +550,8 @@ internal static class Program
             try
             {
                 var loadPng = typeof(MainWindow).GetMethod("LoadAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-                var loadingPng = (Task)loadPng.Invoke(pngWindow, new object[] { alphaPath, 0 })!; var frame = new System.Windows.Threading.DispatcherFrame();
+                using var watchdog = new System.Threading.Timer(_ => { Console.Error.WriteLine("PNG UI loading timed out"); Environment.Exit(1); }, null, TimeSpan.FromSeconds(30), Timeout.InfiniteTimeSpan);
+                var loadingPng = (Task)loadPng.Invoke(pngWindow, new object[] { alphaPath, 0, false })!; var frame = new System.Windows.Threading.DispatcherFrame();
                 loadingPng.ContinueWith(_ => dispatcher.BeginInvoke(new Action(() => frame.Continue = false)), TaskScheduler.Default);
                 System.Windows.Threading.Dispatcher.PushFrame(frame); loadingPng.GetAwaiter().GetResult();
                 var loadedSession = (WorkflowSession?)typeof(MainWindow).GetField("session", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(pngWindow);
