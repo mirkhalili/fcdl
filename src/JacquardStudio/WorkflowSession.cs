@@ -43,6 +43,15 @@ public sealed class WorkflowSession
         var basePreview = DesignProcessor.Render(next, patterns); var patternPreview = ApplyOverrides(basePreview, PixelOverrides);
         Palette = next; Patterns = patterns; ColorPreview = colorPreview; BasePatternPreview = basePreview; PatternPreview = patternPreview;
     }
+    public void Recolor(int index, int color)
+    {
+        var palette = Palette ?? throw new InvalidOperationException("Apply colors first.");
+        if ((uint)index >= (uint)palette.Colors.Length || color is < 0 or > 0xffffff) throw new ArgumentException("Invalid color.");
+        if (palette.Colors.Where((_, i) => i != index).Contains(color)) throw new ArgumentException("Color already exists; use merge instead.");
+        var colors = (int[])palette.Colors.Clone(); colors[index] = color; var next = palette with { Colors = colors };
+        var colorPreview = DesignProcessor.Render(next, new WeavePattern?[colors.Length]); var basePreview = DesignProcessor.Render(next, Patterns);
+        var preview = ApplyOverrides(basePreview, PixelOverrides); Palette = next; ColorPreview = colorPreview; BasePatternPreview = basePreview; PatternPreview = preview;
+    }
     public void AssignPattern(int index, WeavePattern pattern)
     {
         var palette = Palette ?? throw new InvalidOperationException("Apply colors first.");

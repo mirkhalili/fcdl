@@ -35,28 +35,26 @@ public sealed class Fabric3DWindow : Window
         TextBox Input(string value) => new() { FontFamily = FontFamily, Text = value, FlowDirection = FlowDirection.LeftToRight, Padding = new Thickness(6) };
         ComboBox Unit() => new() { FontFamily = FontFamily, ItemsSource = YarnGeometry.Units, SelectedIndex = 0, Margin = new Thickness(0, 4, 0, 0) };
         side.Children.Add(new TextBlock { Text = T("تنظیم نخ و تراکم", "Yarn & density"), Foreground = Brushes.White, FontSize = 17, FontWeight = FontWeights.SemiBold });
-        side.Children.Add(Label(T("نمره نخ تار", "Warp yarn count"))); var warpCount = Input("30"); side.Children.Add(warpCount); var warpUnit = Unit(); side.Children.Add(warpUnit);
-        side.Children.Add(Label(T("نمره نخ پود", "Weft yarn count"))); var weftCount = Input("30"); side.Children.Add(weftCount); var weftUnit = Unit(); side.Children.Add(weftUnit);
-        side.Children.Add(Label(T("تراکم تار (نخ در سانتی‌متر)", "Warp ends per cm"))); var warpDensity = Input("20"); side.Children.Add(warpDensity);
-        side.Children.Add(Label(T("تراکم پود (رج در سانتی‌متر)", "Weft picks per cm"))); var weftDensity = Input("20"); side.Children.Add(weftDensity);
-        side.Children.Add(Label(T("چگالی مؤثر نخ (گرم بر سانتی‌متر مکعب)", "Effective yarn density (g/cm³)"))); var materialDensity = Input("1.0"); side.Children.Add(materialDensity);
-        side.Children.Add(Label(T("رنگ تار", "Warp color"))); var warpColor = Input(settings.WarpColor); side.Children.Add(warpColor);
-        var chooseWarp = new Button { Content = T("انتخاب رنگ تار", "Choose warp color"), Margin = new Thickness(0, 5, 0, 0) }; side.Children.Add(chooseWarp);
-        chooseWarp.Click += (_, _) => { var selected = ColorChooser.Pick(this, warpColor.Text); if (selected is not null) warpColor.Text = selected; };
+        side.Children.Add(Label(T("نمره نخ تار", "Warp yarn count"))); var warpCount = Input(settings.WarpCount); side.Children.Add(warpCount); var warpUnit = Unit(); warpUnit.SelectedIndex = settings.WarpUnit; side.Children.Add(warpUnit);
+        side.Children.Add(Label(T("نمره نخ پود", "Weft yarn count"))); var weftCount = Input(FabricSimulation.YarnFor(settings, "1").Count); side.Children.Add(weftCount); var weftUnit = Unit(); weftUnit.SelectedIndex = FabricSimulation.YarnFor(settings, "1").Unit; side.Children.Add(weftUnit);
+        side.Children.Add(Label(T("تراکم تار (نخ در سانتی‌متر)", "Warp ends per cm"))); var warpDensity = Input(settings.WarpDensity); side.Children.Add(warpDensity);
+        side.Children.Add(Label(T("تراکم پود (رج در سانتی‌متر)", "Weft picks per cm"))); var weftDensity = Input(settings.WeftDensity); side.Children.Add(weftDensity);
+        side.Children.Add(Label(T("چگالی مؤثر نخ (گرم بر سانتی‌متر مکعب)", "Effective yarn density (g/cm³)"))); var materialDensity = Input(settings.MaterialDensity); side.Children.Add(materialDensity);
+        side.Children.Add(Label(T("رنگ تار", "Warp color"))); var warpColor = new ColorSwatch(settings.WarpColor, T("رنگ تار", "Warp color")); side.Children.Add(warpColor);
         var rowIds = rowWefts.Count == fabric.PixelHeight ? rowWefts.Distinct(StringComparer.Ordinal).ToArray() : overview is not null ? new[] { "1" } : Array.Empty<string>();
         var colorSet = weftColors is { Length: > 0 } ? (string[])weftColors.Clone() : rowIds.Length > 0 ? rowIds.Select(id => FabricSimulation.YarnFor(settings, id).Color).ToArray() : new[] { settings.WeftColor };
         if (colorSet.Length > 256) throw new ArgumentException("At most 256 weft colors are supported.");
-        var colorInputs = new List<TextBox>();
+        var colorInputs = new List<ColorSwatch>();
         for (int i = 0; i < colorSet.Length; i++)
         {
-            int n = i; side.Children.Add(Label(T($"رنگ پود {(i < rowIds.Length ? rowIds[i] : (i + 1).ToString())}", $"Weft {(i < rowIds.Length ? rowIds[i] : (i + 1).ToString())} color"))); var input = Input(colorSet[i]); colorInputs.Add(input); side.Children.Add(input);
-            var choose = new Button { Content = T("انتخاب رنگ", "Choose color"), Margin = new Thickness(0, 5, 0, 0) }; side.Children.Add(choose);
-            choose.Click += (_, _) => { var selected = ColorChooser.Pick(this, colorInputs[n].Text); if (selected is not null) colorInputs[n].Text = selected; };
+            side.Children.Add(Label(T($"رنگ پود {(i < rowIds.Length ? rowIds[i] : (i + 1).ToString())}", $"Weft {(i < rowIds.Length ? rowIds[i] : (i + 1).ToString())} color")));
+            var input = new ColorSwatch(colorSet[i], T("رنگ پود", "Weft color")); colorInputs.Add(input); side.Children.Add(input);
         }
         var apply = new Button { Content = T("اعمال تنظیمات", "Apply settings"), Margin = new Thickness(0, 12, 0, 0) }; side.Children.Add(apply);
         side.Children.Add(new TextBlock { Text = T("قطر از نمره و چگالی مؤثر تخمین زده می‌شود؛ نتیجه اندازه‌گیری فیزیکی نیست.", "Diameter is estimated from count and effective density; this is not a physical measurement."), TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, Margin = new Thickness(0, 10, 0, 0), FontSize = 11 });
+        if (overview is not null) scroll.Visibility = Visibility.Collapsed; // Simulation geometry is controlled by its main panel.
         int offsetX = 0, offsetY = 0; bool back = false;
-        double warpSpacing = .5, weftSpacing = .5, warpDiameter = YarnGeometry.DiameterMm(30, 1), weftDiameter = YarnGeometry.DiameterMm(30, 1); Color warp = FabricSimulation.ParseColor(settings.WarpColor); Color[] colors = colorSet.Select(FabricSimulation.ParseColor).ToArray();
+        double warpSpacing = YarnGeometry.SpacingMm(FabricSimulation.Number(settings.WarpDensity)), weftSpacing = YarnGeometry.SpacingMm(FabricSimulation.Number(settings.WeftDensity)), warpDiameter = FabricSimulation.WarpDiameter(settings), weftDiameter = FabricSimulation.WeftDiameter(settings, FabricSimulation.YarnFor(settings, "1")); Color warp = FabricSimulation.ParseColor(settings.WarpColor); Color[] colors = colorSet.Select(FabricSimulation.ParseColor).ToArray();
         if (overview is not null)
         {
             var capture = new Button { Content = T("ثبت نمای 3D", "Capture 3D view"), Margin = new Thickness(3) }; bar.Children.Add(capture);
@@ -84,7 +82,8 @@ public sealed class Fabric3DWindow : Window
                 string id = rowWefts.Count == fabric.PixelHeight ? rowWefts[offsetY + y] : "1"; var yarn = FabricSimulation.YarnFor(settings, id);
                 int colorIndex = weftColors is { Length: > 0 } || rowIds.Length == 0 ? (offsetY + y) % colors.Length : Array.IndexOf(rowIds, id);
                 Color color = colors[colorIndex];
-                group.Children.Add(BuildYarn(map, w, h, false, y, color, yarn.Yarn, settings.Weave, dx, dy, wd, fd));
+                double rowFd = overview is null ? fd : FabricSimulation.WeftDiameter(settings, yarn) * scaleY;
+                group.Children.Add(BuildYarn(map, w, h, false, y, color, yarn.Yarn, settings.Weave, dx, dy, wd, rowFd));
             }
             viewport.Children.Clear(); viewport.Children.Add(new DefaultLights()); viewport.Children.Add(new ModelVisual3D { Content = group });
             double widthMm = w * dx, heightMm = h * dy, span = Math.Max(widthMm, heightMm);
@@ -100,7 +99,7 @@ public sealed class Fabric3DWindow : Window
             try
             {
                 double density = Parse(materialDensity); double wd = YarnGeometry.DiameterMm(YarnGeometry.ToTex(Parse(warpCount), warpUnit.SelectedIndex), density), fd = YarnGeometry.DiameterMm(YarnGeometry.ToTex(Parse(weftCount), weftUnit.SelectedIndex), density);
-                double ws = YarnGeometry.SpacingMm(Parse(warpDensity)), fs = YarnGeometry.SpacingMm(Parse(weftDensity)); var wc = FabricSimulation.ParseColor(warpColor.Text); var cs = colorInputs.Select(x => FabricSimulation.ParseColor(x.Text)).ToArray();
+                double ws = YarnGeometry.SpacingMm(Parse(warpDensity)), fs = YarnGeometry.SpacingMm(Parse(weftDensity)); var wc = FabricSimulation.ParseColor(warpColor.Value); var cs = colorInputs.Select(x => FabricSimulation.ParseColor(x.Value)).ToArray();
                 warpDiameter = wd; weftDiameter = fd; warpSpacing = ws; weftSpacing = fs; warp = wc; colors = cs; RenderPart();
             }
             catch (ArgumentException ex) { MessageBox.Show(this, T("تنظیمات معتبر نیست: ", "Invalid settings: ") + ex.Message, Title); }

@@ -22,7 +22,7 @@ public sealed class MergeChoiceWindow : Window
             var row = new StackPanel { Orientation = Orientation.Horizontal };
             row.Children.Add(new TextBlock { Text = english ? "Merge into " : "ادغام به ", VerticalAlignment = VerticalAlignment.Center });
             row.Children.Add(new Border { Width = 22, Height = 22, Background = entry.Brush, BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1), Margin = new Thickness(5, 0, 5, 0) });
-            row.Children.Add(new TextBlock { Text = entry.ColorCode, FlowDirection = FlowDirection.LeftToRight, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = (english ? "Color " : "رنگ ") + entry.ColorNumber, FlowDirection = FlowDirection.LeftToRight, VerticalAlignment = VerticalAlignment.Center });
             var button = new Button { Content = row, Margin = new Thickness(4), Padding = new Thickness(10, 8, 10, 8) };
             button.Click += (_, _) => { Destination = entry.Index; DialogResult = true; };
             actions.Children.Add(button);

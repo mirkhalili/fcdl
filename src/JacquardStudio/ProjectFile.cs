@@ -27,7 +27,7 @@ public static class ProjectFile
     private sealed class Manifest
     {
         public Manifest() { }
-        public int Version { get; set; } = 10;
+        public int Version { get; set; } = 11;
         public int? VectorPageIndex { get; set; }
         public MachineInfo? Machine { get; set; }
         public WeftSettings? DraftWeft { get; set; }
@@ -85,14 +85,14 @@ public static class ProjectFile
     }
     private static SimulationSettings BoundedSimulation(SimulationSettings s)
     {
-        if ((uint)s.WarpYarn >= FabricSimulation.YarnNames.Length || (uint)s.WeftYarn >= FabricSimulation.YarnNames.Length || s.Weave is < 0 or > 2 || s.Shadow is < 0 or > 100 || s.Mode is < 0 or > 2) throw new InvalidDataException("Invalid simulation settings.");
+        if ((uint)s.WarpYarn >= FabricSimulation.YarnNames.Length || (uint)s.WeftYarn >= FabricSimulation.YarnNames.Length || s.Weave is < 0 or > 2 || s.Shadow is < 0 or > 100 || s.Mode is < 0 or > 2 || (uint)s.WarpUnit >= YarnGeometry.Units.Length) throw new InvalidDataException("Invalid simulation settings.");
         SimulatedYarn[]? yarns = null;
         if (s.Wefts is { } items)
         {
-            if (items.Length > 256 || items.Any(y => y is null || string.IsNullOrWhiteSpace(y.Id) || (uint)y.Yarn >= FabricSimulation.YarnNames.Length) || items.Select(y => y.Id).Distinct(StringComparer.Ordinal).Count() != items.Length) throw new InvalidDataException("Invalid simulation wefts.");
-            yarns = items.Select(y => y with { Id = Bounded(y.Id, 32), Color = Bounded(y.Color, 16) }).ToArray();
+            if (items.Length > 256 || items.Any(y => y is null || string.IsNullOrWhiteSpace(y.Id) || (uint)y.Yarn >= FabricSimulation.YarnNames.Length || (uint)y.Unit >= YarnGeometry.Units.Length) || items.Select(y => y.Id).Distinct(StringComparer.Ordinal).Count() != items.Length) throw new InvalidDataException("Invalid simulation wefts.");
+            yarns = items.Select(y => y with { Id = Bounded(y.Id, 32), Color = Bounded(y.Color, 16), Count = Bounded(y.Count, 32, "30") }).ToArray();
         }
-        return s with { WarpColor = Bounded(s.WarpColor, 16), WeftColor = Bounded(s.WeftColor, 16), Wefts = yarns };
+        return s with { WarpColor = Bounded(s.WarpColor, 16), WeftColor = Bounded(s.WeftColor, 16), Wefts = yarns, WarpCount = Bounded(s.WarpCount, 32, "30"), WarpDensity = Bounded(s.WarpDensity, 32, "40"), WeftDensity = Bounded(s.WeftDensity, 32, "40"), MaterialDensity = Bounded(s.MaterialDensity, 32, "1.0") };
     }
     public static void Save(string path, ProjectState state, IEnumerable<string> protectedPaths)
     {
@@ -165,7 +165,7 @@ public static class ProjectFile
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
         if (zip.Entries.Count > 58) throw new InvalidDataException("Too many project entries.");
         var m = JsonSerializer.Deserialize<Manifest>(ReadEntry(zip, "manifest.json", MaxManifestBytes)) ?? throw new InvalidDataException("Missing project manifest.");
-        if (m.Version is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10)) throw new NotSupportedException("Unsupported SAM project version.");
+        if (m.Version is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10 or 11)) throw new NotSupportedException("Unsupported SAM project version.");
         if (m.Version == 1 && m.HasOverrides) throw new InvalidDataException("Overrides require SAM version 2.");
         if (m.Version < 3 && m.Machine is not null) throw new InvalidDataException("Machine setup requires SAM version 3.");
         CheckDimensions(m.SourceWidth, m.SourceHeight, (int)ImageLoader.MaxPixels);

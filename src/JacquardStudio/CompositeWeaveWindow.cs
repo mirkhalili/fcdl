@@ -114,7 +114,7 @@ public sealed class CompositeWeaveWindow : Window
             int n = i; var body = new StackPanel();
             var title = new Grid(); title.ColumnDefinitions.Add(new ColumnDefinition()); title.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             title.Children.Add(Heading(T($"پود {i + 1}", $"Weft {i + 1}"), 15));
-            var swatch = Button(T("●  رنگ", "●  Color"), (_, _) => { var picked = ColorChooser.Pick(this, colors[n]); if (picked is not null) { colors[n] = picked; changed = true; editor.SetRowColors(colors); BuildRows(); } }); swatch.Foreground = new SolidColorBrush(FabricSimulation.ParseColor(colors[i])); Grid.SetColumn(swatch, 1); title.Children.Add(swatch); body.Children.Add(title);
+            var swatch = new ColorSwatch(colors[n], T($"رنگ پود {n + 1}", $"Weft {n + 1} color")); swatch.ColorChanged += (_, _) => { colors[n] = swatch.Value; changed = true; editor.SetRowColors(colors); BuildRows(); }; Grid.SetColumn(swatch, 1); title.Children.Add(swatch); body.Children.Add(title);
             var row = new Grid { Margin = new Thickness(0, 8, 0, 0) }; row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(86) }); row.ColumnDefinitions.Add(new ColumnDefinition());
             var preview = new Image { Width = 76, Height = 76, Stretch = Stretch.Uniform }; RenderOptions.SetBitmapScalingMode(preview, BitmapScalingMode.NearestNeighbor); previews.Add(preview);
             var thumb = new Border { Child = preview, Background = Brushes.White, CornerRadius = new CornerRadius(7), Padding = new Thickness(4), Height = 84, Width = 84 }; row.Children.Add(thumb);
