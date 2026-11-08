@@ -29,9 +29,9 @@ public sealed class Fabric3DWindow : Window
         var scroll = new ScrollViewer { Width = 270, Content = side, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = new SolidColorBrush(Color.FromRgb(17, 27, 41)) }; DockPanel.SetDock(scroll, Dock.Right); root.Children.Add(scroll);
         var viewport = new HelixViewport3D { ShowViewCube = true, ShowCoordinateSystem = false, Background = new SolidColorBrush(Color.FromRgb(35, 48, 55)) };
         root.Children.Add(viewport); Content = root;
-        TextBlock Label(string text) => new() { Text = text, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 9, 0, 3) };
-        TextBox Input(string value) => new() { Text = value, FlowDirection = FlowDirection.LeftToRight, Padding = new Thickness(6) };
-        ComboBox Unit() => new() { ItemsSource = YarnGeometry.Units, SelectedIndex = 0, Margin = new Thickness(0, 4, 0, 0) };
+        TextBlock Label(string text) => new() { FontFamily = FontFamily, Text = text, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 9, 0, 3) };
+        TextBox Input(string value) => new() { FontFamily = FontFamily, Text = value, FlowDirection = FlowDirection.LeftToRight, Padding = new Thickness(6) };
+        ComboBox Unit() => new() { FontFamily = FontFamily, ItemsSource = YarnGeometry.Units, SelectedIndex = 0, Margin = new Thickness(0, 4, 0, 0) };
         side.Children.Add(new TextBlock { Text = T("تنظیم نخ و تراکم", "Yarn & density"), Foreground = Brushes.White, FontSize = 17, FontWeight = FontWeights.SemiBold });
         side.Children.Add(Label(T("نمره نخ تار", "Warp yarn count"))); var warpCount = Input("30"); side.Children.Add(warpCount); var warpUnit = Unit(); side.Children.Add(warpUnit);
         side.Children.Add(Label(T("نمره نخ پود", "Weft yarn count"))); var weftCount = Input("30"); side.Children.Add(weftCount); var weftUnit = Unit(); side.Children.Add(weftUnit);

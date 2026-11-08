@@ -82,7 +82,8 @@ public partial class MainWindow : Window
             var result = await Task.Run(() => ImageLoader.Load(filename, page));
             var next = new WorkflowSession(result.Image, result.Vector);
             double scale = Math.Min(1, Math.Sqrt((double)DesignProcessor.MaxPixels / ((long)result.Image.PixelWidth * result.Image.PixelHeight)));
-            int initialWidth = Math.Max(1, (int)Math.Floor(result.Image.PixelWidth * scale)), initialHeight = Math.Max(1, (int)Math.Floor(result.Image.PixelHeight * scale));
+            int initialWidth = Math.Min(DesignProcessor.MaxPixels, Math.Max(1, (int)Math.Floor(result.Image.PixelWidth * scale)));
+            int initialHeight = Math.Min(DesignProcessor.MaxPixels / initialWidth, Math.Max(1, (int)Math.Floor(result.Image.PixelHeight * scale)));
             await Task.Run(() => next.ApplySize(initialWidth, initialHeight));
             path = filename; projectPath = null; projectCreated = DateTimeOffset.Now; metadata = new(); LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); LoadSimulationSettings(new SimulationSettings()); ClearHistory(); sourceName = Path.GetFileName(filename); current = result; session = next; RebuildPaletteEntries();
             WidthInput.Text = initialWidth.ToString(); HeightInput.Text = initialHeight.ToString(); ColorInput.Text = "50";
@@ -1224,7 +1225,7 @@ public partial class MainWindow : Window
         FileCaption.Text = T("فایل ورودی", "INPUT FILE"); NoFileTitle.Text = T("شروع کار", "Get started"); NoFileHint.Text = T("تصویر، پروژه یا فایل ماشین پشتیبانی‌شده را باز کنید یا در پنجره رها کنید.", "Open or drop a supported image, project or loom file.");
         SizeTitle.Text = T("مرحله ۱ · تغییر اندازه", "Stage 1 · Resize"); SizeHint.Text = T("ابعاد خروجی را وارد و اعمال کنید. تصویر سمت چپ نتیجه همین مرحله است.", "Set and apply the output dimensions; the preview shows the result.");
         WidthLabel.Text = T("عرض (پیکسل)", "Width (px)"); HeightLabel.Text = T("ارتفاع (پیکسل)", "Height (px)"); ApplySizeButton.Content = T("اعمال اندازه", "Apply size"); SaveSizeButton.Content = T("ذخیره خروجی اندازه", "Save resized image"); ToColorButton.Content = T("مرحله بعد: رنگ ←", "Next: colors →");
-        SizeNotice.Text = T("روش تغییر اندازه نزدیک‌ترین همسایه است؛ نسبت تصویر خودکار حفظ نمی‌شود.", "Resize uses nearest-neighbor; aspect ratio is not locked.");
+        SizeNotice.Text = T("تصویر پیکسلی با نزدیک‌ترین همسایه و PDF/AI از منبع برداری بدون هموارسازی تغییر اندازه می‌یابند؛ نسبت ابعاد خودکار حفظ نمی‌شود.", "Raster images use nearest-neighbor; PDF/AI are rerendered from vectors without smoothing. Aspect ratio is not locked.");
         ColorTitle.Text = T("مرحله ۲ · کاهش رنگ", "Stage 2 · Colors"); ColorHint.Text = T("ورودی این مرحله تصویر تغییراندازه‌یافته است؛ بیش از ۵۰ رنگ به‌طور خودکار کاهش می‌یابد.", "Input is the resized image; over 50 colors are reduced automatically.");
         ColorLimitLabel.Text = T("حداکثر تعداد رنگ (۱ تا ۵۰)", "Maximum colors (1–50)"); ApplyColorButton.Content = T("اعمال تعداد رنگ", "Apply color limit"); SaveColorButton.Content = T("ذخیره خروجی رنگ", "Save color image"); ToPatternButton.Content = T("مرحله بعد: بافت ←", "Next: patterns →");
         SaveButton.Content = T("ذخیره تصویر", "Save image");

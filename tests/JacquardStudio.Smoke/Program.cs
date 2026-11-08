@@ -248,6 +248,10 @@ internal static class Program
             string colorV7 = Path.Combine(dir, "colored-v7.sam"); File.Copy(colorProject, colorV7);
             using (var zip = ZipFile.Open(colorV7, ZipArchiveMode.Update)) { var coloredManifestEntry = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestEntry.Open())) json = r.ReadToEnd(); coloredManifestEntry.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":9", "\"Version\":7")); }
             Check(ProjectFile.Load(colorV7).Session.Patterns[0]!.WeftColors is null, "SAM v7 still loads without new visual metadata");
+            string colorV8 = Path.Combine(dir, "colored-v8.sam"); File.Copy(colorProject, colorV8);
+            using (var zip = ZipFile.Open(colorV8, ZipArchiveMode.Update)) { var coloredManifestV8 = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestV8.Open())) json = r.ReadToEnd(); coloredManifestV8.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":9", "\"Version\":8")); }
+            Check(ProjectFile.Load(colorV8).Session.Patterns[0]!.WeftColors!.SequenceEqual(restoredComposite.WeftColors), "SAM v8 composite colors remain compatible");
+
             Check(Math.Abs(YarnGeometry.ToTex(90, 2) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 1) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 4) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(59.0541, 3) - 10) < .0001, "yarn count conversions");
             Check(YarnGeometry.DiameterMm(40, 1) > YarnGeometry.DiameterMm(10, 1) && YarnGeometry.SpacingMm(40) < YarnGeometry.SpacingMm(20), "count and density affect thickness and spacing");
             Expect<ArgumentException>(() => YarnGeometry.ToTex(0, 3)); Expect<ArgumentException>(() => YarnGeometry.SpacingMm(double.NaN));
@@ -540,6 +544,20 @@ internal static class Program
             var guide = new GuideWindow(false); Check(guide.Content is System.Windows.Controls.Grid && guide.Title.Contains("راهنمای"), "illustrated in-app guide loads with navigation");
             var window = new MainWindow();
             Check(window.FontFamily.Source.Contains("Vazirmatn"), "embedded font selected in main window");
+            var pngWindow = new MainWindow(); var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            var priorContext = System.Threading.SynchronizationContext.Current;
+            System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(dispatcher));
+            try
+            {
+                var loadPng = typeof(MainWindow).GetMethod("LoadAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+                var loadingPng = (Task)loadPng.Invoke(pngWindow, new object[] { alphaPath, 0 })!; var frame = new System.Windows.Threading.DispatcherFrame();
+                loadingPng.ContinueWith(_ => dispatcher.BeginInvoke(new Action(() => frame.Continue = false)), TaskScheduler.Default);
+                System.Windows.Threading.Dispatcher.PushFrame(frame); loadingPng.GetAwaiter().GetResult();
+                var loadedSession = (WorkflowSession?)typeof(MainWindow).GetField("session", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(pngWindow);
+                Check(loadedSession?.Resized?.PixelWidth == 4, "transparent PNG opens through the main window without crashing");
+                typeof(MainWindow).GetField("allowClose", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(pngWindow, true); pngWindow.Close();
+            }
+            finally { System.Threading.SynchronizationContext.SetSynchronizationContext(priorContext); }
             var pendingTotal = (System.Windows.Controls.TextBox)window.FindName("TotalHooksInput"); pendingTotal.Text = "۳۰";
             var readSetup = typeof(MainWindow).GetMethod("ReadMachineSettings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
             Check(((MachineSetup)readSetup.Invoke(window, null)!).TotalHooks == "" && window.FindName("ApplyWeftButton") is System.Windows.Controls.Button, "typing weft draft does not apply it");
