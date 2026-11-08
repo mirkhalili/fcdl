@@ -345,7 +345,9 @@ public partial class MainWindow : Window
         {
             await Task.Run(() => session.ApplyColors(colors)); RecordHistory(before);
             RebuildPaletteEntries(); stage = Stage.Colors; ShowStage();
-            StatusText.Text = T("رنگ‌ها اعمال شدند. مرحله بافت را انتخاب کنید.", "Colors applied. Continue to patterns.");
+            StatusText.Text = session.LockedColors.Any(x => x) && session.Palette!.Colors.Length < colors
+                ? T("با وجود قفل، افزایش تعداد رنگ‌های حذف‌شده را بازنمی‌گرداند؛ برای بازسازی از تصویر، قفل‌ها را باز کنید.", "With locks active, increasing the limit cannot restore removed colors; unlock all colors to rebuild from the source.")
+                : T("رنگ‌ها اعمال شدند. مرحله بافت را انتخاب کنید.", "Colors applied. Continue to patterns.");
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
         { MessageBox.Show(this, T("کاهش رنگ ممکن نشد: ", "Color reduction failed: ") + ex.Message); StatusText.Text = T("کاهش رنگ ناموفق بود.", "Color reduction failed."); }
@@ -921,7 +923,8 @@ public partial class MainWindow : Window
     private void UpdateSummary()
     {
         if (session?.Palette is not { } palette) { ColorSummary.Text = ""; AssignedText.Text = ""; return; }
-        ColorSummary.Text = T($"رنگ‌های ورودی: {palette.SourceColorCount:N0}  |  رنگ‌های خروجی: {palette.Colors.Length}", $"Input colors: {palette.SourceColorCount:N0}  |  Output colors: {palette.Colors.Length}");
+        int locked = session.LockedColors.Count(x => x);
+        ColorSummary.Text = T($"رنگ‌های ورودی: {palette.SourceColorCount:N0}  |  خروجی: {palette.Colors.Length}  |  قفل: {locked}", $"Input colors: {palette.SourceColorCount:N0}  |  Output: {palette.Colors.Length}  |  Locked: {locked}");
         int assigned = session.Patterns.Count(p => p is not null);
         AssignedText.Text = T($"پترن‌های انتخاب‌شده: {assigned} از {entries.Count}", $"Assigned patterns: {assigned} of {entries.Count}");
     }
