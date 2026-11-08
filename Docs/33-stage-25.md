@@ -1,0 +1,7 @@
+# Stage 25 — palette selection and protection
+
+Drag a rectangle over the color-stage image to replace the table selection with all palette colors present there (a click selects one pixel). Coordinates are mapped to the indexed image after zoom/scroll, and the selected entries remain correct when the table is sorted. Click any table header to toggle sort direction; sorting changes display only. Multi-delete maps each removed color to the closest remaining RGB color; multi-merge asks for one selected destination and retains its weave. Both are one undoable operation. A locked color cannot be removed manually without unlocking it.
+
+Color locks are undoable and persisted in SAM v13; v1–12 load unlocked. With locks active, reducing the limit operates on the **current** palette, retains every locked RGB value and its existing pixels, and keeps the most frequent unlocked colors in remaining slots; other colors map to the nearest survivor. A limit below the lock count is rejected without changes. Increasing the limit while locks remain cannot recover previously removed colors. Unlock all colors and apply again to rebuild from the resized source. As before, applying a new limit invalidates assigned weaves after confirmation.
+
+Hovering over the color image shows the pixel's palette number, RGB code, total count, percentage and top-left-based coordinates. The image export button saves the image, and a separate PNG action exports a visually formatted table of all colors in the currently displayed order. The PNG is not a machine file or a SAM project.
