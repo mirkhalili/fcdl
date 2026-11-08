@@ -673,6 +673,11 @@ internal static class Program
                 Check(ReferenceEquals(((System.Windows.Controls.Image)pngWindow.FindName("PreviewImage")).Source, highlightField.GetValue(pngWindow)), "color highlight icon updates only the preview");
                 highlightMethod.Invoke(pngWindow, new object[] { highlightButton, new System.Windows.RoutedEventArgs() });
                 Check(highlightField.GetValue(pngWindow) is null && ReferenceEquals(((System.Windows.Controls.Image)pngWindow.FindName("PreviewImage")).Source, loadedSession.ColorPreview), "second icon click restores unmodified color preview");
+                var paletteView = (System.Windows.Data.ListCollectionView)paletteList.ItemsSource; paletteView.SortDescriptions.Add(new System.ComponentModel.SortDescription(nameof(PaletteEntry.ColorNumber), System.ComponentModel.ListSortDirection.Descending));
+                var palettePreview = (System.Windows.Controls.Image)pngWindow.FindName("PreviewImage"); palettePreview.Width = 40; palettePreview.Height = 10; palettePreview.Measure(new System.Windows.Size(40,10)); palettePreview.Arrange(new System.Windows.Rect(0,0,40,10));
+                mainType.GetMethod("ApplyColorRegionSelection", flags)!.Invoke(pngWindow, new object[] { loadedSession.Palette!, new System.Windows.Point(10,0), new System.Windows.Point(29,9) });
+                var expectedSelection = loadedSession.Palette!.Indices.Skip(1).Take(2).Select(x => (int)x).Distinct().Order().ToArray();
+                Check(paletteList.SelectedItems.OfType<PaletteEntry>().Select(x => x.Index).Order().SequenceEqual(expectedSelection), "image region selects correct palette rows after sorting");
                 mainType.GetField("allowClose", flags)!.SetValue(pngWindow, true); pngWindow.Close();
             }
             finally { System.Threading.SynchronizationContext.SetSynchronizationContext(priorContext); }

@@ -690,8 +690,12 @@ public partial class MainWindow : Window
     private void PreviewImage_Up(object sender, MouseButtonEventArgs e)
     {
         if (!selectingColors || session?.Palette is not { } palette) return;
-        var end = e.GetPosition(PreviewImage); var indices = PreviewHitTest.ColorsInRectangle(palette, colorSelectionStart.X, colorSelectionStart.Y, end.X, end.Y, PreviewImage.ActualWidth, PreviewImage.ActualHeight);
-        selectingColors = false; ColorSelectionRect.Visibility = Visibility.Collapsed; PreviewImage.ReleaseMouseCapture(); ColorPaletteList.SelectedItems.Clear(); foreach (int index in indices) ColorPaletteList.SelectedItems.Add(entries[index]); e.Handled = true;
+        var end = e.GetPosition(PreviewImage); selectingColors = false; ColorSelectionRect.Visibility = Visibility.Collapsed; PreviewImage.ReleaseMouseCapture(); ApplyColorRegionSelection(palette, colorSelectionStart, end); e.Handled = true;
+    }
+    private void ApplyColorRegionSelection(PaletteResult palette, Point start, Point end)
+    {
+        var indices = PreviewHitTest.ColorsInRectangle(palette, start.X, start.Y, end.X, end.Y, PreviewImage.ActualWidth, PreviewImage.ActualHeight);
+        ColorPaletteList.SelectedItems.Clear(); foreach (int index in indices) ColorPaletteList.SelectedItems.Add(entries[index]);
     }
     private void PreviewImage_LostCapture(object sender, MouseEventArgs e) { selectingColors = false; ColorSelectionRect.Visibility = Visibility.Collapsed; }
     private void Info_Click(object sender, RoutedEventArgs e)
