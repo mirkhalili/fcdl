@@ -1,4 +1,6 @@
 using System.IO;
+using System.ComponentModel;
+using System.Windows.Data;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -26,7 +28,9 @@ public partial class MainWindow : Window
     private WorkflowSession? session;
     private List<PaletteEntry> entries = new();
     private double zoom = 1;
-    private bool panning;
+    private bool panning, selectingColors;
+    private Point colorSelectionStart;
+    private string? colorSortProperty; private ListSortDirection colorSortDirection = ListSortDirection.Ascending;
     private Point panStart;
     private double panHorizontal, panVertical;
     private BitmapSource? machinePreview, redPreview, simulationPreview, colorHighlight;
@@ -137,11 +141,12 @@ public partial class MainWindow : Window
         ToColorButton.IsEnabled = ColorStepButton.IsEnabled; ToPatternButton.IsEnabled = PatternStepButton.IsEnabled;
         RandomWeaveButton.IsEnabled = !busy && stage == Stage.Patterns && session?.Palette is not null && !SizeDirty && !ColorsDirty;
         SaveButton.IsEnabled = !busy && stage == Stage.Patterns && session?.PatternPreview is not null && !SizeDirty && !ColorsDirty;
+        SavePaletteButton.IsEnabled = !busy && stage == Stage.Colors && session?.Palette is not null && !SizeDirty && !ColorsDirty;
         int selectedCount = ColorPaletteList.SelectedItems.Count;
         bool canEditColors = !busy && stage == Stage.Colors && !SizeDirty && !ColorsDirty && session?.Palette?.Colors.Length > 1;
-        DeleteColorButton.IsEnabled = canEditColors && selectedCount == 1;
-        MergeColorButton.IsEnabled = canEditColors && selectedCount == 2;
-        ColorSelectionHint.Text = selectedCount > 2 ? T("برای ادغام فقط دو رنگ را انتخاب کنید.", "Select only two colors to merge.") : T("برای ادغام، دو رنگ را انتخاب کنید.", "Select two colors to merge.");
+        DeleteColorButton.IsEnabled = canEditColors && selectedCount > 0 && selectedCount < session!.Palette!.Colors.Length;
+        MergeColorButton.IsEnabled = canEditColors && selectedCount >= 2;
+        ColorSelectionHint.Text = T($"برای انتخاب رنگ‌ها، روی تصویر کادر بکشید. انتخاب‌شده: {selectedCount}. برای مرتب‌سازی سرستون را بزنید.", $"Drag on the image to select colors. Selected: {selectedCount}. Click a column header to sort.");
         UpdateBankButtons();
         UndoButton.IsEnabled = !busy && (bankOpen ? WeaveCanvas.CanUndo : undoHistory.Count > 0);
         RedoButton.IsEnabled = !busy && (bankOpen ? WeaveCanvas.CanRedo : redoHistory.Count > 0);
@@ -333,6 +338,7 @@ public partial class MainWindow : Window
         if (busy || session?.Resized is null || SizeDirty) return;
         if (!NumberInput.TryInt(ColorInput.Text, out int colors) || colors is < 1 or > 256)
         { MessageBox.Show(this, T("تعداد رنگ باید بین ۱ تا ۲۵۶ باشد.", "The color count must be between 1 and 256.")); return; }
+        if (session.LockedColors.Count(x => x) > colors) { MessageBox.Show(this, T("تعداد رنگ نباید کمتر از تعداد رنگ‌های قفل‌شده باشد.", "The limit cannot be less than the number of locked colors.")); return; }
         if (confirm && !ConfirmPatternLoss()) return;
         var before = CaptureHistory(); SetBusy(true); StatusText.Text = T("در حال بررسی رنگ‌ها…", "Analyzing colors…");
         try
@@ -353,7 +359,7 @@ public partial class MainWindow : Window
         for (int i = 0; i < palette.Colors.Length; i++)
         {
             int c = palette.Colors[i], count = palette.Counts[i];
-            var entry = new PaletteEntry { ShowGrid = GridToggle.IsChecked == true, Index = i, ColorCode = $"#{c:X6}", PixelCount = count, Percent = 100d * count / palette.Indices.Length,
+            var entry = new PaletteEntry { ShowGrid = GridToggle.IsChecked == true, Index = i, IsLocked = session.LockedColors[i], ColorCode = $"#{c:X6}", PixelCount = count, Percent = 100d * count / palette.Indices.Length,
                 ColorLabel = $"#{c:X6} · {count:N0} px", Brush = new SolidColorBrush(Color.FromRgb((byte)(c >> 16), (byte)(c >> 8), (byte)c)) };
             if (session.Patterns[i] is { } pattern)
             {
@@ -364,7 +370,7 @@ public partial class MainWindow : Window
             }
             next.Add(entry);
         }
-        entries = next; ColorPaletteList.ItemsSource = entries; PatternCards.ItemsSource = entries;
+        entries = next; var view = new ListCollectionView(entries); if (colorSortProperty is not null) view.SortDescriptions.Add(new SortDescription(colorSortProperty, colorSortDirection)); ColorPaletteList.ItemsSource = view; PatternCards.ItemsSource = entries;
     }
     private async void HighlightColor_Click(object sender, RoutedEventArgs e)
     {
@@ -393,40 +399,47 @@ public partial class MainWindow : Window
         finally { SetBusy(false); }
     }
     private void ColorSelection_Changed(object sender, SelectionChangedEventArgs e) { if (IsInitialized) RefreshControls(); }
+    private void ColorHeader_Click(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is not GridViewColumnHeader { Column: { } column } || ColorPaletteList.ItemsSource is not ListCollectionView view) return;
+        string? property = column == ColorNumberColumn ? nameof(PaletteEntry.ColorNumber) : column == ColorSwatchColumn ? nameof(PaletteEntry.ColorCode) : column == ColorCountColumn ? nameof(PaletteEntry.PixelCount) : column == ColorPercentColumn ? nameof(PaletteEntry.Percent) : column == ColorLockColumn ? nameof(PaletteEntry.IsLocked) : column == ColorShowColumn ? nameof(PaletteEntry.Highlighted) : null;
+        if (property is null) return;
+        colorSortDirection = colorSortProperty == property && colorSortDirection == ListSortDirection.Ascending ? ListSortDirection.Descending : ListSortDirection.Ascending; colorSortProperty = property;
+        view.SortDescriptions.Clear(); view.SortDescriptions.Add(new SortDescription(property, colorSortDirection));
+    }
+    private void ColorLock_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || stage != Stage.Colors || SizeDirty || ColorsDirty || session?.Palette is null || sender is not Button { DataContext: PaletteEntry entry }) return;
+        var selected = ColorPaletteList.SelectedItems.OfType<PaletteEntry>().Select(x => x.Index).ToArray(); var before = CaptureHistory(); var prior = entries.ToArray();
+        session.SetColorLock(entry.Index, !entry.IsLocked); RecordHistory(before); RebuildPaletteEntries(previous: prior);
+        foreach (int index in selected) ColorPaletteList.SelectedItems.Add(entries[index]);
+        ShowStage(); StatusText.Text = T("وضعیت قفل رنگ تغییر کرد؛ پروژه را ذخیره کنید.", "Color lock updated; save the project."); e.Handled = true;
+    }
     private async void DeleteColor_Click(object sender, RoutedEventArgs e)
     {
-        if (busy || session?.Palette is not { } palette || ColorPaletteList.SelectedItems.Count != 1 || ColorPaletteList.SelectedItem is not PaletteEntry source || palette.Colors.Length < 2 || SizeDirty || ColorsDirty) return;
-        int target = DesignProcessor.NearestRemainingColor(palette, source.Index);
-        await MergeColorsAsync(source.Index, target, true);
+        if (busy || session?.Palette is null || SizeDirty || ColorsDirty) return;
+        var selected = ColorPaletteList.SelectedItems.OfType<PaletteEntry>().Select(x => x.Index).ToArray();
+        if (selected.Length == 0 || selected.Length >= session.Palette.Colors.Length) return;
+        await RemoveColorsAsync(selected, null);
     }
     private async void MergeColor_Click(object sender, RoutedEventArgs e)
     {
-        if (busy || session?.Palette is null || ColorPaletteList.SelectedItems.Count != 2 || SizeDirty || ColorsDirty) return;
-        if (ColorPaletteList.SelectedItems[0] is not PaletteEntry first || ColorPaletteList.SelectedItems[1] is not PaletteEntry second) return;
-        var choice = new MergeChoiceWindow(first, second, english) { Owner = this };
+        if (busy || session?.Palette is null || SizeDirty || ColorsDirty) return;
+        var selected = ColorPaletteList.SelectedItems.OfType<PaletteEntry>().OrderBy(x => x.Index).ToArray(); if (selected.Length < 2) return;
+        var choice = new MergeChoiceWindow(selected, english) { Owner = this };
         if (choice.ShowDialog() != true || choice.Destination is not int target) return;
-        int source = target == first.Index ? second.Index : first.Index;
-        await MergeColorsAsync(source, target, false);
+        await RemoveColorsAsync(selected.Where(x => x.Index != target).Select(x => x.Index).ToArray(), target);
     }
-    private async Task MergeColorsAsync(int source, int target, bool deleting)
+    private async Task RemoveColorsAsync(int[] removed, int? target)
     {
-        if (session?.Palette is not { } palette) return;
-        string from = T($"شماره {source + 1}", $"number {source + 1}"), to = T($"شماره {target + 1}", $"number {target + 1}");
-        bool sourceHasPattern = session.Patterns[source] is not null;
-        string message = deleting
-            ? T($"رنگ {from} حذف می‌شود و تمام پیکسل‌های آن به نزدیک‌ترین رنگ {to} تغییر می‌کنند.", $"Color {from} will be removed and all its pixels reassigned to nearest color {to}.")
-            : T($"تمام پیکسل‌های {from} به {to} تبدیل می‌شوند و رنگ {from} حذف می‌شود.", $"All {from} pixels will become {to}; {from} will be removed.");
-        if (sourceHasPattern) message += T(" بافت رنگ حذف‌شده نیز حذف و بافت مقصد حفظ می‌شود.", " The removed color's pattern is discarded; the target pattern is kept.");
+        if (session?.Palette is null || removed.Length == 0) return;
+        if (removed.Any(i => session.LockedColors[i])) { MessageBox.Show(this, T("برای حذف یا ادغام، ابتدا قفل رنگ‌های حذف‌شونده را باز کنید.", "Unlock colors before removing or merging them.")); return; }
+        string message = target is int t ? T($"{removed.Length} رنگ در رنگ شماره {t + 1} ادغام می‌شوند.", $"{removed.Length} colors will be merged into color {t + 1}.") : T($"{removed.Length} رنگ حذف و پیکسل‌هایشان به نزدیک‌ترین رنگ‌های باقی‌مانده منتقل می‌شوند.", $"{removed.Length} colors will be removed and mapped to the nearest remaining colors.");
+        if (removed.Any(i => session.Patterns[i] is not null)) message += T(" بافت رنگ‌های حذف‌شده نیز حذف می‌شود.", " Removed colors' patterns are discarded.");
         if (MessageBox.Show(this, message + T(" ادامه می‌دهید؟", " Continue?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-        var prior = entries.ToArray(); var before = CaptureHistory(); SetBusy(true);
-        try
-        {
-            await Task.Run(() => session.MergeColors(source, target)); RecordHistory(before);
-            RebuildPaletteEntries(previous: prior, removedIndex: source); ShowStage();
-            StatusText.Text = T("رنگ‌ها به‌روزرسانی شدند؛ تصویر و تعداد پیکسل‌ها اصلاح شدند.", "Colors updated; preview and pixel counts recalculated.");
-        }
-        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
-        { MessageBox.Show(this, T("تغییر رنگ ممکن نشد: ", "Could not change colors: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        var prior = entries.Where(x => !removed.Contains(x.Index)).ToArray(); var before = CaptureHistory(); SetBusy(true);
+        try { await Task.Run(() => session.RemoveColors(removed, target)); RecordHistory(before); RebuildPaletteEntries(previous: prior); ShowStage(); StatusText.Text = T("رنگ‌ها به‌روزرسانی شدند.", "Colors updated."); }
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException) { MessageBox.Show(this, T("تغییر رنگ ممکن نشد: ", "Could not change colors: ") + ex.Message, Title); }
         finally { SetBusy(false); }
     }
     private HistoryState CaptureHistory() => new(session!.Snapshot(), stage, entries.Select(x => (string?)x.PatternLabel).ToArray(), entries.Select(x => x.PatternPath).ToArray());
@@ -509,6 +522,7 @@ public partial class MainWindow : Window
     private void EditorGrid_Click(object sender, RoutedEventArgs e) => WeaveCanvas.GridVisible = !WeaveCanvas.GridVisible;
     private void PreviewImage_MouseMove(object sender, MouseEventArgs e)
     {
+        if (selectingColors) { UpdateColorSelection(e.GetPosition(PreviewImage)); HoverCard.Visibility = Visibility.Collapsed; return; }
         if (panning) { HoverCard.Visibility = Visibility.Collapsed; return; }
         HoverSwatch.Visibility = Visibility.Collapsed;
         if ((stage is Stage.Machine or Stage.Selvedge or Stage.Weft or Stage.Floats or Stage.Analysis) && machinePreview is { } map)
@@ -525,12 +539,12 @@ public partial class MainWindow : Window
             else HoverDetails.Text = T($"ستون / قلاب منطقی: {hx + 1} · رج: {hy + 1}\nبیت فایل: {(pixel[0] == 0 ? 1 : 0)}", $"Logical hook: {hx + 1} · row: {hy + 1}\nFile bit: {(pixel[0] == 0 ? 1 : 0)}");
             HoverCard.Visibility = Visibility.Visible; return;
         }
-        if (session?.Palette is not { } palette || SizeDirty || ColorsDirty || stage != Stage.Patterns) { HoverCard.Visibility = Visibility.Collapsed; return; }
+        if (session?.Palette is not { } palette || SizeDirty || ColorsDirty || stage is not (Stage.Patterns or Stage.Colors)) { HoverCard.Visibility = Visibility.Collapsed; return; }
         var point = e.GetPosition(PreviewImage); var hit = PreviewHitTest.Find(palette, point.X, point.Y, PreviewImage.ActualWidth, PreviewImage.ActualHeight);
         if (hit is null) { HoverCard.Visibility = Visibility.Collapsed; return; }
         var (x, y, index) = hit.Value; var entry = entries[index];
         HoverSwatch.Background = entry.Brush; HoverSwatch.Visibility = Visibility.Visible;
-        HoverDetails.Text = T($"رنگ {entry.ColorNumber}\nتعداد پیکسل رنگ: {entry.PixelCount:N0} ({entry.PercentText})\nبافت: {entry.PatternLabel} · {entry.PatternSize}\nمختصات از بالا-چپ: X={x + 1}, Y={y + 1}", $"Color {entry.ColorNumber}\nColor pixels: {entry.PixelCount:N0} ({entry.PercentText})\nWeave: {entry.PatternLabel} · {entry.PatternSize}\nTop-left origin: X={x + 1}, Y={y + 1}");
+        HoverDetails.Text = T($"رنگ {entry.ColorNumber} · {entry.ColorCode}\nتعداد پیکسل: {entry.PixelCount:N0} ({entry.PercentText})\nمختصات از بالا-چپ: X={x + 1}, Y={y + 1}", $"Color {entry.ColorNumber} · {entry.ColorCode}\nPixels: {entry.PixelCount:N0} ({entry.PercentText})\nTop-left origin: X={x + 1}, Y={y + 1}") + (stage == Stage.Patterns ? T($"\nبافت: {entry.PatternLabel} · {entry.PatternSize}", $"\nWeave: {entry.PatternLabel} · {entry.PatternSize}") : "");
         HoverCard.Visibility = Visibility.Visible;
     }
     private void PreviewImage_MouseLeave(object sender, MouseEventArgs e) => HoverCard.Visibility = Visibility.Collapsed;
@@ -649,6 +663,10 @@ public partial class MainWindow : Window
     }
     private async void PreviewImage_Click(object sender, MouseButtonEventArgs e)
     {
+        if (!busy && stage == Stage.Colors && !SizeDirty && !ColorsDirty && session?.Palette is not null)
+        {
+            colorSelectionStart = e.GetPosition(PreviewImage); if (!PreviewImage.CaptureMouse()) return; selectingColors = true; UpdateColorSelection(colorSelectionStart); e.Handled = true; return;
+        }
         if (busy || stage != Stage.Floats || session?.CanSave != true || SizeDirty || ColorsDirty || composedMap is not { } map) return;
         Point p = e.GetPosition(PreviewImage); if (p.X < 0 || p.Y < 0 || p.X >= PreviewImage.ActualWidth || p.Y >= PreviewImage.ActualHeight) return;
         int x = (int)(p.X * map.Image.PixelWidth / PreviewImage.ActualWidth), y = (int)(p.Y * map.Image.PixelHeight / PreviewImage.ActualHeight);
@@ -662,6 +680,18 @@ public partial class MainWindow : Window
         await ComposeMachineAsync(true); if (rescan) await ScanFloatsAsync(minimum, direction, index, false);
         e.Handled = true;
     }
+    private void UpdateColorSelection(Point point)
+    {
+        double x1 = Math.Clamp(colorSelectionStart.X, 0, PreviewImage.ActualWidth), y1 = Math.Clamp(colorSelectionStart.Y, 0, PreviewImage.ActualHeight), x2 = Math.Clamp(point.X, 0, PreviewImage.ActualWidth), y2 = Math.Clamp(point.Y, 0, PreviewImage.ActualHeight);
+        ColorSelectionRect.Margin = new Thickness(Math.Min(x1,x2), Math.Min(y1,y2), 0, 0); ColorSelectionRect.Width = Math.Max(1, Math.Abs(x2-x1)); ColorSelectionRect.Height = Math.Max(1, Math.Abs(y2-y1)); ColorSelectionRect.Visibility = Visibility.Visible;
+    }
+    private void PreviewImage_Up(object sender, MouseButtonEventArgs e)
+    {
+        if (!selectingColors || session?.Palette is not { } palette) return;
+        var end = e.GetPosition(PreviewImage); var indices = PreviewHitTest.ColorsInRectangle(palette, colorSelectionStart.X, colorSelectionStart.Y, end.X, end.Y, PreviewImage.ActualWidth, PreviewImage.ActualHeight);
+        selectingColors = false; ColorSelectionRect.Visibility = Visibility.Collapsed; PreviewImage.ReleaseMouseCapture(); ColorPaletteList.SelectedItems.Clear(); foreach (int index in indices) ColorPaletteList.SelectedItems.Add(entries[index]); e.Handled = true;
+    }
+    private void PreviewImage_LostCapture(object sender, MouseEventArgs e) { selectingColors = false; ColorSelectionRect.Visibility = Visibility.Collapsed; }
     private void Info_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session is null) return;
@@ -922,6 +952,15 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
         { MessageBox.Show(this, T("ذخیره ناموفق بود: ", "Save failed: ") + ex.Message); }
+        finally { SetBusy(false); }
+    }
+    private async void SavePalette_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || stage != Stage.Colors || session?.Palette is null || SizeDirty || ColorsDirty) return;
+        var dialog = new SaveFileDialog { Filter = "PNG (*.png)|*.png", AddExtension = true, OverwritePrompt = true, FileName = "palette.png" }; if (dialog.ShowDialog(this) != true) return;
+        var protectedPaths = new[] { path, projectPath }.OfType<string>().Concat(entries.Select(x => x.PatternPath).OfType<string>()).ToArray(); SetBusy(true);
+        try { var image = PaletteImage.Render(ColorPaletteList.Items.OfType<PaletteEntry>().ToArray(), english); await Task.Run(() => PaletteImage.Save(image, dialog.FileName, protectedPaths)); StatusText.Text = T("جدول پالت رنگ ذخیره شد.", "Palette table saved."); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or NotSupportedException) { MessageBox.Show(this, T("ذخیره پالت ممکن نشد: ", "Could not save palette: ") + ex.Message); }
         finally { SetBusy(false); }
     }
     private MachineSetup ReadMachineFields()
@@ -1287,15 +1326,15 @@ public partial class MainWindow : Window
         GridToggle.Content = T("شبکه", "Grid"); GridToggle.ToolTip = T("در زوم کم، خطوط اصلی در فاصله نشان‌داده‌شده رسم می‌شوند؛ با زوم بیشتر هر پیکسل را ببینید.", "At low zoom major lines are shown at the displayed interval; zoom in for individual pixels.");
         OpenButton.ToolTip = T("باز کردن پروژه یا فایل", "Open project or image"); SizeStepButton.ToolTip = T("تنظیم اندازه", "Resize"); ColorStepButton.ToolTip = T("مدیریت رنگ", "Color management"); PatternStepButton.ToolTip = T("بافت‌ریزی", "Weave assignment"); SelvedgeStepButton.ToolTip = T("تعریف کناره", "Selvedges"); WeftStepButton.ToolTip = T("تعریف پودگذاری", "Weft / box motion"); FloatStepButton.ToolTip = T("فلوت‌گیری", "Float check"); AnalysisStepButton.ToolTip = T("تحلیل", "Analysis"); MachineStepButton.ToolTip = T("خروجی ماشین", "Machine output");
         AnalysisTitle.Text = T("تحلیل تارها", "Warp analysis"); AnalysisHint.Text = T("درصدها شاخص نسبی‌اند، نه اندازه‌گیری فیزیکی.", "Percentages are relative indicators, not physical measurements."); RunAnalysisButton.Content = T("محاسبه تحلیل", "Calculate analysis"); AnalysisLegendTitle.Text = T("راهنمای رنگ‌ها", "Color legend"); LegendExcluded.Text = T("خارج از بافت", "Outside fabric");
-        FloatTitle.Text = T("بررسی فلوت", "Float inspection"); FloatHint.Text = T("کناره‌ها نیز بررسی می‌شوند. اصلاح خودکار مرکز هر فلوت را در طرح تغییر می‌دهد؛ مراکز کناره و فرمان رد می‌شوند.", "Selvedges are scanned. Auto correction toggles each center in the design; selvedge and signal centers are skipped."); FloatLengthLabel.Text = T("حداقل طول فلوت", "Minimum run length"); FloatWarp.Content = T("تار (ستون)", "Warp (column)"); FloatWeft.Content = T("پود (ردیف)", "Weft (row)"); FloatScanButton.Content = T("بررسی فلوت‌ها", "Scan floats"); FloatAutoButton.Content = T("اصلاح خودکار مرکز فلوت‌ها", "Auto-correct float centers"); FloatPreviousButton.Content = T("قبلی", "Previous"); FloatNextButton.Content = T("بعدی", "Next"); ColorShowColumn.Header = T("نمایش", "Show"); ColorSwatchColumn.Header = T("رنگ", "Color"); ColorCountColumn.Header = T("پیکسل", "Pixels"); ColorPercentColumn.Header = T("درصد", "Percent");
+        FloatTitle.Text = T("بررسی فلوت", "Float inspection"); FloatHint.Text = T("کناره‌ها نیز بررسی می‌شوند. اصلاح خودکار مرکز هر فلوت را در طرح تغییر می‌دهد؛ مراکز کناره و فرمان رد می‌شوند.", "Selvedges are scanned. Auto correction toggles each center in the design; selvedge and signal centers are skipped."); FloatLengthLabel.Text = T("حداقل طول فلوت", "Minimum run length"); FloatWarp.Content = T("تار (ستون)", "Warp (column)"); FloatWeft.Content = T("پود (ردیف)", "Weft (row)"); FloatScanButton.Content = T("بررسی فلوت‌ها", "Scan floats"); FloatAutoButton.Content = T("اصلاح خودکار مرکز فلوت‌ها", "Auto-correct float centers"); FloatPreviousButton.Content = T("قبلی", "Previous"); FloatNextButton.Content = T("بعدی", "Next"); ColorNumberColumn.Header = T("شماره", "Number"); ColorLockColumn.Header = T("قفل", "Lock"); ColorShowColumn.Header = T("نمایش", "Show"); ColorSwatchColumn.Header = T("رنگ", "Color"); ColorCountColumn.Header = T("پیکسل", "Pixels"); ColorPercentColumn.Header = T("درصد", "Percent");
         FileCaption.Text = T("فایل ورودی", "INPUT FILE"); NoFileTitle.Text = T("شروع کار", "Get started"); NoFileHint.Text = T("تصویر، پروژه یا فایل ماشین پشتیبانی‌شده را باز کنید یا در پنجره رها کنید.", "Open or drop a supported image, project or loom file.");
         SizeTitle.Text = T("مرحله ۱ · تغییر اندازه", "Stage 1 · Resize"); SizeHint.Text = T("ابعاد خروجی را وارد و اعمال کنید. تصویر سمت چپ نتیجه همین مرحله است.", "Set and apply the output dimensions; the preview shows the result.");
         WidthLabel.Text = T("عرض (پیکسل)", "Width (px)"); HeightLabel.Text = T("ارتفاع (پیکسل)", "Height (px)"); ApplySizeButton.Content = T("اعمال اندازه", "Apply size"); SaveSizeButton.Content = T("ذخیره خروجی اندازه", "Save resized image"); ToColorButton.Content = T("مرحله بعد: رنگ ←", "Next: colors →");
         SizeNotice.Text = T("تصویر پیکسلی با نزدیک‌ترین همسایه و PDF/AI از منبع برداری بدون هموارسازی تغییر اندازه می‌یابند؛ نسبت ابعاد خودکار حفظ نمی‌شود.", "Raster images use nearest-neighbor; PDF/AI are rerendered from vectors without smoothing. Aspect ratio is not locked.");
         ColorTitle.Text = T("مرحله ۲ · کاهش رنگ", "Stage 2 · Colors"); ColorHint.Text = T("ورودی این مرحله تصویر تغییراندازه‌یافته است؛ ابتدا تا ۲۵۶ رنگ سازگار با تصویر نمایش داده می‌شود؛ سپس تعداد را کاهش دهید.", "Input is the resized image; up to 256 adaptive colors are shown first; reduce the count as needed.");
-        ColorLimitLabel.Text = T("حداکثر تعداد رنگ (۱ تا ۲۵۶)", "Maximum colors (1–256)"); ApplyColorButton.Content = T("اعمال تعداد رنگ", "Apply color limit"); SaveColorButton.Content = T("ذخیره خروجی رنگ", "Save color image"); ToPatternButton.Content = T("مرحله بعد: بافت ←", "Next: patterns →");
+        ColorLimitLabel.Text = T("حداکثر تعداد رنگ (۱ تا ۲۵۶)", "Maximum colors (1–256)"); ApplyColorButton.Content = T("اعمال تعداد رنگ", "Apply color limit"); SaveColorButton.Content = T("خروجی تصویر", "Export image"); SavePaletteButton.Content = T("ذخیره پالت رنگ PNG", "Save palette PNG"); ToPatternButton.Content = T("مرحله بعد: بافت ←", "Next: patterns →");
         SaveButton.Content = T("ذخیره تصویر", "Save image");
-        ColorSelectionHint.Text = T("برای ادغام، دو رنگ را انتخاب کنید.", "Select two colors to merge."); DeleteColorButton.Content = T("حذف رنگ انتخابی", "Remove selected"); MergeColorButton.Content = T("ادغام دو رنگ", "Merge two colors");
+        ColorSelectionHint.Text = T("برای انتخاب رنگ‌ها، روی تصویر کادر بکشید.", "Drag on the image to select colors."); DeleteColorButton.Content = T("حذف رنگ‌های انتخابی", "Remove selected"); MergeColorButton.Content = T("ادغام رنگ‌ها", "Merge colors");
         BankTitle.Text = T("بانک و طراحی بافت", "Weave bank and editor"); BankHint.Text = T("یک بافت انتخاب کنید یا روی شبکه ترسیم کنید.", "Select a weave or draw on the grid."); BankBackButton.Content = T("بازگشت", "Back");
         CompositeButton.Content = T("ساخت و تجزیه بافت ترکیبی", "Create / split composite"); Bank3DButton.Content = T("نمای سه‌بعدی انتخاب‌شده", "3D selected weave"); Editor3DButton.ToolTip = T("نمای سه‌بعدی بافت ترسیم‌شده", "3D view of current weave");
         EditorTitle.Text = T("طراحی بافت", "Weave editor"); EditorHint.Text = T("روی خانه‌ها کلیک کنید یا بکشید؛ سیاه و سفید تغییر می‌کنند.", "Click or drag cells to paint black and white.");

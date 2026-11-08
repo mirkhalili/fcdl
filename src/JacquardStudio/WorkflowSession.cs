@@ -11,6 +11,8 @@ public sealed class WorkflowSession
     public PaletteResult? Palette { get; private set; }
     public BitmapSource? ColorPreview { get; private set; }
     public int? AppliedColorLimit { get; private set; }
+    // Immutable-by-replacement, aligned with Palette.Colors for undo and SAM persistence.
+    public bool[] LockedColors { get; private set; } = Array.Empty<bool>();
     public WeavePattern?[] Patterns { get; private set; } = Array.Empty<WeavePattern?>();
     public BitmapSource? PatternPreview { get; private set; }
     public BitmapSource? BasePatternPreview { get; private set; }
@@ -23,25 +25,50 @@ public sealed class WorkflowSession
         // Commit only after successful processing so failures never discard previous work.
         if (width < 1 || height < 1 || (long)width * height > DesignProcessor.MaxPixels) throw new ArgumentOutOfRangeException(nameof(width));
         var image = Vector is null ? DesignProcessor.Resize(Source, width, height) : PdfImageLoader.Render(Vector.PdfBytes, Vector.PageIndex, width, height).Image;
-        Resized = image; Palette = null; ColorPreview = null; AppliedColorLimit = null;
+        Resized = image; Palette = null; ColorPreview = null; AppliedColorLimit = null; LockedColors = Array.Empty<bool>();
         Patterns = Array.Empty<WeavePattern?>(); PatternPreview = null; BasePatternPreview = null; PixelOverrides = null;
     }
     public void ApplyColors(int maximum)
     {
         var input = Resized ?? throw new InvalidOperationException("Apply size first.");
-        var palette = DesignProcessor.Prepare(input, input.PixelWidth, input.PixelHeight, maximum);
+        if (maximum is < 1 or > 256) throw new ArgumentOutOfRangeException(nameof(maximum));
+        PaletteResult palette; bool[] locks;
+        if (Palette is { } current && LockedColors.Any(x => x))
+        {
+            int lockedCount = LockedColors.Count(x => x); if (maximum < lockedCount) throw new ArgumentException("The color limit cannot be lower than the number of locked colors.");
+            var keep = Enumerable.Range(0, current.Colors.Length).Where(i => LockedColors[i]).Concat(Enumerable.Range(0, current.Colors.Length).Where(i => !LockedColors[i]).OrderByDescending(i => current.Counts[i]).ThenBy(i => current.Colors[i]).Take(Math.Max(0, maximum - lockedCount))).Order().ToArray();
+            palette = DesignProcessor.KeepColors(current, keep); locks = keep.Select(i => LockedColors[i]).ToArray();
+        }
+        else { palette = DesignProcessor.Prepare(input, input.PixelWidth, input.PixelHeight, maximum); locks = new bool[palette.Colors.Length]; }
         var patterns = new WeavePattern?[palette.Colors.Length];
         var preview = DesignProcessor.Render(palette, patterns); var colorPreview = DesignProcessor.RenderColors(palette);
-        Palette = palette; Patterns = patterns; ColorPreview = colorPreview; PatternPreview = preview; BasePatternPreview = preview; AppliedColorLimit = maximum; PixelOverrides = null;
+        Palette = palette; LockedColors = locks; Patterns = patterns; ColorPreview = colorPreview; PatternPreview = preview; BasePatternPreview = preview; AppliedColorLimit = maximum; PixelOverrides = null;
     }
     public void MergeColors(int source, int target)
     {
         var palette = Palette ?? throw new InvalidOperationException("Apply colors first.");
+        if ((uint)source >= (uint)LockedColors.Length || LockedColors[source]) throw new ArgumentException("Unlock the color before removing it.");
         var next = DesignProcessor.MergeColors(palette, source, target);
         var patterns = Patterns.Where((_, i) => i != source).ToArray();
         var colorPreview = DesignProcessor.RenderColors(next);
         var basePreview = DesignProcessor.Render(next, patterns); var patternPreview = ApplyOverrides(basePreview, PixelOverrides);
-        Palette = next; Patterns = patterns; ColorPreview = colorPreview; BasePatternPreview = basePreview; PatternPreview = patternPreview;
+        Palette = next; LockedColors = LockedColors.Where((_, i) => i != source).ToArray(); Patterns = patterns; ColorPreview = colorPreview; BasePatternPreview = basePreview; PatternPreview = patternPreview;
+    }
+    public void SetColorLock(int index, bool locked)
+    {
+        if ((uint)index >= (uint)LockedColors.Length) throw new ArgumentOutOfRangeException(nameof(index));
+        var next = (bool[])LockedColors.Clone(); next[index] = locked; LockedColors = next;
+    }
+    /// <summary>Remove selected colors in a single atomic action, optionally merging all into a chosen survivor.</summary>
+    public void RemoveColors(IReadOnlyCollection<int> removed, int? target = null)
+    {
+        var palette = Palette ?? throw new InvalidOperationException("Apply colors first.");
+        var excluded = removed.ToHashSet();
+        if (excluded.Count == 0 || excluded.Any(i => (uint)i >= (uint)palette.Colors.Length || LockedColors[i]) || target is int t && excluded.Contains(t)) throw new ArgumentException("Unlock removed colors and choose a surviving destination.");
+        var keep = Enumerable.Range(0, palette.Colors.Length).Where(i => !excluded.Contains(i)).ToArray();
+        var next = DesignProcessor.KeepColors(palette, keep, target); var patterns = keep.Select(i => Patterns[i]).ToArray();
+        var color = DesignProcessor.RenderColors(next); var basePreview = DesignProcessor.Render(next, patterns); var preview = ApplyOverrides(basePreview, PixelOverrides);
+        Palette = next; Patterns = patterns; LockedColors = keep.Select(i => LockedColors[i]).ToArray(); ColorPreview = color; BasePatternPreview = basePreview; PatternPreview = preview;
     }
     public void Recolor(int index, int color)
     {
@@ -68,9 +95,10 @@ public sealed class WorkflowSession
         var basePreview = DesignProcessor.Render(palette, next); var preview = ApplyOverrides(basePreview, PixelOverrides);
         Patterns = next; BasePatternPreview = basePreview; PatternPreview = preview;
     }
-    internal static WorkflowSession Restore(BitmapSource source, BitmapSource? resized, PaletteResult? palette, int? limit, WeavePattern?[] patterns, byte[]? overrides = null, VectorDocument? vector = null)
+    internal static WorkflowSession Restore(BitmapSource source, BitmapSource? resized, PaletteResult? palette, int? limit, WeavePattern?[] patterns, byte[]? overrides = null, VectorDocument? vector = null, bool[]? lockedColors = null)
     {
-        var session = new WorkflowSession(source, vector) { Resized = resized, Palette = palette, AppliedColorLimit = limit, Patterns = patterns, PixelOverrides = overrides };
+        if (lockedColors is not null && (palette is null || lockedColors.Length != palette.Colors.Length)) throw new ArgumentException("Invalid color locks.");
+        var session = new WorkflowSession(source, vector) { Resized = resized, Palette = palette, AppliedColorLimit = limit, Patterns = patterns, PixelOverrides = overrides, LockedColors = lockedColors is null ? new bool[palette?.Colors.Length ?? 0] : (bool[])lockedColors.Clone() };
         if (palette is not null)
         {
             session.ColorPreview = DesignProcessor.RenderColors(palette);
@@ -119,6 +147,6 @@ public sealed class WorkflowSession
         PixelOverrides = next; PatternPreview = output;
     }
     // Stage results are replaced, never modified in place; share them for bounded undo snapshots.
-    public WorkflowSession Snapshot() => new(Source, Vector) { Resized = Resized, Palette = Palette, ColorPreview = ColorPreview, AppliedColorLimit = AppliedColorLimit, Patterns = Patterns, PatternPreview = PatternPreview, BasePatternPreview = BasePatternPreview, PixelOverrides = PixelOverrides };
+    public WorkflowSession Snapshot() => new(Source, Vector) { Resized = Resized, Palette = Palette, LockedColors = LockedColors, ColorPreview = ColorPreview, AppliedColorLimit = AppliedColorLimit, Patterns = Patterns, PatternPreview = PatternPreview, BasePatternPreview = BasePatternPreview, PixelOverrides = PixelOverrides };
     public bool CanSave => Palette is not null && Patterns.Length > 0 && Patterns.All(p => p is not null);
 }

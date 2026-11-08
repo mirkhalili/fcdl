@@ -67,14 +67,14 @@ internal static class Program
             using (var zip = ZipFile.Open(legacySam, ZipArchiveMode.Update))
             {
                 var entryManifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(entryManifest.Open())) json = reader.ReadToEnd();
-                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":1"));
+                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":1"));
             }
             Check(ProjectFile.Load(legacySam).Session.CanSave, "legacy SAM version one loads");
             string legacyV2 = Path.Combine(dir, "legacy-v2.sam"); File.Copy(projectPath, legacyV2);
             using (var zip = ZipFile.Open(legacyV2, ZipArchiveMode.Update))
             {
                 var old = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(old.Open())) json = reader.ReadToEnd();
-                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":2"));
+                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":2"));
             }
             Check(ProjectFile.Load(legacyV2).Session.CanSave, "legacy SAM version two loads");
             Expect<IOException>(() => ProjectFile.Save(projectPath, projectState, new[] { projectPath }));
@@ -203,6 +203,11 @@ internal static class Program
             Check(mergedUp.Colors.SequenceEqual(new[] {0x121212, 0xFFFFFF}) && mergedUp.Indices.SequenceEqual(new byte[] {1, 0, 1, 1, 1}) && mergedUp.Counts.SequenceEqual(new[] {1, 4}), "merge handles source before target");
             var mergedDown = DesignProcessor.MergeColors(multi, 2, 0);
             Check(mergedDown.Indices.SequenceEqual(new byte[] {0, 1, 0, 0, 0}) && mergedDown.Counts.SequenceEqual(new[] {4, 1}), "merge handles source after target");
+            var kept = DesignProcessor.KeepColors(multi, new[]{0,2}); Check(kept.Indices.SequenceEqual(new byte[]{0,0,1,0,1}) && kept.Counts.SequenceEqual(new[]{3,2}), "bulk deletion maps each color to nearest remaining color");
+            var bulkMerge = DesignProcessor.KeepColors(multi, new[]{2}, 2); Check(bulkMerge.Counts.Single() == 5 && bulkMerge.Colors.Single() == 0xFFFFFF, "multiple colors merge into selected target");
+            Check(PreviewHitTest.ColorsInRectangle(multi, 21,0, 0,9, 50,10).SequenceEqual(new[]{0,1,2}), "reverse rectangle selects all intersecting colors");
+            Check(PreviewHitTest.ColorsInRectangle(multi, -3,0, 9,9, 50,10).SequenceEqual(new[]{0}), "rectangle clips to image bounds");
+            Check(PreviewHitTest.ColorsInRectangle(multi, -30,-2,-1,2,50,10).Length == 0, "rectangle outside image selects nothing");
             Check(MachineFileNaming.SuggestedName(4) == "design6.jc5" && MachineFileNaming.ValidDestination("design6.jc5", 4) && MachineFileNaming.ValidDestination("طرح۶.jc5", 4), "JC6 uses jc5 extension with 6");
             Check(!MachineFileNaming.ValidDestination("design.jc5", 4) && !MachineFileNaming.ValidDestination("design6.jc6", 4) && MachineFileNaming.ValidDestination("design.jc5", 1) && MachineFileNaming.ValidDestination("bonas.jc5", 5), "JC6 and Bonas naming validation");
             var colorStats = new PaletteEntry { ColorCode = "#ABCDEF", PixelCount = 25, Percent = 25.0 };
@@ -247,10 +252,10 @@ internal static class Program
             ProjectFile.Save(colorProject, new ProjectState(colorProjectSession, "sample.bmp", "3", "2", "50", "Patterns", false, 1, colorProjectSession.Patterns.Select(_ => (string?)"composite").ToArray()), Array.Empty<string>());
             Check(ProjectFile.Load(colorProject).Session.Patterns[0]!.WeftColors!.SequenceEqual(restoredComposite.WeftColors), "composite colors survive SAM v8");
             string colorV7 = Path.Combine(dir, "colored-v7.sam"); File.Copy(colorProject, colorV7);
-            using (var zip = ZipFile.Open(colorV7, ZipArchiveMode.Update)) { var coloredManifestEntry = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestEntry.Open())) json = r.ReadToEnd(); coloredManifestEntry.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":7")); }
+            using (var zip = ZipFile.Open(colorV7, ZipArchiveMode.Update)) { var coloredManifestEntry = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestEntry.Open())) json = r.ReadToEnd(); coloredManifestEntry.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":7")); }
             Check(ProjectFile.Load(colorV7).Session.Patterns[0]!.WeftColors is null, "SAM v7 still loads without new visual metadata");
             string colorV8 = Path.Combine(dir, "colored-v8.sam"); File.Copy(colorProject, colorV8);
-            using (var zip = ZipFile.Open(colorV8, ZipArchiveMode.Update)) { var coloredManifestV8 = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestV8.Open())) json = r.ReadToEnd(); coloredManifestV8.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":8")); }
+            using (var zip = ZipFile.Open(colorV8, ZipArchiveMode.Update)) { var coloredManifestV8 = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestV8.Open())) json = r.ReadToEnd(); coloredManifestV8.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":8")); }
             Check(ProjectFile.Load(colorV8).Session.Patterns[0]!.WeftColors!.SequenceEqual(restoredComposite.WeftColors), "SAM v8 composite colors remain compatible");
 
             Check(Math.Abs(YarnGeometry.ToTex(90, 2) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 1) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 4) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(59.0541, 3) - 10) < .0001, "yarn count conversions");
@@ -376,7 +381,7 @@ internal static class Program
             var v10Settings = simSettings with { Mode = 2 }; string v10File = Path.Combine(dir, "sim-v10.sam");
             ProjectFile.Save(v10File, new ProjectState(autoSession,"sample.bmp","3","2","50","Simulation",false,1,autoSession.Patterns.Select(_ => (string?)"pattern").ToArray(), Simulation:v10Settings), Array.Empty<string>());
             Check(ProjectFile.Load(v10File).Simulation!.Mode == 2, "SAM v10 preserves simulation mode");
-            using (var zip = ZipFile.Open(v10File, ZipArchiveMode.Update)) { var old = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(old.Open())) json = r.ReadToEnd(); old.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":9")); }
+            using (var zip = ZipFile.Open(v10File, ZipArchiveMode.Update)) { var old = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(old.Open())) json = r.ReadToEnd(); old.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":9")); }
             Check(ProjectFile.Load(v10File).Simulation!.Mode == 1, "SAM v9 defaults to the legacy relief appearance");
             var multiSettings = simSettings with { WarpCount = "۲۰", WarpUnit = 3, WarpDensity = "۳۵", WeftDensity = "۲۵", MaterialDensity = "۰٫۸", Wefts = new[] { new SimulatedYarn("1", 1, "#FF0000", "40", 0), new SimulatedYarn("2", 2, "#00FF00", "30", 3), new SimulatedYarn("3", 0, "#0000FF", "150", 1) } };
             var whiteMap = BitmapSource.Create(1, 2, 96, 96, PixelFormats.Gray8, null, new byte[]{255,255}, 1);
@@ -402,7 +407,7 @@ internal static class Program
             using (var zip = ZipFile.Open(simV6, ZipArchiveMode.Update))
             {
                 var manifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(manifest.Open())) json = reader.ReadToEnd();
-                manifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":6"));
+                manifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":6"));
             }
             Check(ProjectFile.Load(simV6).Simulation!.Wefts is null, "SAM v6 uses its original single-weft fallback");
             var invalidPosition = new MachineSetup(BoxEnabled:true, AbsoluteLayout:true, DesignStart:"3", WeftStart:PositionNumbers.ToStored("0"), WeftCount:"1"); Expect<ArgumentException>(() => MachineComposer.Compose(image, invalidPosition));
@@ -477,7 +482,7 @@ internal static class Program
             using (var zip = ZipFile.Open(v4File, ZipArchiveMode.Update))
             {
                 var item = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(item.Open())) json = reader.ReadToEnd();
-                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":4"));
+                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":4"));
             }
             var oldV4 = ProjectFile.Load(v4File); Check(oldV4.DraftWeft is null && oldV4.Machine!.AbsoluteLayout && DesignAnalysis.ReadBinary(MachineComposer.Compose(image, oldV4.Machine).Image).SequenceEqual(positionedPixels), "SAM v4 absolute settings remain applied");
             var composedState = new ProjectState(bankSession,"sample.bmp","3","2","50","Machine",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,setup);
@@ -512,6 +517,12 @@ internal static class Program
             var indexedInput = BitmapSource.Create(256,1,96,96,PixelFormats.Bgra32,null,rgb256,1024); indexedInput.Freeze(); var indexedSession = new WorkflowSession(indexedInput); indexedSession.ApplySize(256,1); indexedSession.ApplyColors(256);
             Check(indexedSession.Palette!.Colors.Length == 256 && indexedSession.ColorPreview!.Format == PixelFormats.Indexed8, "initial indexed 8-bit palette includes 256 colors");
             var indexedPixels = new byte[rgb256.Length]; new FormatConvertedBitmap(indexedSession.ColorPreview, PixelFormats.Bgra32, null, 0).CopyPixels(indexedPixels,1024,0); Check(indexedPixels.SequenceEqual(rgb256), "initial indexed preview preserves every original color");
+            var lockedSession = indexedSession.Snapshot(); lockedSession.SetColorLock(255,true); int lockedRgb = lockedSession.Palette!.Colors[255]; byte lockedAt = lockedSession.Palette.Indices[255]; var lockSnapshot = lockedSession.Snapshot();
+            lockedSession.SetColorLock(0,true); Expect<ArgumentException>(() => lockedSession.ApplyColors(1)); Check(lockedSession.Palette!.Colors.Length == 256, "limit below locked count leaves palette unchanged");
+            lockedSession.SetColorLock(0,false); lockedSession.ApplyColors(2); Check(lockedSession.Palette!.Colors.Contains(lockedRgb) && lockedSession.LockedColors.Count(x=>x) == 1 && lockedSession.Palette.Colors[lockedSession.Palette.Indices[255]] == lockSnapshot.Palette!.Colors[lockedAt], "locked RGB and its pixels survive reduction");
+            int lockedIndex = Array.IndexOf(lockedSession.Palette.Colors, lockedRgb); Expect<ArgumentException>(() => lockedSession.RemoveColors(new[]{lockedIndex}));
+            string lockedPath = Path.Combine(dir,"locked.sam"); ProjectFile.Save(lockedPath,new ProjectState(lockedSession,"256.bmp","256","1","2","Colors",false,1,new string?[lockedSession.Patterns.Length]),Array.Empty<string>());
+            var lockedRestored = ProjectFile.Load(lockedPath).Session; Check(lockedRestored.LockedColors.SequenceEqual(lockedSession.LockedColors) && lockSnapshot.LockedColors[255] && !lockSnapshot.LockedColors[0], "SAM and undo snapshot preserve locks independently");
             indexedSession.AssignPatterns(Enumerable.Range(0,256).Select(_ => new WeavePattern(1,1,new byte[]{0})).ToArray()); indexedSession.TogglePixel(0,0);
             string indexedPath = Path.Combine(dir,"indexed256.sam"); ProjectFile.Save(indexedPath,new ProjectState(indexedSession,"256.bmp","256","1","256","Patterns",false,5,Enumerable.Repeat<string?>("pattern",256).ToArray(), Machine:setup),Array.Empty<string>());
             var indexedLoaded = ProjectFile.Load(indexedPath); Check(indexedLoaded.MachineFormatIndex == 5 && indexedLoaded.Session.Palette!.Colors.Length == 256 && indexedLoaded.Session.Patterns.All(p => p is not null), "256 assigned patterns and Bonas JC5 profile survive SAM");
@@ -563,7 +574,10 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
-            Check(AppVersion.Display == "024.10.0.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "025.11.0.1-a1", "QAVNS version from version.txt");
+            var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
+            var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
+            string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));
             var reportEntries = bankSession.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = bankSession.Palette.Counts[index], Percent = 100d * bankSession.Palette.Counts[index] / bankSession.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; if (bankSession.Patterns[index] is { } p) e.Restore("sample", p); return e; }).ToArray();
             var fullEntries = fullProject.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = fullProject.Palette.Counts[index], Percent = 100d * fullProject.Palette.Counts[index] / fullProject.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; e.Restore("sample", fullProject.Patterns[index]!); return e; }).ToArray();
             var fullMap = MachineComposer.Compose(fullProject.PatternPreview!, new MachineSetup("2", "1", edgeLeft, edgeRight, "left", "right", AbsoluteLayout: true, TotalHooks: "54", DesignStart: "3"));
@@ -687,7 +701,7 @@ internal static class Program
             Check(System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("WeftStepButton")) == 7 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("SimulationStepButton")) == 8 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("MachineStepButton")) == 9 && window.FindName("HelpButton") is System.Windows.Controls.Button, "weft, simulation, machine and in-app help are ordered");
             Check(nav.FlowDirection == System.Windows.FlowDirection.RightToLeft && System.Windows.Controls.Grid.GetColumn(settings) == 2, "right-to-left workflow and right settings panel");
             var list = (System.Windows.Controls.ListView)window.FindName("ColorPaletteList");
-            Check(list.View is System.Windows.Controls.GridView grid && grid.Columns.Count == 4, "color statistics table includes highlight icon");
+            Check(list.View is System.Windows.Controls.GridView grid && grid.Columns.Count == 6, "color statistics table includes number, lock and highlight columns");
             Check(list.SelectionMode == System.Windows.Controls.SelectionMode.Multiple, "colors can be selected directly without modifier keys");
             list.ItemsSource = new[] { new PaletteEntry { ColorCode = "#000000" }, new PaletteEntry { ColorCode = "#FFFFFF" } };
             list.SelectedItems.Add(list.Items[0]); list.SelectedItems.Add(list.Items[1]);

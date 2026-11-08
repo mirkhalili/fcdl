@@ -147,6 +147,19 @@ public static class DesignProcessor
         }
     }
 
+    /// <summary>Keep selected palette entries and map all others to their nearest survivor.</summary>
+    public static PaletteResult KeepColors(PaletteResult palette, IReadOnlyCollection<int> keep, int? mergeTarget = null)
+    {
+        var survivor = keep.Distinct().Order().ToArray();
+        if (survivor.Length == 0 || survivor.Any(i => (uint)i >= (uint)palette.Colors.Length) || (mergeTarget is int target && !survivor.Contains(target))) throw new ArgumentException("At least one valid destination color is required.");
+        int[] colors = survivor.Select(i => palette.Colors[i]).ToArray(); var lookup = new PaletteLookup(colors);
+        int[] mapping = new int[palette.Colors.Length];
+        for (int i = 0; i < mapping.Length; i++) { int exact = Array.IndexOf(survivor, i); mapping[i] = exact >= 0 ? exact : mergeTarget is int t ? Array.IndexOf(survivor, t) : lookup.Nearest(palette.Colors[i]); }
+        var indices = new byte[palette.Indices.Length]; var counts = new int[colors.Length];
+        for (int i = 0; i < indices.Length; i++) { byte index = (byte)mapping[palette.Indices[i]]; indices[i] = index; counts[index]++; }
+        return palette with { Colors = colors, Indices = indices, Counts = counts };
+    }
+
     /// <summary>View-only highlight: keep the chosen color intact and mute all other regions.</summary>
     public static BitmapSource RenderHighlight(PaletteResult design, int selected)
     {

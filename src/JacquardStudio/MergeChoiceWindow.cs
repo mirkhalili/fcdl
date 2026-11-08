@@ -7,27 +7,24 @@ namespace JacquardStudio;
 public sealed class MergeChoiceWindow : Window
 {
     public int? Destination { get; private set; }
-    public MergeChoiceWindow(PaletteEntry first, PaletteEntry second, bool english)
+    public MergeChoiceWindow(IReadOnlyList<PaletteEntry> entries, bool english)
     {
         Title = english ? "Choose the color to keep" : "انتخاب رنگ باقی‌مانده";
-        Width = 600; Height = 205; MinWidth = 520; SizeToContent = SizeToContent.Height;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner; ResizeMode = ResizeMode.NoResize;
+        Width = 440; Height = 480; MinWidth = 350; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
         SetResourceReference(BackgroundProperty, "HeaderBackground");
-        var root = new StackPanel { Margin = new Thickness(20) };
-        root.Children.Add(new TextBlock { Text = english ? "Choose the destination color. The other color will be merged into it." : "رنگ مقصد را انتخاب کنید؛ رنگ دیگر در آن ادغام می‌شود.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 18) });
-        var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center };
-        foreach (var entry in new[] { first, second })
+        var root = new DockPanel { Margin = new Thickness(20) };
+        var intro = new TextBlock { Text = english ? "Choose the destination. All other selected colors will be merged into it." : "رنگ مقصد را انتخاب کنید؛ سایر رنگ‌های انتخابی در آن ادغام می‌شوند.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) }; DockPanel.SetDock(intro, Dock.Top); root.Children.Add(intro);
+        var cancel = new Button { Content = english ? "Cancel" : "انصراف", Margin = new Thickness(4), IsCancel = true }; DockPanel.SetDock(cancel, Dock.Bottom); root.Children.Add(cancel);
+        var actions = new StackPanel();
+        foreach (var entry in entries)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal };
-            row.Children.Add(new TextBlock { Text = english ? "Merge into " : "ادغام به ", VerticalAlignment = VerticalAlignment.Center });
-            row.Children.Add(new Border { Width = 22, Height = 22, Background = entry.Brush, BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1), Margin = new Thickness(5, 0, 5, 0) });
-            row.Children.Add(new TextBlock { Text = (english ? "Color " : "رنگ ") + entry.ColorNumber, FlowDirection = FlowDirection.LeftToRight, VerticalAlignment = VerticalAlignment.Center });
-            var button = new Button { Content = row, Margin = new Thickness(4), Padding = new Thickness(10, 8, 10, 8) };
-            button.Click += (_, _) => { Destination = entry.Index; DialogResult = true; };
-            actions.Children.Add(button);
+            row.Children.Add(new Border { Width = 22, Height = 22, Background = entry.Brush, BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1), Margin = new Thickness(5, 0, 10, 0) });
+            row.Children.Add(new TextBlock { Text = $"{entry.ColorNumber} · {entry.ColorCode}" + (entry.IsLocked ? " 🔒" : ""), FlowDirection = FlowDirection.LeftToRight, VerticalAlignment = VerticalAlignment.Center });
+            var button = new Button { Content = row, Margin = new Thickness(0, 2, 0, 2), Padding = new Thickness(10, 5, 10, 5) };
+            button.Click += (_, _) => { Destination = entry.Index; DialogResult = true; }; actions.Children.Add(button);
         }
-        var cancel = new Button { Content = english ? "Cancel" : "انصراف", Margin = new Thickness(4), IsCancel = true };
-        actions.Children.Add(cancel); root.Children.Add(actions); Content = root;
+        root.Children.Add(new ScrollViewer { Content = actions, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }); Content = root;
     }
 }
