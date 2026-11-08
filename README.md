@@ -89,3 +89,7 @@ JC4، JC5 و JC6 نام کنترلر هستند و لزوماً پسوند فا�
 کد و دستور ساخت در [مستند مرحله اول](Docs/09-stage-01.md) و قابلیت‌های فعلی در [مستند مرحله شانزدهم](Docs/24-stage-16.md) آمده‌اند. بسته آزمایشی ویندوز، پس از موفقیت workflow، در بخش Actions همان اجرای موفق قابل دریافت است. برای تبدیل صنعتی هنوز نباید از این نسخه استفاده شود. مجوز پروژه هنوز تعیین نشده است.
 
 برای انتخاب اولین مسیر صنعتی، به **مدل دقیق کنترلر و نسخه آن** و در صورت امکان **فایل تصویر و فایل ماشین متناظر که قبلاً روی همان دستگاه پذیرفته شده است** نیاز داریم. نمونه‌های محرمانه بدون اجازه در مخزن قرار نمی‌گیرند.
+
+### Latest preview
+
+Version 024.10.0.1-a1 adds a sample-based experimental Bonas JC5 profile, an adaptive indexed 8-bit initial palette (up to 256 colors), soft normal and yarn-fiber fabric previews, and paginated yarn/color reports. The Bonas profile is verified against one provided EAT OpenWeave sample only; verify the file and hook polarity on the intended controller before production. See [stage 24 notes](Docs/32-stage-24.md).

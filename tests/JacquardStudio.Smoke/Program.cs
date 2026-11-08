@@ -515,6 +515,9 @@ internal static class Program
             indexedSession.AssignPatterns(Enumerable.Range(0,256).Select(_ => new WeavePattern(1,1,new byte[]{0})).ToArray()); indexedSession.TogglePixel(0,0);
             string indexedPath = Path.Combine(dir,"indexed256.sam"); ProjectFile.Save(indexedPath,new ProjectState(indexedSession,"256.bmp","256","1","256","Patterns",false,5,Enumerable.Repeat<string?>("pattern",256).ToArray(), Machine:setup),Array.Empty<string>());
             var indexedLoaded = ProjectFile.Load(indexedPath); Check(indexedLoaded.MachineFormatIndex == 5 && indexedLoaded.Session.Palette!.Colors.Length == 256 && indexedLoaded.Session.Patterns.All(p => p is not null), "256 assigned patterns and Bonas JC5 profile survive SAM");
+            var adaptiveInputBytes = new List<byte>(); for (int i=0;i<300;i++) for (int repeat=0;repeat<2;repeat++) adaptiveInputBytes.AddRange(new byte[]{80,(byte)(80+i/32),(byte)(80+i%32),255}); adaptiveInputBytes.AddRange(new byte[]{255,0,0,255});
+            var adaptiveInput = BitmapSource.Create(601,1,96,96,PixelFormats.Bgra32,null,adaptiveInputBytes.ToArray(),601*4); var adaptive = DesignProcessor.Prepare(adaptiveInput,601,1,256);
+            Check(adaptive.SourceColorCount == 301 && adaptive.Colors.Length <= 256 && adaptive.Colors.Contains(0x0000FF), "adaptive palette preserves a small visually distinct region");
             var allReduced = DesignProcessor.Prepare(indexedInput,256,1,17);
             for (int i=0;i<256;i++) { int rgb = (rgb256[4*i+2]<<16)|(rgb256[4*i+1]<<8)|rgb256[4*i]; int Distance(int c) { int r=((rgb>>16)&255)-((c>>16)&255), g=((rgb>>8)&255)-((c>>8)&255), bl=(rgb&255)-(c&255); return r*r+g*g+bl*bl; } int expected = Enumerable.Range(0,allReduced.Colors.Length).OrderBy(k => Distance(allReduced.Colors[k])).ThenBy(k => k).First(); Check(allReduced.Indices[i] == expected, "palette acceleration equals brute-force nearest color"); }
 

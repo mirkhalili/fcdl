@@ -38,3 +38,5 @@
 | — | [QAVNS](QAVNS.md) | شیوه شماره‌گذاری نگارش‌ها |
 
 **توجه:** این مستندات طرح پیشنهادی‌اند. کدک صنعتی و سازگاری با دستگاه هنوز پیاده‌سازی یا تأیید نشده است.
+
+- [Stage 24: Bonas JC5 sample, 8-bit adaptive palette, and fabric/yarn report](32-stage-24.md)

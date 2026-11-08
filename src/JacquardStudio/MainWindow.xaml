@@ -68,7 +68,7 @@
                             </StackPanel>
                             <ScrollViewer x:Name="ColorScroll" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel x:Name="ColorPanel" Visibility="Collapsed">
                                 <TextBlock x:Name="ColorTitle" Text="مرحله ۲ · کاهش رنگ" FontSize="18" FontWeight="SemiBold"/>
-                                <TextBlock x:Name="ColorHint" Text="ورودی این مرحله تصویر تغییراندازه‌یافته است؛ بیش از ۵۰ رنگ به‌طور خودکار کاهش می‌یابد." TextWrapping="Wrap" Foreground="{DynamicResource Muted}" Margin="0,8,0,16"/>
+                                <TextBlock x:Name="ColorHint" Text="ورودی این مرحله تصویر تغییراندازه‌یافته است؛ ابتدا حداکثر ۲۵۶ رنگ سازگار با تصویر نمایش داده می‌شود." TextWrapping="Wrap" Foreground="{DynamicResource Muted}" Margin="0,8,0,16"/>
                                 <TextBlock x:Name="ColorLimitLabel" Text="حداکثر تعداد رنگ (۱ تا ۲۵۶)"/><TextBox x:Name="ColorInput" Text="256" TextChanged="Inputs_Changed" FlowDirection="LeftToRight" Margin="0,6,0,0" Padding="7"/>
                                 <Button x:Name="ApplyColorButton" Content="اعمال تعداد رنگ" Click="ApplyColor_Click" Margin="0,14,0,0"/>
                                 <TextBlock x:Name="ColorSummary" Foreground="{DynamicResource Accent}" TextWrapping="Wrap" Margin="0,14,0,8"/>

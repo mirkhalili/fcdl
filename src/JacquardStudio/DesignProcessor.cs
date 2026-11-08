@@ -67,12 +67,40 @@ public static class DesignProcessor
             if (sparse is not null) { int n = sparse.GetValueOrDefault(c); if (n == 0) unique++; sparse[c] = n + 1; }
             else if (frequency![c]++ == 0) unique++;
         }
-        // Keep exact colors with highest pixel counts. Ties deterministically prefer the lower RGB value.
-        var top = new PriorityQueue<int, (int count, int inverseColor)>();
-        void Consider(int color, int count) { top.Enqueue(color, (count, -color)); if (top.Count > requestedColors) top.Dequeue(); }
-        if (sparse is not null) { foreach (var pair in sparse) Consider(pair.Key, pair.Value); }
-        else for (int c = 0; c < frequency!.Length; c++) if (frequency[c] > 0) Consider(c, frequency[c]);
-        int[] palette = new int[top.Count]; for (int i = 0; i < palette.Length; i++) palette[i] = top.Dequeue(); Array.Sort(palette);
+        int[] palette;
+        if (requestedColors == 256 && unique > 256)
+        {
+            // Adaptive weighted median-cut in a bounded 5-bit histogram. Unlike choosing
+            // the most frequent colors, this retains smaller, visually distinct regions.
+            var bins = new (long count, long r, long g, long b)[32768];
+            void Accumulate(int color, int count) { int r = (color >> 16) & 255, g = (color >> 8) & 255, b = color & 255, key = (r >> 3) * 1024 + (g >> 3) * 32 + (b >> 3); var bin = bins[key]; bins[key] = (bin.count + count, bin.r + (long)r * count, bin.g + (long)g * count, bin.b + (long)b * count); }
+            if (sparse is not null) { foreach (var pair in sparse) Accumulate(pair.Key, pair.Value); }
+            else for (int c = 0; c < frequency!.Length; c++) if (frequency[c] > 0) Accumulate(c, frequency[c]);
+            var boxes = new List<int[]> { Enumerable.Range(0, bins.Length).Where(i => bins[i].count > 0).ToArray() };
+            while (boxes.Count < requestedColors)
+            {
+                int chosen = -1, axis = 0; double best = -1;
+                for (int i = 0; i < boxes.Count; i++)
+                {
+                    var box = boxes[i]; if (box.Length < 2) continue;
+                    for (int a = 0; a < 3; a++) { int shift = (2-a)*5, range = box.Max(k => (k >> shift) & 31) - box.Min(k => (k >> shift) & 31); double score = range * Math.Sqrt(box.Sum(k => (double)bins[k].count)); if (score > best) { best = score; chosen = i; axis = a; } }
+                }
+                if (chosen < 0) break;
+                var selected = boxes[chosen]; int axisShift = (2-axis)*5; Array.Sort(selected, (a,b) => { int c = ((a >> axisShift)&31).CompareTo((b >> axisShift)&31); return c != 0 ? c : a.CompareTo(b); });
+                long half = (selected.Sum(k => bins[k].count) + 1) / 2, sum = 0; int split = 0; while (split < selected.Length - 1 && sum < half) sum += bins[selected[split++]].count;
+                boxes[chosen] = selected[..split]; boxes.Add(selected[split..]);
+            }
+            palette = boxes.Select(box => { long n = 0, r = 0, g = 0, b = 0; foreach (int k in box) { var v = bins[k]; n += v.count; r += v.r; g += v.g; b += v.b; } return ((int)((r+n/2)/n)<<16)|((int)((g+n/2)/n)<<8)|(int)((b+n/2)/n); }).Distinct().Order().ToArray();
+        }
+        else
+        {
+            // Exact colors when possible; explicit reductions retain the existing frequency rule.
+            var top = new PriorityQueue<int, (int count, int inverseColor)>();
+            void Consider(int color, int count) { top.Enqueue(color, (count, -color)); if (top.Count > requestedColors) top.Dequeue(); }
+            if (sparse is not null) { foreach (var pair in sparse) Consider(pair.Key, pair.Value); }
+            else for (int c = 0; c < frequency!.Length; c++) if (frequency[c] > 0) Consider(c, frequency[c]);
+            palette = new int[top.Count]; for (int i = 0; i < palette.Length; i++) palette[i] = top.Dequeue(); Array.Sort(palette);
+        }
         // Reuse frequency as an exact-color -> palette index cache to avoid another unbounded dictionary.
         var indices = new byte[total]; var counts = new int[palette.Length]; var lookup = new PaletteLookup(palette);
         for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)

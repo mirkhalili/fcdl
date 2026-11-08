@@ -1258,7 +1258,7 @@ public partial class MainWindow : Window
             {
                 var simSettings = ReadSimulationSettings(); FabricSimulation.Validate(simSettings);
                 var simMap = await Task.Run(() => MachineComposer.Compose(woven, setup, false)); var fabric = CompositionView.Fabric(simMap);
-                var normalSettings = simSettings with { Mode = 0 };
+                var normalSettings = simSettings with { Mode = 0, Weave = 0 };
                 var simulated = await Task.Run(() => FabricSimulation.Render(fabric, normalSettings, simMap.RowWefts));
                 foreach (var simPage in DesignReport.CreateSimulationPages(simulated, normalSettings, FabricSimulation.WeftIds(appliedWeft), english)) reportPages.Add(DesignReport.Render(simPage));
             }
