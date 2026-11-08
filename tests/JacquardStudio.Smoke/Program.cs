@@ -349,7 +349,7 @@ internal static class Program
             var structure = new SimulationSettings(WarpColor:"#CC0000", WeftColor:"#00AA00", Mode:0, WarpCount:"30", WarpDensity:"40", WeftDensity:"40");
             var oneCross = BitmapSource.Create(1,1,96,96,PixelFormats.Gray8,null,new byte[]{0},1); oneCross.Freeze();
             byte[] View(SimulationSettings value) { var im = FabricSimulation.Render(oneCross, value); var bytes = new byte[im.PixelWidth * im.PixelHeight * 4]; im.CopyPixels(bytes, im.PixelWidth * 4, 0); return bytes; }
-            var thick = View(structure); var thin = View(structure with { WarpCount="5" });
+            var thick = View(structure); Check(Enumerable.Range(0, thick.Length / 4).Any(i => thick[i*4] == 28 && thick[i*4+1] == 28 && thick[i*4+2] == 28), "reference-style normal fabric has visible yarn outlines at default scale"); var thin = View(structure with { WarpCount="5" });
             Check(!thick.SequenceEqual(thin), "warp yarn count changes rendered width");
             Check(!thick.SequenceEqual(View(structure with { Wefts = new[]{new SimulatedYarn("1",0,"#00AA00","5")} })), "weft yarn count changes rendered width");
             Check(!thick.SequenceEqual(View(structure with { MaterialDensity="2" })), "effective density changes rendered diameter");
@@ -641,6 +641,8 @@ internal static class Program
             var loadSimSettings = typeof(MainWindow).GetMethod("LoadSimulationSettings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
             loadSimSettings.Invoke(window, new object?[] { multiSettings });
             Check(((System.Windows.Controls.StackPanel)window.FindName("SimulationWeftRows")).Children.Count == 3, "simulation editor has exactly the applied weft count");
+            var rowControls = ((System.Windows.Controls.StackPanel)window.FindName("SimulationWeftRows")).Children.OfType<System.Windows.Controls.StackPanel>().First();
+            Check(rowControls.Children.OfType<ColorSwatch>().Any() && rowControls.Children.OfType<System.Windows.Controls.TextBlock>().Last().Text.Contains("mm") && ((System.Windows.Controls.TextBlock)window.FindName("SimulationWarpGeometry")).Text.Contains("mm"), "simulation displays swatches and computed diameters and gaps");
             ((System.Windows.Controls.TextBox)window.FindName("WeftStartInput")).Text = "۱";
             var readDraft = typeof(MainWindow).GetMethod("ReadWeftDraft", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
             Check(((WeftSettings)readDraft.Invoke(window, null)!).WeftStart == "0", "first displayed weft maps to actual first physical hook");

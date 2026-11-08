@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private readonly ColorSwatch warpSwatch = new("#DABFA0", "رنگ تار / Warp color");
     private int defaultWeftYarn = 1; private string defaultWeftColor = "#537481";
     private readonly Dictionary<string, SimulatedYarn> simulationYarns = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, TextBlock> weftGeometryLabels = new(StringComparer.Ordinal);
     private MachineComposition? composedMap, simulationMap;
     private bool loadingMachineSettings, absoluteLayout;
     private WeftSettings appliedWeft = new();
@@ -1046,7 +1047,7 @@ public partial class MainWindow : Window
         bool wasLoading = loadingSimulationSettings; loadingSimulationSettings = true;
         try
         {
-            SimulationWeftRows.Children.Clear();
+            SimulationWeftRows.Children.Clear(); weftGeometryLabels.Clear();
             foreach (string id in ids)
             {
                 var value = simulationYarns[id];
@@ -1058,15 +1059,27 @@ public partial class MainWindow : Window
                 var unit = new ComboBox { ItemsSource = YarnGeometry.Units, SelectedIndex = value.Unit, Width = 110 }; var countLine = new DockPanel { FlowDirection = FlowDirection.LeftToRight, Margin = new Thickness(0, 4, 0, 3) }; DockPanel.SetDock(unit, Dock.Right); countLine.Children.Add(unit); countLine.Children.Add(count);
                 void Changed() { if (loadingSimulationSettings) return; simulationYarns[id] = new SimulatedYarn(id, yarn.SelectedIndex, color.Value, count.Text, unit.SelectedIndex); SimulationSettingsChanged(); }
                 yarn.SelectionChanged += (_, _) => Changed(); color.ColorChanged += (_, _) => Changed(); count.TextChanged += (_, _) => Changed(); unit.SelectionChanged += (_, _) => Changed();
-                box.Children.Add(yarn); box.Children.Add(color); box.Children.Add(new TextBlock { Text = T("نمره نخ پود", "Weft yarn count") }); box.Children.Add(countLine); SimulationWeftRows.Children.Add(box);
+                box.Children.Add(yarn); box.Children.Add(color); box.Children.Add(new TextBlock { Text = T("نمره نخ پود", "Weft yarn count") }); box.Children.Add(countLine); var geometry = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11 }; geometry.SetResourceReference(TextBlock.ForegroundProperty, "Muted"); box.Children.Add(geometry); weftGeometryLabels[id] = geometry; SimulationWeftRows.Children.Add(box);
             }
         }
         finally { loadingSimulationSettings = wasLoading; }
+        UpdateSimulationGeometry();
+    }
+    private void UpdateSimulationGeometry()
+    {
+        string Format(double diameter, double spacing) => T($"قطر تخمینی {diameter:F3}، فاصله مراکز {spacing:F3}، فاصله خالی {Math.Max(0, spacing - diameter):F3} mm", $"Estimated diameter {diameter:F3}, center spacing {spacing:F3}, gap {Math.Max(0, spacing - diameter):F3} mm") + (diameter > spacing ? T(" · هم‌پوشانی", " · overlap") : "");
+        try { double rho = FabricSimulation.Number(SimulationMaterialDensity.Text); double diameter = YarnGeometry.DiameterMm(YarnGeometry.ToTex(FabricSimulation.Number(SimulationWarpCount.Text), SimulationWarpUnit.SelectedIndex), rho); SimulationWarpGeometry.Text = Format(diameter, YarnGeometry.SpacingMm(FabricSimulation.Number(SimulationWarpDensity.Text))); }
+        catch (ArgumentException) { SimulationWarpGeometry.Text = T("اعداد معتبر وارد کنید.", "Enter valid values."); }
+        foreach (var (id, label) in weftGeometryLabels)
+        {
+            try { var yarn = simulationYarns[id]; double diameter = YarnGeometry.DiameterMm(YarnGeometry.ToTex(FabricSimulation.Number(yarn.Count), yarn.Unit), FabricSimulation.Number(SimulationMaterialDensity.Text)); label.Text = Format(diameter, YarnGeometry.SpacingMm(FabricSimulation.Number(SimulationWeftDensity.Text))); }
+            catch (ArgumentException) { label.Text = T("اعداد معتبر وارد کنید.", "Enter valid values."); }
+        }
     }
     private void SimulationSettingsChanged()
     {
         if (!IsInitialized || loadingSimulationSettings) return;
-        simulationPreview = null; simulationMap = null; MarkProjectDirty();
+        UpdateSimulationGeometry(); simulationPreview = null; simulationMap = null; MarkProjectDirty();
         SimulationStatus.Text = T("برای مشاهده تغییرات، پیش‌نمایش را دوباره بسازید.", "Render again to see your changes.");
         if (stage == Stage.Simulation) ShowStage();
     }

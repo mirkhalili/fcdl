@@ -89,8 +89,9 @@ public static class FabricSimulation
             if (s.Mode == 0)
             {
                 // Reference-style flat interlacing with narrow black thread outlines.
-                double outline = Math.Max(.015, Math.Min(.055, halfWidth * .12));
-                bool edge = halfWidth - crossDistance < outline;
+                double cellPixel = useWarp ? (double)w / outW : (double)h / outH;
+                // At coarse overview scales, avoid turning a sub-pixel yarn entirely black.
+                bool edge = 2 * halfWidth >= 5 * cellPixel && halfWidth - crossDistance < Math.Max(cellPixel * 1.1, halfWidth * .10);
                 Color flat = edge ? Color.FromRgb(28, 28, 28) : c;
                 pixels[q] = flat.B; pixels[q + 1] = flat.G; pixels[q + 2] = flat.R; pixels[q + 3] = 255; continue;
             }
