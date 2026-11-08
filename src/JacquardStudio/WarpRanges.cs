@@ -6,29 +6,29 @@ public sealed record WarpRangeSummary(IReadOnlyList<WarpRange> Loose, IReadOnlyL
 /// <summary>Contiguous non-neutral warp runs; retain the most extreme runs, with exact ranges and percentages.</summary>
 public static class WarpRanges
 {
-    public static WarpRangeSummary Summarize(WarpAnalysis analysis, int offset, int limit = 3)
+    public static WarpRangeSummary Summarize(WarpAnalysis analysis, int offset, int limit = 3, double threshold = 0)
     {
-        if (offset < 0 || limit < 1 || analysis.Counts.Length != analysis.DeviationPercent.Length) throw new ArgumentException("Invalid warp ranges.");
-        var loose = new List<WarpRange>(); var tight = new List<WarpRange>(); int looseCount = 0, tightCount = 0;
+        if (offset < 0 || limit < 1 || !double.IsFinite(threshold) || threshold < 0 || analysis.Counts.Length != analysis.DeviationPercent.Length) throw new ArgumentException("Invalid warp ranges.");
+        var loose = new PriorityQueue<WarpRange, (double severity, int negativeStart)>(); var tight = new PriorityQueue<WarpRange, (double severity, int negativeStart)>(); int looseCount = 0, tightCount = 0;
         int i = 0;
         while (i < analysis.DeviationPercent.Length)
         {
             double d = analysis.DeviationPercent[i]; if (!double.IsFinite(d)) throw new ArgumentException("Invalid warp percentage.");
-            int sign = Math.Sign(d); if (sign == 0) { i++; continue; }
+            int sign = Math.Sign(d); if (Math.Abs(d) <= threshold) { i++; continue; }
             int start = i; double min = Math.Abs(d), max = min;
             while (++i < analysis.DeviationPercent.Length)
             {
                 d = analysis.DeviationPercent[i]; if (!double.IsFinite(d)) throw new ArgumentException("Invalid warp percentage.");
-                if (Math.Sign(d) != sign) break;
+                if (Math.Sign(d) != sign || Math.Abs(d) <= threshold) break;
                 min = Math.Min(min, Math.Abs(d)); max = Math.Max(max, Math.Abs(d));
             }
             var list = sign < 0 ? loose : tight; if (sign < 0) looseCount++; else tightCount++;
-            if (list.Count == limit && max <= list[^1].MaxPercent) continue;
+            if (list.Count == limit && max <= list.Peek().MaxPercent) continue;
             var range = new WarpRange(checked(offset + start), checked(offset + i - 1), min, max);
-            list.Add(range); list.Sort((a, b) => { int rank = b.MaxPercent.CompareTo(a.MaxPercent); return rank != 0 ? rank : a.Start.CompareTo(b.Start); });
-            if (list.Count > limit) list.RemoveAt(list.Count - 1);
+            list.Enqueue(range, (range.MaxPercent, -range.Start));
+            if (list.Count > limit) list.Dequeue();
         }
-        return new WarpRangeSummary(loose, tight, looseCount, tightCount);
+        return new WarpRangeSummary(loose.UnorderedItems.Select(x => x.Element).OrderByDescending(x => x.MaxPercent).ThenBy(x => x.Start).ToArray(), tight.UnorderedItems.Select(x => x.Element).OrderByDescending(x => x.MaxPercent).ThenBy(x => x.Start).ToArray(), looseCount, tightCount);
     }
 }
 

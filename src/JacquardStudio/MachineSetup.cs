@@ -16,6 +16,13 @@ public static class MachineComposer
 {
     /// <summary>Projection for stages before weft placement: preserve only the already-defined selvedges.</summary>
     public static MachineSetup BeforeWeft(MachineSetup setup) => new(setup.LeftWidth, setup.RightWidth, setup.LeftPattern, setup.RightPattern, setup.LeftName, setup.RightName);
+    public static string[] ParseNumericSequence(string input)
+    {
+        var normalized = NumberInput.Normalize(input);
+        var matches = System.Text.RegularExpressions.Regex.Matches(normalized, "[0-9]+", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        if (matches.Count is < 1 or > 4096) throw new ArgumentException("Enter between 1 and 4096 weft numbers.");
+        return matches.Select(m => m.Value).ToArray();
+    }
     private static int Nonnegative(string s, string name)
     {
         if (!int.TryParse(NumberInput.Normalize(s.Trim()), NumberStyles.None, CultureInfo.InvariantCulture, out int result) || result < 0) throw new ArgumentException(name + " must be a non-negative integer.");
@@ -43,7 +50,7 @@ public static class MachineComposer
         int[] sequence = Array.Empty<int>();
         if (count > 0)
         {
-            sequence = string.IsNullOrWhiteSpace(setup.Sequence) ? Enumerable.Range(1, count).ToArray() : NumberInput.Normalize(setup.Sequence).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(s => Nonnegative(s, "Weft number")).ToArray();
+            sequence = string.IsNullOrWhiteSpace(setup.Sequence) ? Enumerable.Range(1, count).ToArray() : ParseNumericSequence(setup.Sequence).Select(s => Nonnegative(s, "Weft number")).ToArray();
             if (sequence.Length is < 1 or > 4096 || sequence.Any(n => n < 1 || n > count)) throw new ArgumentException("The sequence must contain weft numbers between 1 and the weft count.");
         }
         int h = frame.PixelHeight, inputStride = frame.PixelWidth * 4; var bgra = new byte[checked(inputStride * h)];
@@ -103,7 +110,7 @@ public static class MachineComposer
                     throw new ArgumentException("Each weft must have a unique name and exactly one 0/1 bit per signal hook, e.g. 1=10.");
             }
             if (codes.Count is < 1 or > 256) throw new ArgumentException("Define 1 to 256 wefts.");
-            sequence = NumberInput.Normalize(setup.Sequence).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            sequence = codes.Keys.All(k => k.All(c => c is >= '0' and <= '9')) ? ParseNumericSequence(setup.Sequence) : NumberInput.Normalize(setup.Sequence).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             if (sequence.Length is < 1 or > 4096 || sequence.Any(id => !codes.ContainsKey(id))) throw new ArgumentException("Every weft in the sequence must be defined.");
         }
         var bitmap = new FormatConvertedBitmap(frame, PixelFormats.Bgra32, null, 0);

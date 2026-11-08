@@ -51,6 +51,14 @@ public sealed class WorkflowSession
         var basePreview = DesignProcessor.Render(palette, next); var preview = ApplyOverrides(basePreview, PixelOverrides);
         Patterns = next; BasePatternPreview = basePreview; PatternPreview = preview;
     }
+    public void AssignPatterns(IReadOnlyList<WeavePattern> patterns)
+    {
+        var palette = Palette ?? throw new InvalidOperationException("Apply colors first.");
+        if (patterns.Count != palette.Colors.Length || patterns.Any(p => p is null)) throw new ArgumentException("Provide one weave per color.");
+        var next = patterns.Select(p => (WeavePattern?)p).ToArray();
+        var basePreview = DesignProcessor.Render(palette, next); var preview = ApplyOverrides(basePreview, PixelOverrides);
+        Patterns = next; BasePatternPreview = basePreview; PatternPreview = preview;
+    }
     internal static WorkflowSession Restore(BitmapSource source, BitmapSource? resized, PaletteResult? palette, int? limit, WeavePattern?[] patterns, byte[]? overrides = null, VectorDocument? vector = null)
     {
         var session = new WorkflowSession(source, vector) { Resized = resized, Palette = palette, AppliedColorLimit = limit, Patterns = patterns, PixelOverrides = overrides };

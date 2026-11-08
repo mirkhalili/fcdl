@@ -6,7 +6,7 @@ namespace JacquardStudio;
 
 public sealed record SimulatedYarn(string Id, int Yarn, string Color);
 // Legacy single-weft fields remain as defaults when opening SAM v6.
-public sealed record SimulationSettings(int WarpYarn = 0, int WeftYarn = 1, string WarpColor = "#DABFA0", string WeftColor = "#537481", int Weave = 0, int Shadow = 60, SimulatedYarn[]? Wefts = null);
+public sealed record SimulationSettings(int WarpYarn = 0, int WeftYarn = 1, string WarpColor = "#DABFA0", string WeftColor = "#537481", int Weave = 0, int Shadow = 60, SimulatedYarn[]? Wefts = null, int Mode = 1);
 
 public static class FabricSimulation
 {
@@ -34,7 +34,7 @@ public static class FabricSimulation
     public static SimulatedYarn YarnFor(SimulationSettings s, string id) => s.Wefts?.FirstOrDefault(y => y.Id == id) ?? new SimulatedYarn(id, s.WeftYarn, s.WeftColor);
     public static void Validate(SimulationSettings s)
     {
-        if ((uint)s.WarpYarn >= YarnNames.Length || (uint)s.WeftYarn >= YarnNames.Length || s.Weave is < 0 or > 2 || s.Shadow is < 0 or > 100)
+        if ((uint)s.WarpYarn >= YarnNames.Length || (uint)s.WeftYarn >= YarnNames.Length || s.Weave is < 0 or > 2 || s.Shadow is < 0 or > 100 || s.Mode is < 0 or > 2)
             throw new ArgumentException("Invalid simulation settings.");
         ParseColor(s.WarpColor); ParseColor(s.WeftColor);
         if (s.Wefts is { } list)
@@ -47,7 +47,7 @@ public static class FabricSimulation
     /// <summary>Procedural, height-shaded yarn appearance, not a physical cloth simulation.</summary>
     public static BitmapSource Render(BitmapSource fabric, SimulationSettings s, IReadOnlyList<string>? rowWefts = null)
     {
-        Validate(s); Color warp = ParseColor(s.WarpColor); int w = fabric.PixelWidth, h = fabric.PixelHeight; byte[] map = DesignAnalysis.ReadBinary(fabric);
+        Validate(s); if (s.Mode == 2) throw new ArgumentException("3D mode requires a captured 3D viewport."); Color warp = ParseColor(s.WarpColor); int w = fabric.PixelWidth, h = fabric.PixelHeight; byte[] map = DesignAnalysis.ReadBinary(fabric);
         if (rowWefts is { Count: > 0 } && rowWefts.Count != h) throw new ArgumentException("Weft sequence does not match fabric rows.");
         var rowColors = new Color[h]; var rowYarns = new int[h];
         for (int y = 0; y < h; y++) { var yarn = YarnFor(s, rowWefts is { Count: > 0 } ? rowWefts[y] : "1"); rowColors[y] = ParseColor(yarn.Color); rowYarns[y] = yarn.Yarn; }
@@ -64,6 +64,13 @@ public static class FabricSimulation
             double topCross = warpTop ? u : v; bool topVisible = Math.Abs(topCross - .5) < .46;
             bool useWarp = topVisible ? warpTop : !warpTop;
             Color c = useWarp ? warp : rowColors[y]; int yarn = useWarp ? s.WarpYarn : rowYarns[y];
+            if (s.Mode == 0)
+            {
+                // Flat diagram of the actual weave: broad colored yarns with a dark outline.
+                bool topEdge = Math.Abs(Math.Abs(topCross - .5) - .46) < .045;
+                Color flat = topEdge ? Color.FromRgb(32, 32, 32) : c; int q = (py * outW + px) * 4;
+                pixels[q] = flat.B; pixels[q + 1] = flat.G; pixels[q + 2] = flat.R; pixels[q + 3] = 255; continue;
+            }
             double cross = useWarp ? u : v, axial = useWarp ? fy : fx;
             double d = Math.Clamp((cross - .5) / .5, -1, 1); double normal = Math.Sqrt(Math.Max(0, 1 - d * d));
             double directional = Math.Clamp(.68 * normal - .25 * d + .35, .2, 1.15);

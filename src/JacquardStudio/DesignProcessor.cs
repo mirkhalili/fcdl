@@ -93,7 +93,13 @@ public static class DesignProcessor
         {
             int index = design.Indices[i]; if ((uint)index >= (uint)design.Colors.Length) throw new ArgumentException("Invalid palette index.");
             int c = design.Colors[index], b = c & 255, g = (c >> 8) & 255, r = (c >> 16) & 255;
-            if (index != selected) { r = (r + 3 * 150) / 4; g = (g + 3 * 150) / 4; b = (b + 3 * 150) / 4; }
+            if (index != selected)
+            {
+                int x = i % design.Width, y = i / design.Width;
+                bool edge = (x > 0 && design.Indices[i - 1] == selected) || (x + 1 < design.Width && design.Indices[i + 1] == selected) || (y > 0 && design.Indices[i - design.Width] == selected) || (y + 1 < design.Height && design.Indices[i + design.Width] == selected);
+                if (edge) { r = 255; g = 0; b = 0; }
+                else { r = (r + 19 * 245) / 20; g = (g + 19 * 245) / 20; b = (b + 19 * 245) / 20; }
+            }
             pixels[i * 4] = (byte)b; pixels[i * 4 + 1] = (byte)g; pixels[i * 4 + 2] = (byte)r; pixels[i * 4 + 3] = 255;
         }
         var result = BitmapSource.Create(design.Width, design.Height, 96, 96, PixelFormats.Bgra32, null, pixels, stride); result.Freeze(); return result;

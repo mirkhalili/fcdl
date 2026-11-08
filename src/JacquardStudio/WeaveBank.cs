@@ -11,6 +11,7 @@ public sealed class BankItem
     public string Name { get; init; } = "";
     public WeavePattern Pattern { get; init; } = new(1, 1, new byte[] { 255 });
     public bool IsPreset { get; init; }
+    public string Category { get; init; } = "کاربر / User";
     // Optional visual metadata; never changes the binary pattern or loom output.
     public string[]? WeftColors { get; init; }
     public string Dimensions => $"{Pattern.Width} × {Pattern.Height}";
@@ -64,7 +65,7 @@ public sealed class WeaveBank
     }
     public IReadOnlyList<BankItem> Load(out int skipped)
     {
-        var result = PatternLibrary.Presets.Select((p, i) => new BankItem { Id = "preset-" + i, Name = p.Name, Pattern = p.Pattern, IsPreset = true }).ToList();
+        var result = PatternLibrary.Presets.Select((p, i) => new BankItem { Id = "preset-" + i, Name = p.Name, Pattern = p.Pattern, Category = p.Category, IsPreset = true }).ToList();
         skipped = 0;
         if (!Directory.Exists(folder)) return result;
         foreach (string file in Directory.EnumerateFiles(folder, "*.weave.json").OrderBy(x => x, StringComparer.OrdinalIgnoreCase).Take(1000))

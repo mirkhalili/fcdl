@@ -36,7 +36,8 @@ public static class DesignAnalysis
         var row = new byte[w * 4];
         for (int x = 0; x < w; x++)
         {
-            double n = max == 0 ? 0 : Math.Abs(result.DeviationPercent[x]) / max;
+            double magnitude = Math.Abs(result.DeviationPercent[x]);
+            double n = magnitude <= 20 ? 0 : .5 + .5 * (magnitude - 20) / Math.Max(1, max - 20);
             // Neutral gray-white; red = positive, blue = negative. Balanced deviations = neutral.
             byte other = (byte)Math.Round(240 - 170 * n);
             row[x * 4] = result.DeviationPercent[x] < 0 ? (byte)240 : other;

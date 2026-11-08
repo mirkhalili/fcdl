@@ -86,7 +86,7 @@ public static class DesignReport
         extra.Children.Add(Text((english ? "Weft sequence: " : "توالی پود: ") + (string.IsNullOrWhiteSpace(machine.Sequence) ? (english ? "natural" : "طبیعی") : machine.Sequence) + (machine.StartFromBottom ? (english ? " · bottom" : " · شروع از پایین") : (english ? " · top" : " · شروع از بالا")), 10, Ink));
         if (analysis is not null)
         {
-            var summary = WarpRanges.Summarize(analysis, (composition?.FabricStart ?? 0) + 1);
+            var summary = WarpRanges.Summarize(analysis, (composition?.FabricStart ?? 0) + 1, 3, 20);
             var groups = new Grid { Margin = new Thickness(0, 2, 0, 0) }; groups.ColumnDefinitions.Add(new ColumnDefinition()); groups.ColumnDefinitions.Add(new ColumnDefinition());
             void AddRanges(int column, string heading, IReadOnlyList<WarpRange> ranges, int count)
             {
@@ -100,8 +100,8 @@ public static class DesignReport
                 }
                 var border = new Border { BorderBrush = Line, BorderThickness = new Thickness(1), Padding = new Thickness(5, 1, 5, 1), Child = list }; Grid.SetColumn(border, column); groups.Children.Add(border);
             }
-            AddRanges(0, english ? "Tightest ranges" : "بازه‌های کشیدگی بیشتر", summary.Tight, summary.TightCount);
-            AddRanges(1, english ? "Loosest ranges" : "بازه‌های شل‌شدگی بیشتر", summary.Loose, summary.LooseCount);
+            AddRanges(0, english ? "Tightest >20%" : "کشیدگی بالاتر از ۲۰٪", summary.Tight, summary.TightCount);
+            AddRanges(1, english ? "Loosest >20%" : "شل‌شدگی بالاتر از ۲۰٪", summary.Loose, summary.LooseCount);
             extra.Children.Add(groups);
             extra.Children.Add(Text(english ? "Relative indicators; not physical tension measurements." : "شاخص نسبی؛ نه اندازه‌گیری فیزیکی کشش.", 9, Muted));
         }
@@ -150,7 +150,7 @@ public static class DesignReport
             var image = new Image { Source = preview, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, Height = 300, MaxWidth = 720 };
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality); Grid.SetRow(image, 1); page.Children.Add(image);
             string warpName = FabricSimulation.YarnNames[settings.WarpYarn];
-            var info = new TextBlock { Text = (english ? "Warp: " : "نخ تار: ") + warpName + "   " + settings.WarpColor + "   ·   " + (settings.Weave == 0 ? (english ? "project weave" : "بافت پروژه") : settings.Weave == 1 ? (english ? "plain" : "ساده") : (english ? "twill" : "جناغی")) + "   ·   " + settings.Shadow + "%\n" + (english ? "Stylized appearance, not a physical simulation." : "تصویرسازی تقریبی است، نه شبیه‌سازی فیزیکی."), Foreground = Ink, FontSize = 12, Margin = new Thickness(30, 4, 30, 0), TextWrapping = TextWrapping.Wrap };
+            var info = new TextBlock { Text = (english ? "Warp: " : "نخ تار: ") + warpName + "   " + settings.WarpColor + "   ·   " + (settings.Weave == 0 ? (english ? "project weave" : "بافت پروژه") : settings.Weave == 1 ? (english ? "plain" : "ساده") : (english ? "twill" : "جناغی")) + "   ·   " + (settings.Mode == 2 ? (english ? "3D; large designs sampled" : "سه‌بعدی؛ طرح بزرگ نمونه‌برداری شده") : settings.Mode == 0 ? (english ? "flat" : "معمولی") : (english ? "relief" : "برجسته")) + "\n" + (english ? "Stylized appearance, not a physical simulation." : "تصویرسازی تقریبی است، نه شبیه‌سازی فیزیکی."), Foreground = Ink, FontSize = 12, Margin = new Thickness(30, 4, 30, 0), TextWrapping = TextWrapping.Wrap };
             Grid.SetRow(info, 2); page.Children.Add(info);
             var list = new Grid { Margin = new Thickness(30, 0, 30, 0) }; list.ColumnDefinitions.Add(new ColumnDefinition()); list.ColumnDefinitions.Add(new ColumnDefinition());
             for (int column = 0; column < 2; column++)
