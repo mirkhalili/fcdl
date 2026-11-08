@@ -237,7 +237,7 @@ internal static class Program
             ProjectFile.Save(colorProject, new ProjectState(colorProjectSession, "sample.bmp", "3", "2", "50", "Patterns", false, 1, colorProjectSession.Patterns.Select(_ => (string?)"composite").ToArray()), Array.Empty<string>());
             Check(ProjectFile.Load(colorProject).Session.Patterns[0]!.WeftColors!.SequenceEqual(restoredComposite.WeftColors), "composite colors survive SAM v8");
             string colorV7 = Path.Combine(dir, "colored-v7.sam"); File.Copy(colorProject, colorV7);
-            using (var zip = ZipFile.Open(colorV7, ZipArchiveMode.Update)) { var entry = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(entry.Open())) json = r.ReadToEnd(); entry.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":8", "\"Version\":7")); }
+            using (var zip = ZipFile.Open(colorV7, ZipArchiveMode.Update)) { var coloredManifestEntry = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestEntry.Open())) json = r.ReadToEnd(); coloredManifestEntry.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":8", "\"Version\":7")); }
             Check(ProjectFile.Load(colorV7).Session.Patterns[0]!.WeftColors is null, "SAM v7 still loads without new visual metadata");
             Check(Math.Abs(YarnGeometry.ToTex(90, 2) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 1) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 4) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(59.0541, 3) - 10) < .0001, "yarn count conversions");
             Check(YarnGeometry.DiameterMm(40, 1) > YarnGeometry.DiameterMm(10, 1) && YarnGeometry.SpacingMm(40) < YarnGeometry.SpacingMm(20), "count and density affect thickness and spacing");
@@ -497,9 +497,9 @@ internal static class Program
             var wideRoot = (System.Windows.Controls.DockPanel)wideWindow.Content; var paging = (System.Windows.Controls.StackPanel)wideRoot.Children[1];
             ((System.Windows.Controls.Button)paging.Children[1]).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Check(((System.Windows.Controls.TextBlock)wideRoot.Children[0]).Text.Contains("33–33 of 33"), "3D page navigation reaches last column");
-            var viewport3d = (HelixToolkit.Wpf.HelixViewport3D)wideRoot.Children[3]; double beforeFlip = ((System.Windows.Media.Media3D.PerspectiveCamera)viewport3d.Camera).Position.Z;
+            var viewport3d = (HelixToolkit.Wpf.HelixViewport3D)wideRoot.Children[3]; double beforeFlip = ((System.Windows.Media.Media3D.PerspectiveCamera)viewport3d.Camera!).Position.Z;
             ((System.Windows.Controls.Button)paging.Children[4]).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-            Check(beforeFlip > 0 && ((System.Windows.Media.Media3D.PerspectiveCamera)viewport3d.Camera).Position.Z < 0, "3D front/back flips camera");
+            Check(beforeFlip > 0 && ((System.Windows.Media.Media3D.PerspectiveCamera)viewport3d.Camera!).Position.Z < 0, "3D front/back flips camera");
             var colorModel = (System.Windows.Media.Media3D.Model3DGroup)((System.Windows.Media.Media3D.ModelVisual3D)viewport3d.Children[1]).Content!;
             var row1 = (System.Windows.Media.Media3D.GeometryModel3D)colorModel.Children[1]; var row2 = (System.Windows.Media.Media3D.GeometryModel3D)colorModel.Children[2];
             var redMaterial = (System.Windows.Media.Media3D.DiffuseMaterial)((System.Windows.Media.Media3D.MaterialGroup)row1.Material!).Children[0];
