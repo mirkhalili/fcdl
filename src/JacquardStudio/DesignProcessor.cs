@@ -5,7 +5,7 @@ using System.Windows.Media.Imaging;
 namespace JacquardStudio;
 
 public sealed record PaletteResult(int Width, int Height, int SourceColorCount, int[] Colors, byte[] Indices, int[] Counts);
-public sealed record WeavePattern(int Width, int Height, byte[] Values);
+public sealed record WeavePattern(int Width, int Height, byte[] Values, string[]? WeftColors = null);
 
 /// <summary>Image preparation only. Output is not a machine file or a validated weaving plan.</summary>
 public static class DesignProcessor

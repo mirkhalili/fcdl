@@ -13,6 +13,13 @@ public sealed class WeaveEditor : FrameworkElement
     private byte[] values = Enumerable.Repeat((byte)255, 64).ToArray();
     private WeavePattern saved = new(8, 8, Enumerable.Repeat((byte)255, 64).ToArray());
     private readonly List<WeavePattern> undo = new(), redo = new();
+    private Color[]? rowColors;
+    public void SetRowColors(IEnumerable<string>? colors)
+    {
+        rowColors = colors?.Select(FabricSimulation.ParseColor).ToArray();
+        if (rowColors is { Length: 0 }) rowColors = null;
+        InvalidateVisual();
+    }
     private bool painting, gridVisible = true; private byte paintValue;
     public event EventHandler? Changed;
     public bool IsDirty => saved.Width != width || saved.Height != height || !saved.Values.SequenceEqual(values);
@@ -97,7 +104,19 @@ public sealed class WeaveEditor : FrameworkElement
         base.OnRender(dc); dc.DrawRectangle(Brushes.Transparent, null, new Rect(RenderSize));
         double size = Math.Min(ActualWidth / width, ActualHeight / height); if (size <= 0) return;
         double x0 = (ActualWidth - size * width) / 2, y0 = (ActualHeight - size * height) / 2;
-        var image = BitmapSource.Create(width, height, 96, 96, PixelFormats.Gray8, null, values, width); image.Freeze();
+        BitmapSource image;
+        if (rowColors is null) image = BitmapSource.Create(width, height, 96, 96, PixelFormats.Gray8, null, values, width);
+        else
+        {
+            byte[] pixels = new byte[checked(width * height * 4)];
+            for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
+            {
+                Color c = values[y * width + x] == 0 ? Color.FromRgb(218, 191, 160) : rowColors[y % rowColors.Length]; int i = (y * width + x) * 4;
+                pixels[i] = c.B; pixels[i + 1] = c.G; pixels[i + 2] = c.R; pixels[i + 3] = 255;
+            }
+            image = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
+        }
+        image.Freeze();
         RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.NearestNeighbor);
         dc.DrawImage(image, new Rect(x0, y0, size * width, size * height));
         if (gridVisible && size >= 2)

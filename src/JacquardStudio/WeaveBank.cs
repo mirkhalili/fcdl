@@ -11,6 +11,8 @@ public sealed class BankItem
     public string Name { get; init; } = "";
     public WeavePattern Pattern { get; init; } = new(1, 1, new byte[] { 255 });
     public bool IsPreset { get; init; }
+    // Optional visual metadata; never changes the binary pattern or loom output.
+    public string[]? WeftColors { get; init; }
     public string Dimensions => $"{Pattern.Width} × {Pattern.Height}";
     public ImageSource Preview
     {
@@ -29,6 +31,7 @@ public sealed class WeaveBank
         public int Width { get; set; }
         public int Height { get; set; }
         public byte[] Values { get; set; } = Array.Empty<byte>();
+        public string[]? WeftColors { get; set; }
     }
     private readonly string folder;
     public WeaveBank(string? folder = null) => this.folder = folder ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JacquardStudio", "Weaves");
@@ -38,19 +41,26 @@ public sealed class WeaveBank
         if (p.Width <= 0 || p.Height <= 0 || (long)p.Width * p.Height > DesignProcessor.MaxPatternPixels || p.Values.Length != (long)p.Width * p.Height || p.Values.Any(v => v != 0 && v != 255))
             throw new InvalidDataException("Invalid black-and-white pattern dimensions or values.");
     }
-    public BankItem SaveNew(string name, WeavePattern pattern)
+    public static string[]? CopyColors(string[]? colors)
     {
-        Validate(name, pattern); Directory.CreateDirectory(folder);
+        if (colors is null) return null;
+        if (colors.Length is < 1 or > 256) throw new ArgumentException("Invalid weft colors.");
+        foreach (string color in colors) { if (color is null) throw new ArgumentException("Invalid weft color."); FabricSimulation.ParseColor(color); }
+        return (string[])colors.Clone();
+    }
+    public BankItem SaveNew(string name, WeavePattern pattern, string[]? weftColors = null)
+    {
+        Validate(name, pattern); var colors = CopyColors(weftColors ?? pattern.WeftColors); Directory.CreateDirectory(folder);
         if (Directory.EnumerateFiles(folder, "*.weave.json").Take(1001).Count() >= 1000) throw new IOException("Pattern bank is full (1000 items).");
         string id = Guid.NewGuid().ToString("N"), file = Path.Combine(folder, id + ".weave.json"), temp = Path.Combine(folder, ".weave-" + Guid.NewGuid().ToString("N") + ".tmp");
-        var copy = new WeavePattern(pattern.Width, pattern.Height, (byte[])pattern.Values.Clone());
+        var copy = new WeavePattern(pattern.Width, pattern.Height, (byte[])pattern.Values.Clone(), CopyColors(colors));
         try
         {
-            var record = new Record { Name = name.Trim(), Width = copy.Width, Height = copy.Height, Values = copy.Values };
+            var record = new Record { Name = name.Trim(), Width = copy.Width, Height = copy.Height, Values = copy.Values, WeftColors = colors };
             File.WriteAllBytes(temp, JsonSerializer.SerializeToUtf8Bytes(record)); File.Move(temp, file);
         }
         finally { if (File.Exists(temp)) File.Delete(temp); }
-        return new BankItem { Id = id, Name = name.Trim(), Pattern = copy };
+        return new BankItem { Id = id, Name = name.Trim(), Pattern = copy, WeftColors = CopyColors(colors) };
     }
     public IReadOnlyList<BankItem> Load(out int skipped)
     {
@@ -65,8 +75,8 @@ public sealed class WeaveBank
                 if (!Guid.TryParseExact(id, "N", out _) || new FileInfo(file).Length > 1024 * 1024) throw new InvalidDataException("Invalid bank item.");
                 var record = JsonSerializer.Deserialize<Record>(File.ReadAllBytes(file)) ?? throw new InvalidDataException("Missing bank record.");
                 if (record.Version != 1 || record.Values is null) throw new InvalidDataException("Unsupported bank record.");
-                var pattern = new WeavePattern(record.Width, record.Height, record.Values); Validate(record.Name, pattern);
-                result.Add(new BankItem { Id = id, Name = record.Name, Pattern = pattern });
+                var pattern = new WeavePattern(record.Width, record.Height, record.Values, CopyColors(record.WeftColors)); Validate(record.Name, pattern);
+                result.Add(new BankItem { Id = id, Name = record.Name, Pattern = pattern, WeftColors = CopyColors(record.WeftColors) });
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException or NotSupportedException) { skipped++; }
         }

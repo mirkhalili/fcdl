@@ -30,7 +30,12 @@ internal static class Program
             Expect<ArgumentOutOfRangeException>(() => ImageLoader.Load(tiffPath, 2));
             var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(image));
             string pngPath = Path.Combine(dir, "disguised.bmp"); using (var f = File.Create(pngPath)) png.Save(f);
-            Expect<NotSupportedException>(() => ImageLoader.Load(pngPath, 0));
+            Check(ImageLoader.Load(pngPath, 0).Format == "PNG", "PNG detected by image signature");
+            var jpeg = new JpegBitmapEncoder(); jpeg.Frames.Add(BitmapFrame.Create(image)); string jpegPath = Path.Combine(dir, "sample.jpg"); using (var f = File.Create(jpegPath)) jpeg.Save(f);
+            Check(ImageLoader.Load(jpegPath, 0).Format == "JPEG", "JPEG input");
+            string webpPath = Path.Combine(dir, "sample.webp"); using (var bitmap = new SkiaSharp.SKBitmap(3, 2)) using (var skImage = SkiaSharp.SKImage.FromBitmap(bitmap)) using (var data = skImage.Encode(SkiaSharp.SKEncodedImageFormat.Webp, 90)) using (var f = File.Create(webpPath)) data.SaveTo(f);
+            Check(ImageLoader.Load(webpPath, 0).Format == "WebP", "WebP input");
+            string legacyAi = Path.Combine(dir, "legacy.ai"); File.WriteAllText(legacyAi, "%!PS-Adobe-3.0"); Expect<NotSupportedException>(() => ImageLoader.Load(legacyAi, 0));
             Expect<FileNotFoundException>(() => ImageLoader.Load(Path.Combine(dir, "missing.bmp"), 0));
             var pipeline = new WorkflowSession(b.Image);
             Expect<InvalidOperationException>(() => pipeline.ApplyColors(50));
@@ -62,14 +67,14 @@ internal static class Program
             using (var zip = ZipFile.Open(legacySam, ZipArchiveMode.Update))
             {
                 var entryManifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(entryManifest.Open())) json = reader.ReadToEnd();
-                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":7", "\"Version\":1"));
+                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":8", "\"Version\":1"));
             }
             Check(ProjectFile.Load(legacySam).Session.CanSave, "legacy SAM version one loads");
             string legacyV2 = Path.Combine(dir, "legacy-v2.sam"); File.Copy(projectPath, legacyV2);
             using (var zip = ZipFile.Open(legacyV2, ZipArchiveMode.Update))
             {
                 var old = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(old.Open())) json = reader.ReadToEnd();
-                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":7", "\"Version\":2"));
+                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":8", "\"Version\":2"));
             }
             Check(ProjectFile.Load(legacyV2).Session.CanSave, "legacy SAM version two loads");
             Expect<IOException>(() => ProjectFile.Save(projectPath, projectState, new[] { projectPath }));
@@ -223,8 +228,17 @@ internal static class Program
             Check(CompositeWeave.Combine(CompositeWeave.Split(composite3, 3)).Values.SequenceEqual(composite3.Values), "split and recombine exactly");
             var editedComposite = new WeavePattern(composite3.Width, composite3.Height, (byte[])composite3.Values.Clone()); editedComposite.Values[1] = 0;
             Check(CompositeWeave.Combine(CompositeWeave.Split(editedComposite, 3)).Values.SequenceEqual(editedComposite.Values), "edited result survives splitting and recombination");
-            var storedComposite = bank.SaveNew("ترکیبی", editedComposite); var restoredComposite = reopenedBank.Load(out _).Single(x => x.Id == storedComposite.Id).Pattern;
+            var storedComposite = bank.SaveNew("ترکیبی", editedComposite, new[] { "#FF0000", "#00FF00", "#0000FF" }); var restoredComposite = reopenedBank.Load(out _).Single(x => x.Id == storedComposite.Id).Pattern;
             Check(restoredComposite.Width == editedComposite.Width && restoredComposite.Height == editedComposite.Height && restoredComposite.Values.SequenceEqual(editedComposite.Values), "composite bank persistence");
+            Check(restoredComposite.WeftColors!.SequenceEqual(new[] { "#FF0000", "#00FF00", "#0000FF" }), "composite colors survive bank reload");
+            var colorProjectSession = new WorkflowSession(a.Image); colorProjectSession.ApplySize(3, 2); colorProjectSession.ApplyColors(50);
+            for (int i = 0; i < colorProjectSession.Patterns.Length; i++) colorProjectSession.AssignPattern(i, restoredComposite);
+            string colorProject = Path.Combine(dir, "colored.sam");
+            ProjectFile.Save(colorProject, new ProjectState(colorProjectSession, "sample.bmp", "3", "2", "50", "Patterns", false, 1, colorProjectSession.Patterns.Select(_ => (string?)"composite").ToArray()), Array.Empty<string>());
+            Check(ProjectFile.Load(colorProject).Session.Patterns[0]!.WeftColors!.SequenceEqual(restoredComposite.WeftColors), "composite colors survive SAM v8");
+            Check(Math.Abs(YarnGeometry.ToTex(90, 2) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 1) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 4) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(59.0541, 3) - 10) < .0001, "yarn count conversions");
+            Check(YarnGeometry.DiameterMm(40, 1) > YarnGeometry.DiameterMm(10, 1) && YarnGeometry.SpacingMm(40) < YarnGeometry.SpacingMm(20), "count and density affect thickness and spacing");
+            Expect<ArgumentException>(() => YarnGeometry.ToTex(0, 3)); Expect<ArgumentException>(() => YarnGeometry.SpacingMm(double.NaN));
             Expect<ArgumentException>(() => CompositeWeave.Split(composite3, 4));
             Expect<ArgumentException>(() => CompositeWeave.Combine(Array.Empty<WeavePattern>()));
             Expect<ArgumentException>(() => CompositeWeave.Combine(new[] { new WeavePattern(2, 1, new byte[] { 0, 1 }) }));
@@ -322,7 +336,7 @@ internal static class Program
             using (var zip = ZipFile.Open(simV6, ZipArchiveMode.Update))
             {
                 var manifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(manifest.Open())) json = reader.ReadToEnd();
-                manifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":7", "\"Version\":6"));
+                manifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":8", "\"Version\":6"));
             }
             Check(ProjectFile.Load(simV6).Simulation!.Wefts is null, "SAM v6 uses its original single-weft fallback");
             var invalidPosition = new MachineSetup(BoxEnabled:true, AbsoluteLayout:true, DesignStart:"3", WeftStart:PositionNumbers.ToStored("0"), WeftCount:"1"); Expect<ArgumentException>(() => MachineComposer.Compose(image, invalidPosition));
@@ -394,7 +408,7 @@ internal static class Program
             using (var zip = ZipFile.Open(v4File, ZipArchiveMode.Update))
             {
                 var item = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(item.Open())) json = reader.ReadToEnd();
-                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":7", "\"Version\":4"));
+                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":8", "\"Version\":4"));
             }
             var oldV4 = ProjectFile.Load(v4File); Check(oldV4.DraftWeft is null && oldV4.Machine!.AbsoluteLayout && DesignAnalysis.ReadBinary(MachineComposer.Compose(image, oldV4.Machine).Image).SequenceEqual(positionedPixels), "SAM v4 absolute settings remain applied");
             var composedState = new ProjectState(bankSession,"sample.bmp","3","2","50","Machine",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,setup);
@@ -444,7 +458,7 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            Check(AppVersion.Display == "019.5.0.0-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "020.6.0.0-a1", "QAVNS version from version.txt");
             var reportEntries = bankSession.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = bankSession.Palette.Counts[index], Percent = 100d * bankSession.Palette.Counts[index] / bankSession.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; if (bankSession.Patterns[index] is { } p) e.Restore("sample", p); return e; }).ToArray();
             var fullEntries = fullProject.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = fullProject.Palette.Counts[index], Percent = 100d * fullProject.Palette.Counts[index] / fullProject.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; e.Restore("sample", fullProject.Patterns[index]!); return e; }).ToArray();
             var fullMap = MachineComposer.Compose(fullProject.PatternPreview!, new MachineSetup("2", "1", edgeLeft, edgeRight, "left", "right", AbsoluteLayout: true, TotalHooks: "54", DesignStart: "3"));
@@ -472,11 +486,17 @@ internal static class Program
             var secondPage = DesignReport.Render(simulationPages[0]); string multiPdf = Path.Combine(dir, "multi-report.pdf");
             DesignReport.SavePdf(new[]{reportImage, secondPage}, multiPdf, Array.Empty<string>());
             Check(System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(multiPdf)).Contains("/Count 2"), "multi-page simulation PDF");
+            var pdfImport = ImageLoader.Load(multiPdf, 1); Check(pdfImport.Format == "PDF" && pdfImport.PageCount == 2 && pdfImport.PageIndex == 1, "PDF page rasterization");
+            string compatibleAi = Path.Combine(dir, "compatible.ai"); File.Copy(multiPdf, compatibleAi); Check(ImageLoader.Load(compatibleAi, 0).Format == "AI (PDF compatible)", "PDF-compatible AI input");
+            Expect<ArgumentOutOfRangeException>(() => ImageLoader.Load(multiPdf, 2));
             var widePattern = new WeavePattern(33, 2, Enumerable.Repeat((byte)255, 66).ToArray());
             var wideWindow = new Fabric3DWindow(Fabric3DWindow.PatternBitmap(widePattern), Array.Empty<string>(), new SimulationSettings(), true);
             var wideRoot = (System.Windows.Controls.DockPanel)wideWindow.Content; var paging = (System.Windows.Controls.StackPanel)wideRoot.Children[1];
             ((System.Windows.Controls.Button)paging.Children[1]).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-            Check(((System.Windows.Controls.TextBlock)wideRoot.Children[0]).Text.Contains("33–33 of 33"), "3D page navigation reaches last column"); wideWindow.Close();
+            Check(((System.Windows.Controls.TextBlock)wideRoot.Children[0]).Text.Contains("33–33 of 33"), "3D page navigation reaches last column");
+            var viewport3d = (HelixToolkit.Wpf.HelixViewport3D)wideRoot.Children[3]; double beforeFlip = ((System.Windows.Media.Media3D.PerspectiveCamera)viewport3d.Camera).Position.Z;
+            ((System.Windows.Controls.Button)paging.Children[4]).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Check(beforeFlip > 0 && ((System.Windows.Media.Media3D.PerspectiveCamera)viewport3d.Camera).Position.Z < 0, "3D front/back flips camera"); wideWindow.Close();
             var detailWindow = new Fabric3DWindow(whiteMap, new[]{"1","2"}, multiSettings with { Weave = 0 }, false);
             Check(detailWindow.Content is System.Windows.Controls.DockPanel, "Helix 3D detail window builds bounded geometry");
             var guide = new GuideWindow(false); Check(guide.Content is System.Windows.Controls.Grid && guide.Title.Contains("راهنمای"), "illustrated in-app guide loads with navigation");

@@ -12,8 +12,8 @@ public sealed record ProjectState(WorkflowSession Session, string SourceName, st
 public static class ProjectFile
 {
     private const long MaxArchiveBytes = 128L * 1024 * 1024;
-    private const int MaxManifestBytes = 65536;
-    private sealed class PatternInfo { public PatternInfo() { } public int Width { get; set; } public int Height { get; set; } public string? Name { get; set; } }
+    private const int MaxManifestBytes = 262144;
+    private sealed class PatternInfo { public PatternInfo() { } public int Width { get; set; } public int Height { get; set; } public string? Name { get; set; } public string[]? WeftColors { get; set; } }
     private sealed class MachineInfo
     {
         public MachineInfo() { }
@@ -27,7 +27,7 @@ public static class ProjectFile
     private sealed class Manifest
     {
         public Manifest() { }
-        public int Version { get; set; } = 7;
+        public int Version { get; set; } = 8;
         public MachineInfo? Machine { get; set; }
         public WeftSettings? DraftWeft { get; set; }
         public SimulationSettings? Simulation { get; set; }
@@ -109,7 +109,7 @@ public static class ProjectFile
             CreatedAt = state.CreatedAt, SourceName = Bounded(state.SourceName, 255), WidthInput = Bounded(state.WidthInput, 32), HeightInput = Bounded(state.HeightInput, 32), ColorInput = Bounded(state.ColorInput, 32),
             Stage = Bounded(state.Stage, 16), English = state.English, MachineFormatIndex = state.MachineFormatIndex, ColorLimit = session.AppliedColorLimit,
             SourceColors = palette?.SourceColorCount ?? 0, Colors = palette?.Colors,
-            Patterns = palette is null ? null : session.Patterns.Select((p, i) => p is null ? null : new PatternInfo { Width = p.Width, Height = p.Height, Name = Bounded(state.PatternNames[i], 255) }).ToArray()
+            Patterns = palette is null ? null : session.Patterns.Select((p, i) => p is null ? null : new PatternInfo { Width = p.Width, Height = p.Height, Name = Bounded(state.PatternNames[i], 255), WeftColors = WeaveBank.CopyColors(p.WeftColors) }).ToArray()
         };
         if (state.DraftWeft is { } draft) m.DraftWeft = BoundedDraft(draft);
         if (state.Simulation is { } simulation) m.Simulation = BoundedSimulation(simulation);
@@ -120,7 +120,7 @@ public static class ProjectFile
                 if (p is null) return null;
                 CheckDimensions(p.Width, p.Height, DesignProcessor.MaxPatternPixels);
                 if (p.Values.Length != (long)p.Width * p.Height || p.Values.Any(v => v != 0 && v != 255)) throw new InvalidDataException("Invalid selvedge weave.");
-                return new PatternInfo { Width = p.Width, Height = p.Height, Name = Bounded(name, 255) };
+                return new PatternInfo { Width = p.Width, Height = p.Height, Name = Bounded(name, 255), WeftColors = WeaveBank.CopyColors(p.WeftColors) };
             }
             if (setup.BoxPlacement is < 0 or > 2) throw new InvalidDataException("Invalid signal placement.");
             m.Machine = new MachineInfo { LeftWidth = Bounded(setup.LeftWidth, 32), RightWidth = Bounded(setup.RightWidth, 32), LeftPattern = Info(setup.LeftPattern, setup.LeftName), RightPattern = Info(setup.RightPattern, setup.RightName), BoxEnabled = setup.BoxEnabled, BoxPlacement = setup.BoxPlacement, BoxHooks = Bounded(setup.BoxHooks, 256), BoxCodes = Bounded(setup.BoxCodes, 8192), Sequence = Bounded(setup.Sequence, 8192), StartFromBottom = setup.StartFromBottom, UseSource = setup.UseSource, RedAsBlack = setup.RedAsBlack, AbsoluteLayout = setup.AbsoluteLayout, TotalHooks = Bounded(setup.TotalHooks, 32), DesignStart = Bounded(setup.DesignStart, 32), WeftStart = Bounded(setup.WeftStart, 32), WeftCount = Bounded(setup.WeftCount, 32) };
@@ -159,7 +159,7 @@ public static class ProjectFile
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
         if (zip.Entries.Count > 57) throw new InvalidDataException("Too many project entries.");
         var m = JsonSerializer.Deserialize<Manifest>(ReadEntry(zip, "manifest.json", MaxManifestBytes)) ?? throw new InvalidDataException("Missing project manifest.");
-        if (m.Version is not (1 or 2 or 3 or 4 or 5 or 6 or 7)) throw new NotSupportedException("Unsupported SAM project version.");
+        if (m.Version is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8)) throw new NotSupportedException("Unsupported SAM project version.");
         if (m.Version == 1 && m.HasOverrides) throw new InvalidDataException("Overrides require SAM version 2.");
         if (m.Version < 3 && m.Machine is not null) throw new InvalidDataException("Machine setup requires SAM version 3.");
         CheckDimensions(m.SourceWidth, m.SourceHeight, DesignProcessor.MaxPixels);
@@ -187,7 +187,7 @@ public static class ProjectFile
                 CheckDimensions(p.Width, p.Height, DesignProcessor.MaxPatternPixels);
                 int length = checked(p.Width * p.Height); byte[] values = ReadEntry(zip, $"patterns/{i}.bin", length, length);
                 if (values.Any(v => v != 0 && v != 255)) throw new InvalidDataException("Invalid pattern pixels.");
-                patterns[i] = new WeavePattern(p.Width, p.Height, values); names[i] = Bounded(p.Name, 255);
+                patterns[i] = new WeavePattern(p.Width, p.Height, values, m.Version >= 8 ? WeaveBank.CopyColors(p.WeftColors) : null); names[i] = Bounded(p.Name, 255);
             }
         }
         else if (m.ColorLimit is not null || m.Patterns is not null || m.HasOverrides) throw new InvalidDataException("Invalid project state.");
@@ -204,7 +204,7 @@ public static class ProjectFile
                 if (p is null) return null; CheckDimensions(p.Width, p.Height, DesignProcessor.MaxPatternPixels);
                 int length = checked(p.Width * p.Height); byte[] bytes = ReadEntry(zip, entry, length, length);
                 if (bytes.Any(v => v != 0 && v != 255)) throw new InvalidDataException("Invalid selvedge pixels.");
-                return new WeavePattern(p.Width, p.Height, bytes);
+                return new WeavePattern(p.Width, p.Height, bytes, m.Version >= 8 ? WeaveBank.CopyColors(p.WeftColors) : null);
             }
             if (settings.BoxPlacement is < 0 or > 2) throw new InvalidDataException("Invalid signal placement.");
             setup = new MachineSetup(Bounded(settings.LeftWidth, 32, "0"), Bounded(settings.RightWidth, 32, "0"), ReadWeave(settings.LeftPattern, "machine/left.bin"), ReadWeave(settings.RightPattern, "machine/right.bin"), Bounded(settings.LeftPattern?.Name, 255), Bounded(settings.RightPattern?.Name, 255), settings.BoxEnabled, settings.BoxPlacement, Bounded(settings.BoxHooks, 256), Bounded(settings.BoxCodes, 8192), Bounded(settings.Sequence, 8192), settings.StartFromBottom, settings.UseSource, settings.RedAsBlack, m.Version >= 4 && settings.AbsoluteLayout, Bounded(settings.TotalHooks, 32), Bounded(settings.DesignStart, 32), Bounded(settings.WeftStart, 32, "0"), Bounded(settings.WeftCount, 32, "0"));

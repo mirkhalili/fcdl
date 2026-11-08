@@ -62,7 +62,7 @@ public partial class MainWindow : Window
     private async void Open_Click(object sender, RoutedEventArgs e)
     {
         if (busy) return;
-        var dialog = new OpenFileDialog { Filter = "Supported files (*.sam;*.bmp;*.tif;*.tiff;*.jc5;*.jc6)|*.sam;*.bmp;*.tif;*.tiff;*.jc5;*.jc6|SAM project (*.sam)|*.sam|Images (*.bmp;*.tif;*.tiff)|*.bmp;*.tif;*.tiff|Machine (*.jc5;*.jc6)|*.jc5;*.jc6|All files (*.*)|*.*", CheckFileExists = true, Multiselect = false };
+        var dialog = new OpenFileDialog { Filter = "Supported files|*.sam;*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr;*.pdf;*.ai;*.jc5;*.jc6|SAM project (*.sam)|*.sam|Images and PDF/AI|*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr;*.pdf;*.ai|Machine (*.jc5;*.jc6)|*.jc5;*.jc6|All files (*.*)|*.*", CheckFileExists = true, Multiselect = false };
         if (dialog.ShowDialog(this) != true || !await ConfirmDiscardAsync()) return;
         await OpenAnyAsync(dialog.FileName);
     }
@@ -713,10 +713,10 @@ public partial class MainWindow : Window
         WeaveCanvas.SetPattern(item.Pattern); WeaveWidth.Text = item.Pattern.Width.ToString(); WeaveHeight.Text = item.Pattern.Height.ToString(); WeaveName.Text = item.Name;
     }
     private void Editor3D_Click(object sender, RoutedEventArgs e) { if (!busy) Fabric3DWindow.ShowPattern(this, WeaveCanvas.Snapshot(), english); }
-    private void Bank3D_Click(object sender, RoutedEventArgs e) { if (!busy && BankList.SelectedItem is BankItem item) Fabric3DWindow.ShowPattern(this, item.Pattern, english); }
+    private void Bank3D_Click(object sender, RoutedEventArgs e) { if (!busy && BankList.SelectedItem is BankItem item) Fabric3DWindow.ShowPattern(this, item.Pattern, english, item.WeftColors); }
     private void Pattern3D_Click(object sender, RoutedEventArgs e)
     {
-        if (!busy && sender is Button { DataContext: PaletteEntry entry } && session is not null && entry.Index < session.Patterns.Length && session.Patterns[entry.Index] is { } pattern) Fabric3DWindow.ShowPattern(this, pattern, english);
+        if (!busy && sender is Button { DataContext: PaletteEntry entry } && session is not null && entry.Index < session.Patterns.Length && session.Patterns[entry.Index] is { } pattern) Fabric3DWindow.ShowPattern(this, pattern, english, pattern.WeftColors);
         else if (!busy) MessageBox.Show(this, T("ابتدا برای این رنگ بافت انتخاب کنید.", "Assign a weave to this color first."), Title);
     }
     private async void Composite_Click(object sender, RoutedEventArgs e)
@@ -744,7 +744,7 @@ public partial class MainWindow : Window
     private async void BankImport_Click(object sender, RoutedEventArgs e)
     {
         if (busy) return;
-        var dialog = new OpenFileDialog { Filter = "BMP and TIFF|*.bmp;*.tif;*.tiff", CheckFileExists = true };
+        var dialog = new OpenFileDialog { Filter = "Images and PDF/AI|*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr;*.pdf;*.ai|All files|*.*", CheckFileExists = true };
         if (dialog.ShowDialog(this) != true) return;
         SetBusy(true);
         try
@@ -788,7 +788,7 @@ public partial class MainWindow : Window
     private async void Pattern_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session?.Palette is null || (sender as Button)?.DataContext is not PaletteEntry entry) return;
-        var dialog = new OpenFileDialog { Filter = "BMP and TIFF|*.bmp;*.tif;*.tiff", CheckFileExists = true };
+        var dialog = new OpenFileDialog { Filter = "Images and PDF/AI|*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr;*.pdf;*.ai|All files|*.*", CheckFileExists = true };
         if (dialog.ShowDialog(this) != true) return;
         var before = CaptureHistory(); SetBusy(true); StatusText.Text = T("در حال اعمال پترن…", "Applying pattern…");
         try
@@ -1213,7 +1213,7 @@ public partial class MainWindow : Window
         CompositeButton.Content = T("ساخت و تجزیه بافت ترکیبی", "Create / split composite"); Bank3DButton.Content = T("نمای سه‌بعدی انتخاب‌شده", "3D selected weave"); Editor3DButton.ToolTip = T("نمای سه‌بعدی بافت ترسیم‌شده", "3D view of current weave");
         EditorTitle.Text = T("طراحی بافت", "Weave editor"); EditorHint.Text = T("روی خانه‌ها کلیک کنید یا بکشید؛ سیاه و سفید تغییر می‌کنند.", "Click or drag cells to paint black and white.");
         WeaveWidthLabel.Text = T("عرض", "Width"); WeaveHeightLabel.Text = T("ارتفاع", "Height"); EditorResetButton.Content = T("ساخت شبکه", "Create grid"); BankSaveDrawingButton.Content = T("ذخیره در بانک", "Save to bank");
-        BankListTitle.Text = T("بافت‌های بانک", "Weave library"); BankUseButton.Content = T("اختصاص به رنگ", "Apply to color"); BankEditButton.Content = T("ویرایش انتخاب‌شده", "Edit selection"); BankImportButton.Content = T("افزودن از فایل BMP/TIFF", "Import BMP/TIFF"); BankDeleteButton.Content = T("حذف از بانک", "Delete from bank");
+        BankListTitle.Text = T("بافت‌های بانک", "Weave library"); BankUseButton.Content = T("اختصاص به رنگ", "Apply to color"); BankEditButton.Content = T("ویرایش انتخاب‌شده", "Edit selection"); BankImportButton.Content = T("افزودن از تصویر یا PDF", "Import image or PDF"); BankDeleteButton.Content = T("حذف از بانک", "Delete from bank");
         UpdateWindowTitle();
         DeveloperText.Text = T("برنامه‌نویس: میرخلیلی", "Developer: Mirkhalili");
         MachineTitle.Text = T("خروجی ماشین", "Machine output"); MachineHint.Text = T("JC5 و JC6 تک‌ناحیه‌ای بر اساس نمونه DesignScope به‌صورت آزمایشی فعال هستند؛ سایر قالب‌ها پشتیبانی نمی‌شوند.", "Experimental single-area JC5 and JC6 based on DesignScope samples; other formats are not supported.");

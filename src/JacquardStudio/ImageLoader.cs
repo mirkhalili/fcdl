@@ -17,13 +17,21 @@ public static class ImageLoader
         var info = new FileInfo(path);
         if (!info.Exists) throw new FileNotFoundException("File not found.", path);
         if (info.Length > MaxFileBytes) throw new InvalidDataException("File exceeds the 128 MiB preview limit.");
+        string ext = Path.GetExtension(path).ToLowerInvariant();
+        if (ext is ".pdf" or ".ai") return PdfImageLoader.Load(path, pageIndex);
+        if (ext == ".webp") return WebpImageLoader.Load(path, pageIndex);
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
         string format = decoder switch
         {
             BmpBitmapDecoder => "BMP",
             TiffBitmapDecoder => "TIFF",
-            _ => throw new NotSupportedException("Only BMP and TIFF images are supported.")
+            PngBitmapDecoder => "PNG",
+            JpegBitmapDecoder => "JPEG",
+            GifBitmapDecoder => "GIF",
+            IconBitmapDecoder => "ICO",
+            WmpBitmapDecoder => "HD Photo",
+            _ => decoder.CodecInfo?.FriendlyName ?? "WIC image"
         };
         if (decoder.Frames.Count is 0 or > MaxFrames) throw new InvalidDataException("Invalid or excessive frame count.");
         if (pageIndex < 0 || pageIndex >= decoder.Frames.Count) throw new ArgumentOutOfRangeException(nameof(pageIndex));
