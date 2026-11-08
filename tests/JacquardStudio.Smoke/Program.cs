@@ -644,7 +644,7 @@ internal static class Program
                 System.Windows.Threading.Dispatcher.PushFrame(frame); loadingPng.GetAwaiter().GetResult();
                 var loadedSession = (WorkflowSession?)typeof(MainWindow).GetField("session", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(pngWindow);
                 Check(loadedSession?.Resized?.PixelWidth == 4, "transparent PNG opens through the main window without crashing");
-                loadedSession!.ApplyColors(50); var mainType = typeof(MainWindow); var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                loadedSession!.ApplyColors(256); var mainType = typeof(MainWindow); var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
                 mainType.GetMethod("RebuildPaletteEntries", flags)!.Invoke(pngWindow, new object?[] { null, null, -1 });
                 var stageField = mainType.GetField("stage", flags)!; stageField.SetValue(pngWindow, Enum.Parse(stageField.FieldType, "Colors")); mainType.GetMethod("ShowStage", flags)!.Invoke(pngWindow, null);
                 var paletteList = (System.Windows.Controls.ListView)pngWindow.FindName("ColorPaletteList"); var highlightButton = new System.Windows.Controls.Button { DataContext = paletteList.Items[0] };
