@@ -556,7 +556,17 @@ internal static class Program
                 System.Windows.Threading.Dispatcher.PushFrame(frame); loadingPng.GetAwaiter().GetResult();
                 var loadedSession = (WorkflowSession?)typeof(MainWindow).GetField("session", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(pngWindow);
                 Check(loadedSession?.Resized?.PixelWidth == 4, "transparent PNG opens through the main window without crashing");
-                typeof(MainWindow).GetField("allowClose", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(pngWindow, true); pngWindow.Close();
+                loadedSession!.ApplyColors(50); var mainType = typeof(MainWindow); var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                mainType.GetMethod("RebuildPaletteEntries", flags)!.Invoke(pngWindow, new object?[] { null, null, -1 });
+                var stageField = mainType.GetField("stage", flags)!; stageField.SetValue(pngWindow, Enum.Parse(stageField.FieldType, "Colors")); mainType.GetMethod("ShowStage", flags)!.Invoke(pngWindow, null);
+                var paletteList = (System.Windows.Controls.ListView)pngWindow.FindName("ColorPaletteList"); var highlightButton = new System.Windows.Controls.Button { DataContext = paletteList.Items[0] };
+                var highlightMethod = mainType.GetMethod("HighlightColor_Click", flags)!; highlightMethod.Invoke(pngWindow, new object[] { highlightButton, new System.Windows.RoutedEventArgs() });
+                var highlightField = mainType.GetField("colorHighlight", flags)!; var highlightFrame = new System.Windows.Threading.DispatcherFrame();
+                var highlightTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(10) }; highlightTimer.Tick += (_, _) => { if (highlightField.GetValue(pngWindow) is not null) { highlightTimer.Stop(); highlightFrame.Continue = false; } }; highlightTimer.Start(); System.Windows.Threading.Dispatcher.PushFrame(highlightFrame);
+                Check(ReferenceEquals(((System.Windows.Controls.Image)pngWindow.FindName("PreviewImage")).Source, highlightField.GetValue(pngWindow)), "color highlight icon updates only the preview");
+                highlightMethod.Invoke(pngWindow, new object[] { highlightButton, new System.Windows.RoutedEventArgs() });
+                Check(highlightField.GetValue(pngWindow) is null && ReferenceEquals(((System.Windows.Controls.Image)pngWindow.FindName("PreviewImage")).Source, loadedSession.ColorPreview), "second icon click restores unmodified color preview");
+                mainType.GetField("allowClose", flags)!.SetValue(pngWindow, true); pngWindow.Close();
             }
             finally { System.Threading.SynchronizationContext.SetSynchronizationContext(priorContext); }
             var pendingTotal = (System.Windows.Controls.TextBox)window.FindName("TotalHooksInput"); pendingTotal.Text = "۳۰";
