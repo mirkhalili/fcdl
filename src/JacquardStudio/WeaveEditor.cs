@@ -1,12 +1,14 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 /// <summary>Binary grid editor with bounded per-stroke history and reversible helper operations.</summary>
 public sealed class WeaveEditor : FrameworkElement
 {
-    public const int MaxSide = 64;
+    public const int MaxSide = 4096;
+    private const int MaxHelperStep = 64;
     private int width = 8, height = 8;
     private byte[] values = Enumerable.Repeat((byte)255, 64).ToArray();
     private WeavePattern saved = new(8, 8, Enumerable.Repeat((byte)255, 64).ToArray());
@@ -19,6 +21,11 @@ public sealed class WeaveEditor : FrameworkElement
     public bool GridVisible { get => gridVisible; set { gridVisible = value; InvalidateVisual(); Changed?.Invoke(this, EventArgs.Empty); } }
     public int PatternWidth => width;
     public int PatternHeight => height;
+    public void SizeForScrolling()
+    {
+        double cell = Math.Clamp(420.0 / Math.Max(width, height), 10, 80);
+        Width = width * cell; Height = height * cell;
+    }
     public WeavePattern Snapshot() => new(width, height, (byte[])values.Clone());
     private void Restore(WeavePattern p) { width = p.Width; height = p.Height; values = (byte[])p.Values.Clone(); InvalidateVisual(); Changed?.Invoke(this, EventArgs.Empty); }
     private static void Push(List<WeavePattern> stack, WeavePattern p) { stack.Add(p); if (stack.Count > 100) stack.RemoveAt(0); }
@@ -27,20 +34,20 @@ public sealed class WeaveEditor : FrameworkElement
     public void Redo() { if (!CanRedo) return; Push(undo, Snapshot()); var p = redo[^1]; redo.RemoveAt(redo.Count - 1); Restore(p); }
     public void SetPattern(WeavePattern pattern, bool dirty = false)
     {
-        if (pattern.Width < 1 || pattern.Height < 1 || pattern.Width > MaxSide || pattern.Height > MaxSide || pattern.Values.Length != pattern.Width * pattern.Height || pattern.Values.Any(v => v != 0 && v != 255)) throw new ArgumentException("Editor supports opaque binary patterns up to 64 × 64.");
+        if (pattern.Width < 1 || pattern.Height < 1 || pattern.Width > MaxSide || pattern.Height > MaxSide || (long)pattern.Width * pattern.Height > DesignProcessor.MaxPatternPixels || pattern.Values.Length != (long)pattern.Width * pattern.Height || pattern.Values.Any(v => v != 0 && v != 255)) throw new ArgumentException("Editor supports binary patterns up to 4096 per side and 262144 pixels.");
         if (dirty) BeginEdit(); else { undo.Clear(); redo.Clear(); }
         Restore(pattern); if (!dirty) saved = Snapshot(); Changed?.Invoke(this, EventArgs.Empty);
     }
     public void Reset(int w, int h)
     {
-        if (w < 1 || h < 1 || w > MaxSide || h > MaxSide) throw new ArgumentOutOfRangeException(nameof(w));
+        if (w < 1 || h < 1 || w > MaxSide || h > MaxSide || (long)w * h > DesignProcessor.MaxPatternPixels) throw new ArgumentOutOfRangeException(nameof(w));
         SetPattern(new WeavePattern(w, h, Enumerable.Repeat((byte)255, w * h).ToArray()), true);
     }
     public void MarkSaved() { saved = Snapshot(); Changed?.Invoke(this, EventArgs.Empty); }
     public void DiscardChanges() { undo.Clear(); redo.Clear(); Restore(saved); }
     public void ApplyHelper(string operation, int stepX = 1, int stepY = 1, int satinRepeat = 5, int satinStep = 2)
     {
-        if (stepX < 1 || stepY < 1 || stepX > MaxSide || stepY > MaxSide) throw new ArgumentOutOfRangeException(nameof(stepX));
+        if (stepX < 1 || stepY < 1 || stepX > MaxHelperStep || stepY > MaxHelperStep) throw new ArgumentOutOfRangeException(nameof(stepX));
         byte[] next = (byte[])values.Clone();
         if (operation is "NE" or "NW" or "SE" or "SW")
         {
@@ -63,7 +70,7 @@ public sealed class WeaveEditor : FrameworkElement
         if (operation == "satin")
         {
             static int Gcd(int a, int b) { while (b != 0) (a, b) = (b, a % b); return a; }
-            if (satinRepeat < 5 || satinRepeat > MaxSide || satinStep < 2 || satinStep > satinRepeat - 2 || Gcd(satinRepeat, satinStep) != 1)
+            if (satinRepeat < 5 || satinRepeat > MaxHelperStep || satinStep < 2 || satinStep > satinRepeat - 2 || Gcd(satinRepeat, satinStep) != 1)
                 throw new ArgumentException("Satin repeat must be 5–64 and the step must be coprime, between 2 and repeat minus 2.");
             if (width % satinRepeat != 0 || height % satinRepeat != 0) throw new ArgumentException("Satin dimensions must be multiples of the selected repeat.");
         }
@@ -90,9 +97,15 @@ public sealed class WeaveEditor : FrameworkElement
         base.OnRender(dc); dc.DrawRectangle(Brushes.Transparent, null, new Rect(RenderSize));
         double size = Math.Min(ActualWidth / width, ActualHeight / height); if (size <= 0) return;
         double x0 = (ActualWidth - size * width) / 2, y0 = (ActualHeight - size * height) / 2;
-        var pen = gridVisible ? new Pen(Brushes.LightSlateGray, Math.Min(0.6, size / 8)) : null;
-        for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
-            dc.DrawRectangle(values[y * width + x] == 0 ? Brushes.Black : Brushes.White, pen, new Rect(x0 + x * size, y0 + y * size, size, size));
+        var image = BitmapSource.Create(width, height, 96, 96, PixelFormats.Gray8, null, values, width); image.Freeze();
+        RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.NearestNeighbor);
+        dc.DrawImage(image, new Rect(x0, y0, size * width, size * height));
+        if (gridVisible && size >= 2)
+        {
+            var pen = new Pen(Brushes.LightSlateGray, Math.Min(0.6, size / 8));
+            for (int x = 0; x <= width; x++) dc.DrawLine(pen, new Point(x0 + x * size, y0), new Point(x0 + x * size, y0 + height * size));
+            for (int y = 0; y <= height; y++) dc.DrawLine(pen, new Point(x0, y0 + y * size), new Point(x0 + width * size, y0 + y * size));
+        }
     }
     private int Hit(Point point)
     {

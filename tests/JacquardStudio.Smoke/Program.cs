@@ -212,11 +212,32 @@ internal static class Program
             reopenedBank.Delete(loadedWeave);
             Check(ProjectFile.Load(bankProject).Session.Patterns[0]!.Values.SequenceEqual(new byte[] {0,255,255,0}), "project retains bank weave after deletion");
             Check(reopenedBank.Load(out skipped).All(x => x.Id != savedWeave.Id), "delete only selected user bank item");
+            // Every weft contributes one row at a time, with each pattern repeated to its common period.
+            var weaveA = new WeavePattern(2, 2, new byte[] { 0, 255, 255, 0 });
+            var weaveB = new WeavePattern(3, 1, new byte[] { 255, 0, 0 });
+            var weaveC = new WeavePattern(1, 2, new byte[] { 0, 255 });
+            var composite2 = CompositeWeave.Combine(new[] { weaveA, weaveB });
+            Check(composite2.Width == 6 && composite2.Height == 4 && composite2.Values.SequenceEqual(new byte[] { 0,255,0,255,0,255, 255,0,0,255,0,0, 255,0,255,0,255,0, 255,0,0,255,0,0 }), "two-weft LCM interleave");
+            var composite3 = CompositeWeave.Combine(new[] { weaveA, weaveB, weaveC });
+            Check(composite3.Width == 6 && composite3.Height == 6 && composite3.Values.Take(18).SequenceEqual(new byte[] { 0,255,0,255,0,255, 255,0,0,255,0,0, 0,0,0,0,0,0 }), "three-weft row ordering");
+            Check(CompositeWeave.Combine(CompositeWeave.Split(composite3, 3)).Values.SequenceEqual(composite3.Values), "split and recombine exactly");
+            var editedComposite = new WeavePattern(composite3.Width, composite3.Height, (byte[])composite3.Values.Clone()); editedComposite.Values[1] = 0;
+            Check(CompositeWeave.Combine(CompositeWeave.Split(editedComposite, 3)).Values.SequenceEqual(editedComposite.Values), "edited result survives splitting and recombination");
+            var storedComposite = bank.SaveNew("ترکیبی", editedComposite); var restoredComposite = reopenedBank.Load(out _).Single(x => x.Id == storedComposite.Id).Pattern;
+            Check(restoredComposite.Width == editedComposite.Width && restoredComposite.Height == editedComposite.Height && restoredComposite.Values.SequenceEqual(editedComposite.Values), "composite bank persistence");
+            Expect<ArgumentException>(() => CompositeWeave.Split(composite3, 4));
+            Expect<ArgumentException>(() => CompositeWeave.Combine(Array.Empty<WeavePattern>()));
+            Expect<ArgumentException>(() => CompositeWeave.Combine(new[] { new WeavePattern(2, 1, new byte[] { 0, 1 }) }));
+            Expect<ArgumentException>(() => CompositeWeave.Combine(new[] { new WeavePattern(4093, 1, new byte[4093]), new WeavePattern(4091, 1, new byte[4091]) }));
+            Expect<ArgumentException>(() => CompositeWeave.Combine(new[] { new WeavePattern(int.MaxValue, int.MaxValue, Array.Empty<byte>()) }));
+            var compositeWindow = new CompositeWeaveWindow(bank, reopenedBank.Load(out _), false); compositeWindow.Close();
             var weaveEditor = new WeaveEditor(); weaveEditor.Reset(3, 2);
             Check(weaveEditor.IsDirty && weaveEditor.Snapshot().Values.SequenceEqual(Enumerable.Repeat((byte)255, 6)), "blank editor grid and dirty state");
             weaveEditor.SetPattern(new WeavePattern(2, 2, new byte[] {0,255,255,0})); var editorCopy = weaveEditor.Snapshot(); editorCopy.Values[0] = 255;
             Check(weaveEditor.Snapshot().Values[0] == 0 && !weaveEditor.IsDirty, "editor copies selected patterns");
-            Expect<ArgumentOutOfRangeException>(() => weaveEditor.Reset(65, 1));
+            weaveEditor.Reset(65, 1); Check(weaveEditor.Snapshot().Values.Length == 65, "editor accepts composite wider than 64");
+            Expect<ArgumentOutOfRangeException>(() => weaveEditor.Reset(4097, 1));
+            Expect<ArgumentOutOfRangeException>(() => weaveEditor.Reset(1024, 1024));
             weaveEditor.Reset(8, 8); weaveEditor.ApplyHelper("NE");
             Check(weaveEditor.Snapshot().Values.Count(v => v == 0) == 8 && weaveEditor.CanUndo, "diagonal helper and undo history");
             var diagonal = weaveEditor.Snapshot().Values; weaveEditor.Undo(); Check(weaveEditor.Snapshot().Values.All(v => v == 255) && weaveEditor.CanRedo, "undo helper");
@@ -423,7 +444,7 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App(); app.InitializeComponent();
-            Check(AppVersion.Display == "018.4.0.0-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "019.5.0.0-a1", "QAVNS version from version.txt");
             var reportEntries = bankSession.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = bankSession.Palette.Counts[index], Percent = 100d * bankSession.Palette.Counts[index] / bankSession.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; if (bankSession.Patterns[index] is { } p) e.Restore("sample", p); return e; }).ToArray();
             var fullEntries = fullProject.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = fullProject.Palette.Counts[index], Percent = 100d * fullProject.Palette.Counts[index] / fullProject.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; e.Restore("sample", fullProject.Patterns[index]!); return e; }).ToArray();
             var fullMap = MachineComposer.Compose(fullProject.PatternPreview!, new MachineSetup("2", "1", edgeLeft, edgeRight, "left", "right", AbsoluteLayout: true, TotalHooks: "54", DesignStart: "3"));
@@ -451,6 +472,11 @@ internal static class Program
             var secondPage = DesignReport.Render(simulationPages[0]); string multiPdf = Path.Combine(dir, "multi-report.pdf");
             DesignReport.SavePdf(new[]{reportImage, secondPage}, multiPdf, Array.Empty<string>());
             Check(System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(multiPdf)).Contains("/Count 2"), "multi-page simulation PDF");
+            var widePattern = new WeavePattern(33, 2, Enumerable.Repeat((byte)255, 66).ToArray());
+            var wideWindow = new Fabric3DWindow(Fabric3DWindow.PatternBitmap(widePattern), Array.Empty<string>(), new SimulationSettings(), true);
+            var wideRoot = (System.Windows.Controls.DockPanel)wideWindow.Content; var paging = (System.Windows.Controls.StackPanel)wideRoot.Children[1];
+            ((System.Windows.Controls.Button)paging.Children[1]).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Check(((System.Windows.Controls.TextBlock)wideRoot.Children[0]).Text.Contains("33–33 of 33"), "3D page navigation reaches last column"); wideWindow.Close();
             var detailWindow = new Fabric3DWindow(whiteMap, new[]{"1","2"}, multiSettings with { Weave = 0 }, false);
             Check(detailWindow.Content is System.Windows.Controls.DockPanel, "Helix 3D detail window builds bounded geometry");
             var guide = new GuideWindow(false); Check(guide.Content is System.Windows.Controls.Grid && guide.Title.Contains("راهنمای"), "illustrated in-app guide loads with navigation");
@@ -475,6 +501,7 @@ internal static class Program
             Check(cardEntry.PatternGridPreview is System.Windows.Media.DrawingImage && cardEntry.PatternPreview!.PixelWidth == 200, "large weave card uses bounded major grid lines without altering bitmap");
             var nav = (System.Windows.Controls.Grid)window.FindName("Navigation");
             var settings = (System.Windows.FrameworkElement)window.FindName("SettingsBorder");
+            Check(window.FindName("CompositeButton") is System.Windows.Controls.Button && window.FindName("Bank3DButton") is System.Windows.Controls.Button && window.FindName("Editor3DButton") is System.Windows.Controls.Button && window.FindName("Simulation3DButton") is null, "3D and composite controls belong to design, not simulation");
             Check(System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("WeftStepButton")) == 7 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("SimulationStepButton")) == 8 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("MachineStepButton")) == 9 && window.FindName("HelpButton") is System.Windows.Controls.Button, "weft, simulation, machine and in-app help are ordered");
             Check(nav.FlowDirection == System.Windows.FlowDirection.RightToLeft && System.Windows.Controls.Grid.GetColumn(settings) == 2, "right-to-left workflow and right settings panel");
             var list = (System.Windows.Controls.ListView)window.FindName("ColorPaletteList");

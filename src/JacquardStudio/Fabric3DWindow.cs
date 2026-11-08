@@ -14,22 +14,44 @@ public sealed class Fabric3DWindow : Window
     public Fabric3DWindow(BitmapSource fabric, IReadOnlyList<string> rowWefts, SimulationSettings settings, bool english)
     {
         FabricSimulation.Validate(settings);
-        int w = Math.Min(MaxThreads, fabric.PixelWidth), h = Math.Min(MaxThreads, fabric.PixelHeight);
-        var crop = new CroppedBitmap(fabric, new Int32Rect(0, 0, w, h)); crop.Freeze(); byte[] map = DesignAnalysis.ReadBinary(crop);
-        Title = english ? "3D yarn detail" : "جزئیات سه‌بعدی نخ"; Width = 900; Height = 720; MinWidth = 500; MinHeight = 400; WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var root = new DockPanel();
-        var hint = new TextBlock { Text = english ? $"Rotatable geometry, first {w} × {h} threads. Approximate appearance, not physical simulation." : $"نمونه چرخان از {w} × {h} نخ نخست؛ نمایش تقریبی است و شبیه‌سازی فیزیکی نیست.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12), Foreground = Brushes.White };
-        DockPanel.SetDock(hint, Dock.Top); root.Children.Add(hint); root.Background = new SolidColorBrush(Color.FromRgb(24, 37, 45));
-        var viewport = new HelixViewport3D { ShowViewCube = true, ShowCoordinateSystem = false, Background = new SolidColorBrush(Color.FromRgb(35, 48, 55)), Camera = new PerspectiveCamera(new Point3D(w * .7, -h * .9, Math.Max(w, h) * 1.15), new Vector3D(-w * .7, h * .9, -Math.Max(w, h) * 1.15), new Vector3D(0, 0, 1), 42) };
-        viewport.Children.Add(new DefaultLights()); var group = new Model3DGroup();
-        Color warp = FabricSimulation.ParseColor(settings.WarpColor);
-        for (int x = 0; x < w; x++) group.Children.Add(BuildYarn(map, w, h, true, x, warp, settings.WarpYarn, settings.Weave));
-        for (int y = 0; y < h; y++)
+        Title = english ? "3D weave detail" : "نمای سه‌بعدی بافت"; Width = 900; Height = 720; MinWidth = 500; MinHeight = 400; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        var root = new DockPanel { Background = new SolidColorBrush(Color.FromRgb(24, 37, 45)) };
+        var hint = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12), Foreground = Brushes.White };
+        DockPanel.SetDock(hint, Dock.Top); root.Children.Add(hint);
+        var bar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(6), FlowDirection = FlowDirection.LeftToRight };
+        var left = new Button { Content = "◀ X", Margin = new Thickness(3) }; var right = new Button { Content = "X ▶", Margin = new Thickness(3) };
+        var up = new Button { Content = "▲ Y", Margin = new Thickness(3) }; var down = new Button { Content = "Y ▼", Margin = new Thickness(3) };
+        bar.Children.Add(left); bar.Children.Add(right); bar.Children.Add(up); bar.Children.Add(down); DockPanel.SetDock(bar, Dock.Bottom); root.Children.Add(bar);
+        var viewport = new HelixViewport3D { ShowViewCube = true, ShowCoordinateSystem = false, Background = new SolidColorBrush(Color.FromRgb(35, 48, 55)) };
+        root.Children.Add(viewport); Content = root; int offsetX = 0, offsetY = 0;
+        void RenderPart()
         {
-            string id = rowWefts.Count == fabric.PixelHeight ? rowWefts[y] : "1"; var yarn = FabricSimulation.YarnFor(settings, id);
-            group.Children.Add(BuildYarn(map, w, h, false, y, FabricSimulation.ParseColor(yarn.Color), yarn.Yarn, settings.Weave));
+            int w = Math.Min(MaxThreads, fabric.PixelWidth - offsetX), h = Math.Min(MaxThreads, fabric.PixelHeight - offsetY);
+            var crop = new CroppedBitmap(fabric, new Int32Rect(offsetX, offsetY, w, h)); crop.Freeze(); byte[] map = DesignAnalysis.ReadBinary(crop);
+            var group = new Model3DGroup(); Color warp = FabricSimulation.ParseColor(settings.WarpColor);
+            for (int x = 0; x < w; x++) group.Children.Add(BuildYarn(map, w, h, true, x, warp, settings.WarpYarn, settings.Weave));
+            for (int y = 0; y < h; y++)
+            {
+                string id = rowWefts.Count == fabric.PixelHeight ? rowWefts[offsetY + y] : "1"; var yarn = FabricSimulation.YarnFor(settings, id);
+                group.Children.Add(BuildYarn(map, w, h, false, y, FabricSimulation.ParseColor(yarn.Color), yarn.Yarn, settings.Weave));
+            }
+            viewport.Children.Clear(); viewport.Children.Add(new DefaultLights()); viewport.Children.Add(new ModelVisual3D { Content = group });
+            viewport.Camera = new PerspectiveCamera(new Point3D(w * .7, -h * .9, Math.Max(w, h) * 1.15), new Vector3D(-w * .7, h * .9, -Math.Max(w, h) * 1.15), new Vector3D(0, 0, 1), 42);
+            hint.Text = english ? $"Warp {offsetX + 1}–{offsetX + w} of {fabric.PixelWidth}; row {offsetY + 1}–{offsetY + h} of {fabric.PixelHeight}. Rotate with the mouse. Approximate geometry." : $"تار {offsetX + 1} تا {offsetX + w} از {fabric.PixelWidth}؛ رج {offsetY + 1} تا {offsetY + h} از {fabric.PixelHeight}. با ماوس بچرخانید؛ هندسه تقریبی است.";
+            left.IsEnabled = offsetX > 0; up.IsEnabled = offsetY > 0; right.IsEnabled = offsetX + w < fabric.PixelWidth; down.IsEnabled = offsetY + h < fabric.PixelHeight;
         }
-        viewport.Children.Add(new ModelVisual3D { Content = group }); root.Children.Add(viewport); Content = root;
+        left.Click += (_, _) => { offsetX = Math.Max(0, offsetX - MaxThreads); RenderPart(); }; right.Click += (_, _) => { offsetX += MaxThreads; RenderPart(); };
+        up.Click += (_, _) => { offsetY = Math.Max(0, offsetY - MaxThreads); RenderPart(); }; down.Click += (_, _) => { offsetY += MaxThreads; RenderPart(); };
+        RenderPart();
+    }
+    public static BitmapSource PatternBitmap(WeavePattern pattern)
+    {
+        if (pattern.Width < 1 || pattern.Height < 1 || (long)pattern.Width * pattern.Height > DesignProcessor.MaxPatternPixels || pattern.Values.Length != (long)pattern.Width * pattern.Height || pattern.Values.Any(v => v != 0 && v != 255)) throw new ArgumentException("Invalid binary weave.");
+        var image = BitmapSource.Create(pattern.Width, pattern.Height, 96, 96, System.Windows.Media.PixelFormats.Gray8, null, pattern.Values, pattern.Width); image.Freeze(); return image;
+    }
+    public static void ShowPattern(Window owner, WeavePattern pattern, bool english)
+    {
+        var window = new Fabric3DWindow(PatternBitmap(pattern), Array.Empty<string>(), new SimulationSettings(Weave: 0), english) { Owner = owner }; window.ShowDialog();
     }
     private static GeometryModel3D BuildYarn(byte[] map, int w, int h, bool warp, int index, Color color, int yarn, int weave)
     {
