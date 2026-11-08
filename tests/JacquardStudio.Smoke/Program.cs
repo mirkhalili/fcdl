@@ -505,9 +505,9 @@ internal static class Program
             byte[] highlightPixels = new byte[frequencies.Length * 4]; DesignProcessor.RenderHighlight(frequentPalette, 0).CopyPixels(highlightPixels, highlightPixels.Length, 0);
             Check(highlightPixels[5 * 4 + 1] == 0xCC && highlightPixels[0 * 4 + 2] != 0xCC && frequentPalette.Colors[1] == 0xCC0000, "highlight mutes others without modifying palette");
             Check(highlightPixels[4 * 4 + 2] == 255 && highlightPixels[4 * 4 + 1] == 0 && highlightPixels[0 * 4] >= 230 && highlightPixels[0 * 4 + 1] >= 230, "highlight uses red boundary and fades distant colors");
-            var originalPatterns = pipeline.Snapshot(); pipeline.AssignPatterns(Enumerable.Repeat(PatternLibrary.Presets[5].Pattern, pipeline.Patterns.Length).ToArray());
-            Check(pipeline.Patterns.All(p => p is not null) && originalPatterns.Patterns[0]!.Values.SequenceEqual(new byte[]{0}), "batch random assignment can be undone using snapshot");
-            Expect<ArgumentException>(() => pipeline.AssignPatterns(Array.Empty<WeavePattern>()));
+            var batchSession = restored.Session.Snapshot(); var originalPatterns = batchSession.Snapshot(); batchSession.AssignPatterns(Enumerable.Repeat(PatternLibrary.Presets[5].Pattern, batchSession.Patterns.Length).ToArray());
+            Check(batchSession.Patterns.All(p => p is not null) && originalPatterns.Patterns[0]!.Values.SequenceEqual(new byte[]{0}), "batch random assignment can be undone using snapshot");
+            Expect<ArgumentException>(() => batchSession.AssignPatterns(Array.Empty<WeavePattern>()));
             Check(PatternLibrary.Presets.Select(p => p.Category).Distinct().Count() >= 7 && PatternLibrary.Presets[0].Name == "p4-4_clb", "standard categorized bank preserves legacy preset indices");
             var gray = BitmapSource.Create(1, 1, 96, 96, PixelFormats.Bgra32, null, new byte[] {128, 128, 128, 255}, 4);
             Expect<InvalidDataException>(() => DesignProcessor.ReadPattern(gray));
@@ -564,6 +564,13 @@ internal static class Program
             var apply3d = controls3d.Children.OfType<System.Windows.Controls.Button>().Single(x => (string)x.Content == "Apply settings"); apply3d.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             var newModel = (System.Windows.Media.Media3D.Model3DGroup)((System.Windows.Media.Media3D.ModelVisual3D)viewport3d.Children[1]).Content!; var newMesh = (System.Windows.Media.Media3D.MeshGeometry3D)((System.Windows.Media.Media3D.GeometryModel3D)newModel.Children[0]).Geometry!;
             Check(Math.Abs(newMesh.Positions[0].X - newMesh.Positions[4].X) > diameterBefore * 1.9, "3D geometry responds to yarn count"); wideWindow.Close();
+            var overviewWindow = new Fabric3DWindow(overview.Image, overview.RowWefts, multiSettings with { Weave = 0, Mode = 2 }, true, overview: overview);
+            var overviewRoot = (System.Windows.Controls.DockPanel)overviewWindow.Content; var overviewBar = (System.Windows.Controls.StackPanel)overviewRoot.Children[1];
+            using (var watchdog3d = new System.Threading.Timer(_ => { Console.Error.WriteLine("3D capture timed out"); Environment.Exit(1); }, null, TimeSpan.FromSeconds(30), Timeout.InfiniteTimeSpan))
+            {
+                overviewWindow.ContentRendered += (_, _) => ((System.Windows.Controls.Button)overviewBar.Children[5]).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                Check(overviewWindow.ShowDialog() == true && overviewWindow.Captured is { PixelWidth: > 1, PixelHeight: > 1, IsFrozen: true } && overviewWindow.CapturedSettings!.Mode == 2, "3D overview captures an actual viewport and settings");
+            }
             var detailWindow = new Fabric3DWindow(whiteMap, new[]{"1","2"}, multiSettings with { Weave = 0 }, false);
             Check(detailWindow.FontFamily.Source.Contains("Vazirmatn"), "3D window uses project font");
             Check(detailWindow.Content is System.Windows.Controls.DockPanel, "Helix 3D detail window builds bounded geometry");
