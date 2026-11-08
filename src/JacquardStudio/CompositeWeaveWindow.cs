@@ -67,7 +67,11 @@ public sealed class CompositeWeaveWindow : Window
         Closing += (_, e) => { if (changed && SavedItem is null && MessageBox.Show(this, T("تغییرات ذخیره نشده‌اند. پنجره بسته شود؟", "Discard unsaved composite changes?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) e.Cancel = true; };
     }
     private static Button Button(string text, RoutedEventHandler handler) { var b = new Button { Content = text, Margin = new Thickness(4), Padding = new Thickness(8, 4, 8, 4) }; b.Click += handler; return b; }
-    private void Status(string? error = null) => status.Text = error ?? (valid ? T($"نتیجه: {editor.PatternWidth} × {editor.PatternHeight} خانه. هر بافت تا دوره مشترک تکرار شده است.", $"Result: {editor.PatternWidth} × {editor.PatternHeight} cells. Each weave repeats to the common period.") : T("برای هر پود یک بافت انتخاب یا ترسیم کنید، یا یک بافت از بانک تجزیه کنید.", "Choose or draw one weave per weft, or split a bank weave."));
+    private void Status(string? error = null)
+    {
+        editor.IsEnabled = valid; editor.Opacity = valid ? 1 : .35;
+        status.Text = error ?? (valid ? T($"نتیجه: {editor.PatternWidth} × {editor.PatternHeight} خانه. هر بافت تا دوره مشترک تکرار شده است.", $"Result: {editor.PatternWidth} × {editor.PatternHeight} cells. Each weave repeats to the common period.") : T("برای هر پود یک بافت انتخاب یا ترسیم کنید، یا یک بافت از بانک تجزیه کنید.", "Choose or draw one weave per weft, or split a bank weave."));
+    }
     private bool Count(out int count)
     {
         if (NumberInput.TryInt(countBox.Text, out count) && count is >= 1 and <= CompositeWeave.MaxWefts) return true;

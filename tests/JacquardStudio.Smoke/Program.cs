@@ -236,6 +236,9 @@ internal static class Program
             string colorProject = Path.Combine(dir, "colored.sam");
             ProjectFile.Save(colorProject, new ProjectState(colorProjectSession, "sample.bmp", "3", "2", "50", "Patterns", false, 1, colorProjectSession.Patterns.Select(_ => (string?)"composite").ToArray()), Array.Empty<string>());
             Check(ProjectFile.Load(colorProject).Session.Patterns[0]!.WeftColors!.SequenceEqual(restoredComposite.WeftColors), "composite colors survive SAM v8");
+            string colorV7 = Path.Combine(dir, "colored-v7.sam"); File.Copy(colorProject, colorV7);
+            using (var zip = ZipFile.Open(colorV7, ZipArchiveMode.Update)) { var entry = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(entry.Open())) json = r.ReadToEnd(); entry.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":8", "\"Version\":7")); }
+            Check(ProjectFile.Load(colorV7).Session.Patterns[0]!.WeftColors is null, "SAM v7 still loads without new visual metadata");
             Check(Math.Abs(YarnGeometry.ToTex(90, 2) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 1) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 4) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(59.0541, 3) - 10) < .0001, "yarn count conversions");
             Check(YarnGeometry.DiameterMm(40, 1) > YarnGeometry.DiameterMm(10, 1) && YarnGeometry.SpacingMm(40) < YarnGeometry.SpacingMm(20), "count and density affect thickness and spacing");
             Expect<ArgumentException>(() => YarnGeometry.ToTex(0, 3)); Expect<ArgumentException>(() => YarnGeometry.SpacingMm(double.NaN));
@@ -490,13 +493,23 @@ internal static class Program
             string compatibleAi = Path.Combine(dir, "compatible.ai"); File.Copy(multiPdf, compatibleAi); Check(ImageLoader.Load(compatibleAi, 0).Format == "AI (PDF compatible)", "PDF-compatible AI input");
             Expect<ArgumentOutOfRangeException>(() => ImageLoader.Load(multiPdf, 2));
             var widePattern = new WeavePattern(33, 2, Enumerable.Repeat((byte)255, 66).ToArray());
-            var wideWindow = new Fabric3DWindow(Fabric3DWindow.PatternBitmap(widePattern), Array.Empty<string>(), new SimulationSettings(), true);
+            var wideWindow = new Fabric3DWindow(Fabric3DWindow.PatternBitmap(widePattern), Array.Empty<string>(), new SimulationSettings(), true, new[] { "#FF0000", "#0000FF" });
             var wideRoot = (System.Windows.Controls.DockPanel)wideWindow.Content; var paging = (System.Windows.Controls.StackPanel)wideRoot.Children[1];
             ((System.Windows.Controls.Button)paging.Children[1]).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Check(((System.Windows.Controls.TextBlock)wideRoot.Children[0]).Text.Contains("33–33 of 33"), "3D page navigation reaches last column");
             var viewport3d = (HelixToolkit.Wpf.HelixViewport3D)wideRoot.Children[3]; double beforeFlip = ((System.Windows.Media.Media3D.PerspectiveCamera)viewport3d.Camera).Position.Z;
             ((System.Windows.Controls.Button)paging.Children[4]).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-            Check(beforeFlip > 0 && ((System.Windows.Media.Media3D.PerspectiveCamera)viewport3d.Camera).Position.Z < 0, "3D front/back flips camera"); wideWindow.Close();
+            Check(beforeFlip > 0 && ((System.Windows.Media.Media3D.PerspectiveCamera)viewport3d.Camera).Position.Z < 0, "3D front/back flips camera");
+            var colorModel = (System.Windows.Media.Media3D.Model3DGroup)((System.Windows.Media.Media3D.ModelVisual3D)viewport3d.Children[1]).Content!;
+            var row1 = (System.Windows.Media.Media3D.GeometryModel3D)colorModel.Children[1]; var row2 = (System.Windows.Media.Media3D.GeometryModel3D)colorModel.Children[2];
+            var redMaterial = (System.Windows.Media.Media3D.DiffuseMaterial)((System.Windows.Media.Media3D.MaterialGroup)row1.Material!).Children[0];
+            var blueMaterial = (System.Windows.Media.Media3D.DiffuseMaterial)((System.Windows.Media.Media3D.MaterialGroup)row2.Material!).Children[0];
+            Check(((System.Windows.Media.SolidColorBrush)redMaterial.Brush).Color == Colors.Red && ((System.Windows.Media.SolidColorBrush)blueMaterial.Brush).Color == Colors.Blue, "3D preserves composite weft colors");
+            var oldMesh = (System.Windows.Media.Media3D.MeshGeometry3D)((System.Windows.Media.Media3D.GeometryModel3D)colorModel.Children[0]).Geometry!; double diameterBefore = Math.Abs(oldMesh.Positions[0].X - oldMesh.Positions[4].X);
+            var controls3d = (System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)wideRoot.Children[2]).Content; var countInput = controls3d.Children.OfType<System.Windows.Controls.TextBox>().First(); countInput.Text = "120";
+            var apply3d = controls3d.Children.OfType<System.Windows.Controls.Button>().Single(x => (string)x.Content == "Apply settings"); apply3d.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            var newModel = (System.Windows.Media.Media3D.Model3DGroup)((System.Windows.Media.Media3D.ModelVisual3D)viewport3d.Children[1]).Content!; var newMesh = (System.Windows.Media.Media3D.MeshGeometry3D)((System.Windows.Media.Media3D.GeometryModel3D)newModel.Children[0]).Geometry!;
+            Check(Math.Abs(newMesh.Positions[0].X - newMesh.Positions[4].X) > diameterBefore * 1.9, "3D geometry responds to yarn count"); wideWindow.Close();
             var detailWindow = new Fabric3DWindow(whiteMap, new[]{"1","2"}, multiSettings with { Weave = 0 }, false);
             Check(detailWindow.Content is System.Windows.Controls.DockPanel, "Helix 3D detail window builds bounded geometry");
             var guide = new GuideWindow(false); Check(guide.Content is System.Windows.Controls.Grid && guide.Title.Contains("راهنمای"), "illustrated in-app guide loads with navigation");
