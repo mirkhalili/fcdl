@@ -570,6 +570,8 @@ internal static class Program
             {
                 overviewWindow.ContentRendered += (_, _) => ((System.Windows.Controls.Button)overviewBar.Children[5]).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 Check(overviewWindow.ShowDialog() == true && overviewWindow.Captured is { PixelWidth: > 1, PixelHeight: > 1, IsFrozen: true } && overviewWindow.CapturedSettings!.Mode == 2, "3D overview captures an actual viewport and settings");
+                var captured = overviewWindow.Captured!; int captureStride = captured.PixelWidth * 4; var capturedBytes = new byte[captureStride * captured.PixelHeight]; captured.CopyPixels(capturedBytes, captureStride, 0);
+                Check(Enumerable.Range(0, capturedBytes.Length / 4).Select(i => BitConverter.ToInt32(capturedBytes, i * 4)).Distinct().Take(16).Count() >= 16, "3D viewport capture contains rendered scene rather than a blank bitmap");
             }
             var detailWindow = new Fabric3DWindow(whiteMap, new[]{"1","2"}, multiSettings with { Weave = 0 }, false);
             Check(detailWindow.FontFamily.Source.Contains("Vazirmatn"), "3D window uses project font");
