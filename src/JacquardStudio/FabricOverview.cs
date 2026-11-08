@@ -21,7 +21,7 @@ public sealed record FabricOverview(BitmapSource Image, string[] RowWefts, int O
             for (int x = 0; x < w; x++)
             {
                 int sx = (int)(((2L * x + 1) * width) / (2L * w));
-                pixels[y * w + x] = FabricSimulation.WarpOnTop(source, width, sx, sy, weave) ? (byte)0 : (byte)255;
+                pixels[y * w + x] = FabricSimulation.WarpOnTop(source, width, sx, sy, weave) ? (byte)255 : (byte)0;
             }
         }
         var image = BitmapSource.Create(w, h, 96, 96, PixelFormats.Gray8, null, pixels, w); image.Freeze(); return new FabricOverview(image, sampled, width, height);

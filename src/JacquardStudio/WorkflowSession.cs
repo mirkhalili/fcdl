@@ -31,15 +31,15 @@ public sealed class WorkflowSession
         var input = Resized ?? throw new InvalidOperationException("Apply size first.");
         var palette = DesignProcessor.Prepare(input, input.PixelWidth, input.PixelHeight, maximum);
         var patterns = new WeavePattern?[palette.Colors.Length];
-        var preview = DesignProcessor.Render(palette, patterns);
-        Palette = palette; Patterns = patterns; ColorPreview = preview; PatternPreview = preview; BasePatternPreview = preview; AppliedColorLimit = maximum; PixelOverrides = null;
+        var preview = DesignProcessor.Render(palette, patterns); var colorPreview = DesignProcessor.RenderColors(palette);
+        Palette = palette; Patterns = patterns; ColorPreview = colorPreview; PatternPreview = preview; BasePatternPreview = preview; AppliedColorLimit = maximum; PixelOverrides = null;
     }
     public void MergeColors(int source, int target)
     {
         var palette = Palette ?? throw new InvalidOperationException("Apply colors first.");
         var next = DesignProcessor.MergeColors(palette, source, target);
         var patterns = Patterns.Where((_, i) => i != source).ToArray();
-        var colorPreview = DesignProcessor.Render(next, new WeavePattern?[next.Colors.Length]);
+        var colorPreview = DesignProcessor.RenderColors(next);
         var basePreview = DesignProcessor.Render(next, patterns); var patternPreview = ApplyOverrides(basePreview, PixelOverrides);
         Palette = next; Patterns = patterns; ColorPreview = colorPreview; BasePatternPreview = basePreview; PatternPreview = patternPreview;
     }
@@ -49,7 +49,7 @@ public sealed class WorkflowSession
         if ((uint)index >= (uint)palette.Colors.Length || color is < 0 or > 0xffffff) throw new ArgumentException("Invalid color.");
         if (palette.Colors.Where((_, i) => i != index).Contains(color)) throw new ArgumentException("Color already exists; use merge instead.");
         var colors = (int[])palette.Colors.Clone(); colors[index] = color; var next = palette with { Colors = colors };
-        var colorPreview = DesignProcessor.Render(next, new WeavePattern?[colors.Length]); var basePreview = DesignProcessor.Render(next, Patterns);
+        var colorPreview = DesignProcessor.RenderColors(next); var basePreview = DesignProcessor.Render(next, Patterns);
         var preview = ApplyOverrides(basePreview, PixelOverrides); Palette = next; ColorPreview = colorPreview; BasePatternPreview = basePreview; PatternPreview = preview;
     }
     public void AssignPattern(int index, WeavePattern pattern)
@@ -73,7 +73,7 @@ public sealed class WorkflowSession
         var session = new WorkflowSession(source, vector) { Resized = resized, Palette = palette, AppliedColorLimit = limit, Patterns = patterns, PixelOverrides = overrides };
         if (palette is not null)
         {
-            session.ColorPreview = DesignProcessor.Render(palette, new WeavePattern?[palette.Colors.Length]);
+            session.ColorPreview = DesignProcessor.RenderColors(palette);
             session.BasePatternPreview = DesignProcessor.Render(palette, patterns); session.PatternPreview = ApplyOverrides(session.BasePatternPreview, overrides);
         }
         return session;

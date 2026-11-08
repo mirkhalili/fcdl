@@ -50,7 +50,7 @@ public static class FabricSimulation
             foreach (var y in list) { ParseColor(y.Color); _ = WeftDiameter(s, y); }
         }
     }
-    public static bool WarpOnTop(byte[] map, int w, int x, int y, int weave) => weave switch { 1 => (x + y) % 2 == 0, 2 => (x + y) % 4 == 0, _ => map[y * w + x] == 0 };
+    public static bool WarpOnTop(byte[] map, int w, int x, int y, int weave) => weave switch { 1 => (x + y) % 2 == 0, 2 => (x + y) % 4 == 0, _ => map[y * w + x] == 255 };
     /// <summary>Procedural, height-shaded yarn appearance, not a physical cloth simulation.</summary>
     public static BitmapSource Render(BitmapSource fabric, SimulationSettings s, IReadOnlyList<string>? rowWefts = null)
     {
@@ -80,33 +80,47 @@ public static class FabricSimulation
             double wr = warpRatio / 2, fr = rowRatios[y] / 2;
             bool warpPresent = warpCross < wr, weftPresent = weftCross < fr;
             int q = (py * outW + px) * 4;
-            if (!warpPresent && !weftPresent) { pixels[q] = pixels[q + 1] = pixels[q + 2] = 250; pixels[q + 3] = 255; continue; }
+            if (!warpPresent && !weftPresent)
+            {
+                // A slight darkening in the gap gives the threads a soft edge rather than an outline.
+                double near = Math.Min(warpCross - wr, weftCross - fr); double shadow = Math.Exp(-Math.Max(0, near) * 24) * .09 * shade;
+                Color gap = Color.FromRgb(248, 248, 248); double light = 1 - shadow;
+                if (s.Mode == 1)
+                {
+                    int hash = unchecked((int)(fx * 31) * 73856093 ^ (int)(fy * 31) * 19349663);
+                    bool fuzzWarp = warpCross - wr < .07 && (hash & 31) < (s.WarpYarn == 0 ? 1 : 4);
+                    bool fuzzWeft = weftCross - fr < .07 && ((hash >> 5) & 31) < (rowYarns[y] == 0 ? 1 : 4);
+                    if (fuzzWarp || fuzzWeft) { Color hair = fuzzWarp ? warp : rowColors[y]; gap = Color.FromRgb((byte)((gap.R*3 + hair.R)/4), (byte)((gap.G*3 + hair.G)/4), (byte)((gap.B*3 + hair.B)/4)); }
+                }
+                pixels[q] = (byte)(gap.B * light); pixels[q + 1] = (byte)(gap.G * light); pixels[q + 2] = (byte)(gap.R * light); pixels[q + 3] = 255; continue;
+            }
             bool useWarp = warpPresent && (!weftPresent || warpTop);
             Color c = useWarp ? warp : rowColors[y]; int yarn = useWarp ? s.WarpYarn : rowYarns[y];
-            double halfWidth = useWarp ? wr : fr;
-            double crossDistance = useWarp ? warpCross : weftCross;
-            bool topVisible = warpPresent && weftPresent;
-            if (s.Mode == 0)
+            double halfWidth = useWarp ? wr : fr, cross = useWarp ? u : v, axial = useWarp ? fy : fx;
+            double d = Math.Clamp((cross - .5) / Math.Max(.00001, halfWidth), -1, 1);
+            double normal = Math.Sqrt(Math.Max(0, 1 - d * d));
+            double edgeShade = (1 - normal) * .14 * shade;
+            double crossingShade = 0;
+            if (!useWarp && weftPresent)
             {
-                // Reference-style flat interlacing with narrow black thread outlines.
-                double cellPixel = useWarp ? (double)w / outW : (double)h / outH;
-                // At coarse overview scales, avoid turning a sub-pixel yarn entirely black.
-                bool edge = 2 * halfWidth >= 5 * cellPixel && halfWidth - crossDistance < Math.Max(cellPixel * 1.1, halfWidth * .10);
-                Color flat = edge ? Color.FromRgb(28, 28, 28) : c;
-                pixels[q] = flat.B; pixels[q + 1] = flat.G; pixels[q + 2] = flat.R; pixels[q + 3] = 255; continue;
+                // Fade weft where it emerges from under a warp (current or neighbouring white cell).
+                if (warpTop) crossingShade = Math.Exp(-Math.Max(0, warpCross - wr) * 18) * .20 * shade;
+                else
+                {
+                    if (x > 0 && WarpOnTop(map, w, x - 1, y, s.Weave)) crossingShade = Math.Max(crossingShade, Math.Exp(-Math.Max(0, u + .5 - wr) * 12) * .20 * shade);
+                    if (x + 1 < w && WarpOnTop(map, w, x + 1, y, s.Weave)) crossingShade = Math.Max(crossingShade, Math.Exp(-Math.Max(0, 1.5 - wr - u) * 12) * .20 * shade);
+                }
             }
-            double cross = useWarp ? u : v, axial = useWarp ? fy : fx;
-            double d = Math.Clamp((cross - .5) / Math.Max(.00001, halfWidth), -1, 1); double normal = Math.Sqrt(Math.Max(0, 1 - d * d));
-            double directional = Math.Clamp(.68 * normal - .25 * d + .35, .2, 1.15);
-            double occlusion = !topVisible ? .10 * shade : shade * .13 * Math.Pow(Math.Abs((useWarp ? v : u) - .5) * 2, 4);
-            double specular = yarn == 0 ? .22 * shade * Math.Pow(Math.Max(0, normal - .22 * d), 12) : .035 * shade * Math.Pow(normal, 5);
-            double twist = Math.Sin(axial * 8.6 + cross * 28 + (useWarp ? x : y) * .73);
-            int hash = unchecked((x * 73856093) ^ (y * 19349663) ^ ((int)(axial * 16) * 83492791) ^ ((int)(cross * 32) * 265443576));
-            double noise = ((hash & 255) / 255.0 - .5);
-            double fiber = shade * (yarn == 1 ? .16 : yarn == 3 ? .11 : yarn == 2 ? .075 : .035) * (noise + .38 * twist);
-            double light = Math.Clamp(1 - shade * .28 + shade * .30 * directional - occlusion + specular + fiber, .20, 1.28);
-            int i = (py * outW + px) * 4;
-            pixels[i] = (byte)Math.Clamp((int)(c.B * light), 0, 255); pixels[i + 1] = (byte)Math.Clamp((int)(c.G * light), 0, 255); pixels[i + 2] = (byte)Math.Clamp((int)(c.R * light), 0, 255); pixels[i + 3] = 255;
+            double lightLevel = Math.Clamp(1 - edgeShade - crossingShade, .55, 1.0);
+            if (s.Mode == 1)
+            {
+                // Fine deterministic fibers / hairiness; normal mode remains smooth.
+                int hash = unchecked((x * 73856093) ^ (y * 19349663) ^ ((int)(axial * 24) * 83492791) ^ ((int)(cross * 48) * 265443576));
+                double noise = (hash & 255) / 255.0 - .5;
+                double fiber = yarn == 0 ? .025 : yarn == 1 ? .15 : yarn == 3 ? .13 : .09;
+                lightLevel = Math.Clamp(lightLevel + fiber * (noise + .25 * Math.Sin(axial * 22 + cross * 60)), .45, 1.12);
+            }
+            pixels[q] = (byte)Math.Clamp((int)(c.B * lightLevel), 0, 255); pixels[q + 1] = (byte)Math.Clamp((int)(c.G * lightLevel), 0, 255); pixels[q + 2] = (byte)Math.Clamp((int)(c.R * lightLevel), 0, 255); pixels[q + 3] = 255;
         }
         var result = BitmapSource.Create(outW, outH, 96, 96, PixelFormats.Bgra32, null, pixels, outW * 4); result.Freeze(); return result;
     }

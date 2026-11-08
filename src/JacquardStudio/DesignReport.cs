@@ -21,10 +21,12 @@ public static class DesignReport
         catch (ArgumentOutOfRangeException) { return "نامشخص / Unknown"; }
     }
     private static TextBlock Text(string text, double size, Brush? color = null, FontWeight? weight = null) => new() { Text = text, FontSize = size, Foreground = color ?? Ink, FontWeight = weight ?? FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-    public static FrameworkElement CreatePage(WorkflowSession session, IReadOnlyList<PaletteEntry> entries, string projectName, DateTimeOffset? created, bool english, DesignMetadata? metadata = null, MachineSetup? machine = null, WarpAnalysis? analysis = null, MachineComposition? composition = null)
+    public static FrameworkElement CreatePage(WorkflowSession session, IReadOnlyList<PaletteEntry> entries, string projectName, DateTimeOffset? created, bool english, DesignMetadata? metadata = null, MachineSetup? machine = null, WarpAnalysis? analysis = null, MachineComposition? composition = null, int palettePage = 0)
     {
         var palette = session.Palette ?? throw new InvalidOperationException("A color palette is required for a report.");
         if (entries.Count != palette.Colors.Length) throw new ArgumentException("Palette metadata does not match.");
+        if (palettePage < 0 || palettePage >= (entries.Count + 49) / 50) throw new ArgumentOutOfRangeException(nameof(palettePage));
+        var pageEntries = entries.Skip(palettePage * 50).Take(50).ToArray();
         var page = new Grid { Width = 793.7, Height = 1122.5, Background = Brushes.White, FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft };
         System.Windows.Documents.TextElement.SetFontFamily(page, (FontFamily)Application.Current.FindResource("VazirFont"));
         page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(215) });
@@ -109,15 +111,15 @@ public static class DesignReport
         Grid.SetRow(extra, 2); page.Children.Add(extra);
         var body = new Grid { Margin = new Thickness(30, 3, 30, 0) };
         body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(28) }); body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        body.Children.Add(Text(english ? "COLORS  /  WEAVES  /  SHARE" : "رنگ‌ها  /  بافت‌های اختصاص‌یافته  /  درصد", 14, Accent, FontWeights.Bold));
+        body.Children.Add(Text((english ? "COLORS / WEAVES / SHARE" : "رنگ‌ها / بافت‌های اختصاص‌یافته / درصد") + $"  {palettePage + 1}/{(entries.Count + 49) / 50}", 14, Accent, FontWeights.Bold));
         var columns = new Grid(); columns.ColumnDefinitions.Add(new ColumnDefinition()); columns.ColumnDefinitions.Add(new ColumnDefinition()); Grid.SetRow(columns, 1); body.Children.Add(columns);
-        int rows = Math.Max(1, (entries.Count + 1) / 2);
+        int rows = Math.Max(1, (pageEntries.Length + 1) / 2);
         double rowHeight = Math.Min(68, 605d / rows), pictureSize = Math.Max(18, rowHeight - 4);
         for (int c = 0; c < 2; c++)
         {
             var list = new StackPanel { Margin = new Thickness(c == 0 ? 0 : 8, 0, c == 0 ? 8 : 0, 0) };
             Grid.SetColumn(list, c); columns.Children.Add(list);
-            foreach (var entry in entries.Where((_, index) => index % 2 == c))
+            foreach (var entry in pageEntries.Where((_, index) => index % 2 == c))
             {
                 var row = new Grid { Height = rowHeight - 1, Margin = new Thickness(0, 0, 0, 1), Background = Brush("#F5F9F8") };
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26) }); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) }); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(pictureSize + 4) }); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(54) }); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(43) });
@@ -134,40 +136,45 @@ public static class DesignReport
         var footer = new Border { Margin = new Thickness(30, 0, 30, 5), BorderBrush = Line, BorderThickness = new Thickness(0, 1, 0, 0), Child = Text(english ? "Jacquard Studio  •  Design summary  •  Mirkhalili" : "ژاکارد استودیو  •  خلاصه طرح  •  میرخلیلی", 10, Muted) }; Grid.SetRow(footer, 4); page.Children.Add(footer);
         return page;
     }
-    /// <summary>Additional A4 pages with the fabric preview and every applied weft, without truncating at high counts.</summary>
+    /// <summary>Normal fabric preview and a paginated table of every warp/weft definition.</summary>
     public static IReadOnlyList<FrameworkElement> CreateSimulationPages(BitmapSource preview, SimulationSettings settings, IReadOnlyList<string> ids, bool english)
     {
         FabricSimulation.Validate(settings);
         if (ids.Count is < 1 or > 256) throw new ArgumentException("Invalid weft count for report.");
-        const int perPage = 46; int pageCount = (ids.Count + perPage - 1) / perPage;
+        var rowsAll = new List<(bool warp, string id)> { (true, "") }; rowsAll.AddRange(ids.Select(id => (false, id)));
+        const int perPage = 32; int pageCount = (rowsAll.Count + perPage - 1) / perPage;
         var result = new List<FrameworkElement>();
         for (int pageNumber = 0; pageNumber < pageCount; pageNumber++)
         {
-            var page = new Grid { Width = 793.7, Height = 1122.5, Background = Brushes.White, FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft, Margin = new Thickness(0) };
+            var page = new Grid { Width = 793.7, Height = 1122.5, Background = Brushes.White, FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft };
             System.Windows.Documents.TextElement.SetFontFamily(page, (FontFamily)Application.Current.FindResource("VazirFont"));
             page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(60) }); page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(320) }); page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(70) }); page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(35) });
-            page.Children.Add(new TextBlock { Text = (english ? "Fabric simulation · " : "شبیه‌سازی پارچه · ") + $"{pageNumber + 1}/{pageCount}", Margin = new Thickness(30, 18, 30, 0), Foreground = Accent, FontSize = 20, FontWeight = FontWeights.Bold });
+            page.Children.Add(new TextBlock { Text = (english ? "Normal fabric and yarns · " : "نمای معمولی پارچه و نخ‌ها · ") + $"{pageNumber + 1}/{pageCount}", Margin = new Thickness(30, 18, 30, 0), Foreground = Accent, FontSize = 20, FontWeight = FontWeights.Bold });
             var image = new Image { Source = preview, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, Height = 300, MaxWidth = 720 };
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality); Grid.SetRow(image, 1); page.Children.Add(image);
-            string warpName = FabricSimulation.YarnNames[settings.WarpYarn];
-            var info = new TextBlock { Text = (english ? "Warp: " : "نخ تار: ") + warpName + "   " + settings.WarpCount + " " + YarnGeometry.Units[settings.WarpUnit] + "   ·   " + (settings.Weave == 0 ? (english ? "project weave" : "بافت پروژه") : settings.Weave == 1 ? (english ? "plain" : "ساده") : (english ? "twill" : "جناغی")) + "   ·   " + (settings.Mode == 2 ? (english ? "3D; large designs sampled" : "سه‌بعدی؛ طرح بزرگ نمونه‌برداری شده") : settings.Mode == 0 ? (english ? "flat" : "معمولی") : (english ? "relief" : "برجسته")) + "\n" + (english ? $"Ends/cm {settings.WarpDensity}, picks/cm {settings.WeftDensity}; approximate, not a physical measurement." : $"تراکم تار {settings.WarpDensity} و پود {settings.WeftDensity} در سانتی‌متر؛ تصویرسازی تقریبی."), Foreground = Ink, FontSize = 12, Margin = new Thickness(30, 4, 30, 0), TextWrapping = TextWrapping.Wrap };
-            var infoPanel = new DockPanel(); var warpSwatch = new Border { Width = 20, Height = 20, Background = new SolidColorBrush(FabricSimulation.ParseColor(settings.WarpColor)), BorderBrush = Line, BorderThickness = new Thickness(1), Margin = new Thickness(30, 4, 0, 0), VerticalAlignment = VerticalAlignment.Top }; DockPanel.SetDock(warpSwatch, Dock.Left); infoPanel.Children.Add(warpSwatch); info.Margin = new Thickness(8, 4, 30, 0); infoPanel.Children.Add(info); Grid.SetRow(infoPanel, 2); page.Children.Add(infoPanel);
+            var info = new TextBlock { Text = (english ? $"Ends/cm {settings.WarpDensity} · picks/cm {settings.WeftDensity} · effective density {settings.MaterialDensity} g/cm³" : $"تراکم تار {settings.WarpDensity} · تراکم پود {settings.WeftDensity} در سانتی‌متر · چگالی مؤثر {settings.MaterialDensity} g/cm³") + "\n" + (english ? "Black: weft over warp. Diameter and appearance are estimates." : "سیاه: پود روی تار. قطر و ظاهر تقریبی‌اند."), Foreground = Ink, FontSize = 11, Margin = new Thickness(30, 5, 30, 0), TextWrapping = TextWrapping.Wrap };
+            Grid.SetRow(info, 2); page.Children.Add(info);
             var list = new Grid { Margin = new Thickness(30, 0, 30, 0) }; list.ColumnDefinitions.Add(new ColumnDefinition()); list.ColumnDefinitions.Add(new ColumnDefinition());
+            var current = rowsAll.Skip(pageNumber * perPage).Take(perPage).ToArray();
             for (int column = 0; column < 2; column++)
             {
                 var rows = new StackPanel { Margin = new Thickness(4, 0, 4, 0) }; Grid.SetColumn(rows, column); list.Children.Add(rows);
-                foreach (string id in ids.Skip(pageNumber * perPage).Take(perPage).Where((_, index) => index % 2 == column))
+                var header = new Grid { Height = 24, Background = Accent };
+                header.Children.Add(new TextBlock { Text = english ? "COLOR    YARN       COUNT / UNIT       DIAMETER" : "رنگ    نخ       نمره / واحد       قطر", Foreground = Brushes.White, FontSize = 10, Margin = new Thickness(6), VerticalAlignment = VerticalAlignment.Center }); rows.Children.Add(header);
+                foreach (var item in current.Where((_, index) => index % 2 == column))
                 {
-                    var yarn = FabricSimulation.YarnFor(settings, id); Color color = FabricSimulation.ParseColor(yarn.Color);
-                    var row = new Grid { Height = 25, Background = Brush("#F5F9F8"), Margin = new Thickness(0, 0, 0, 1) };
-                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) }); row.ColumnDefinitions.Add(new ColumnDefinition());
-                    row.Children.Add(new Border { Width = 17, Height = 17, Background = new SolidColorBrush(color), BorderBrush = Line, BorderThickness = new Thickness(1) });
-                    var label = Text((english ? "Weft " : "پود ") + id + " · " + FabricSimulation.YarnNames[yarn.Yarn] + " · " + yarn.Count + " " + YarnGeometry.Units[yarn.Unit], 9, Ink); Grid.SetColumn(label, 1); row.Children.Add(label); rows.Children.Add(row);
+                    var yarn = item.warp ? new SimulatedYarn("", settings.WarpYarn, settings.WarpColor, settings.WarpCount, settings.WarpUnit) : FabricSimulation.YarnFor(settings, item.id);
+                    double diameter = item.warp ? FabricSimulation.WarpDiameter(settings) : FabricSimulation.WeftDiameter(settings, yarn);
+                    var row = new Grid { Height = 34, Background = Brush("#F5F9F8"), Margin = new Thickness(0, 1, 0, 0) };
+                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) }); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(62) });
+                    row.Children.Add(new Border { Width = 17, Height = 17, Background = new SolidColorBrush(FabricSimulation.ParseColor(yarn.Color)), BorderBrush = Line, BorderThickness = new Thickness(1) });
+                    var yarnName = FabricSimulation.YarnNames[yarn.Yarn].Split('/')[english ? 1 : 0].Trim();
+                    var label = Text((item.warp ? (english ? "Warp" : "تار") : (english ? "Weft " : "پود ") + item.id) + " · " + yarnName + " · " + yarn.Count + " " + YarnGeometry.Units[yarn.Unit], 9, Ink); label.TextWrapping = TextWrapping.Wrap; label.TextTrimming = TextTrimming.None; Grid.SetColumn(label, 1); row.Children.Add(label);
+                    var size = Text($"{diameter:0.###} mm", 9, Muted); size.FlowDirection = FlowDirection.LeftToRight; Grid.SetColumn(size, 2); row.Children.Add(size); rows.Children.Add(row);
                 }
             }
             Grid.SetRow(list, 3); page.Children.Add(list);
-            var footer = new Border { Margin = new Thickness(30, 0, 30, 5), BorderBrush = Line, BorderThickness = new Thickness(0, 1, 0, 0), Child = Text(english ? "Jacquard Studio • Fabric preview • Mirkhalili" : "ژاکارد استودیو • نمای پارچه • میرخلیلی", 10, Muted) }; Grid.SetRow(footer, 4); page.Children.Add(footer);
-            result.Add(page);
+            var footer = new Border { Margin = new Thickness(30, 0, 30, 5), BorderBrush = Line, BorderThickness = new Thickness(0, 1, 0, 0), Child = Text(english ? "Jacquard Studio • Approximate fabric preview" : "ژاکارد استودیو • نمای تقریبی پارچه", 10, Muted) }; Grid.SetRow(footer, 4); page.Children.Add(footer); result.Add(page);
         }
         return result;
     }

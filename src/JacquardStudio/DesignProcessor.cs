@@ -50,7 +50,7 @@ public static class DesignProcessor
     {
         if (width < 1 || height < 1 || (long)width * height > MaxPixels)
             throw new ArgumentOutOfRangeException(nameof(width), "Output size must be positive and at most 4,000,000 pixels.");
-        if (requestedColors is < 1 or > 50) throw new ArgumentOutOfRangeException(nameof(requestedColors));
+        if (requestedColors is < 1 or > 256) throw new ArgumentOutOfRangeException(nameof(requestedColors));
         byte[] original = GetPixels(source, (int)ImageLoader.MaxPixels);
         int total = checked(width * height);
         var sparse = total <= 262_144 ? new Dictionary<int, int>() : null;
@@ -74,14 +74,49 @@ public static class DesignProcessor
         else for (int c = 0; c < frequency!.Length; c++) if (frequency[c] > 0) Consider(c, frequency[c]);
         int[] palette = new int[top.Count]; for (int i = 0; i < palette.Length; i++) palette[i] = top.Dequeue(); Array.Sort(palette);
         // Reuse frequency as an exact-color -> palette index cache to avoid another unbounded dictionary.
-        var indices = new byte[total]; var counts = new int[palette.Length];
+        var indices = new byte[total]; var counts = new int[palette.Length]; var lookup = new PaletteLookup(palette);
         for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
         {
             int color = ColorAt(x, y); int mapped = sparse is null ? frequency![color] : sparse[color];
-            if (mapped > 0) { mapped = -Nearest(color, palette) - 1; if (sparse is null) frequency![color] = mapped; else sparse[color] = mapped; }
+            if (mapped > 0) { mapped = -lookup.Nearest(color) - 1; if (sparse is null) frequency![color] = mapped; else sparse[color] = mapped; }
             int index = -mapped - 1; indices[y * width + x] = (byte)index; counts[index]++;
         }
         return new PaletteResult(width, height, unique, palette, indices, counts);
+    }
+
+    /// <summary>Indexed 8-bit preview; palette indices and colors are preserved exactly.</summary>
+    public static BitmapSource RenderColors(PaletteResult design)
+    {
+        if (design.Colors.Length is < 1 or > 256 || design.Indices.Length != (long)design.Width * design.Height || design.Indices.Any(i => i >= design.Colors.Length)) throw new ArgumentException("Invalid indexed palette.");
+        var colors = design.Colors.Select(c => Color.FromRgb((byte)(c >> 16), (byte)(c >> 8), (byte)c)).ToArray();
+        var bitmap = BitmapSource.Create(design.Width, design.Height, 96, 96, PixelFormats.Indexed8, new BitmapPalette(colors), design.Indices, design.Width); bitmap.Freeze(); return bitmap;
+    }
+    private sealed class PaletteLookup
+    {
+        private sealed record Node(int Index, int Axis, Node? Left, Node? Right);
+        private readonly int[] palette; private readonly Node? root;
+        public PaletteLookup(int[] palette) { this.palette = palette; root = Build(Enumerable.Range(0, palette.Length).ToArray(), 0); }
+        private int Channel(int index, int axis) => (palette[index] >> (16 - axis * 8)) & 255;
+        private Node? Build(int[] indices, int depth)
+        {
+            if (indices.Length == 0) return null; int axis = depth % 3;
+            Array.Sort(indices, (a, b) => { int c = Channel(a, axis).CompareTo(Channel(b, axis)); return c != 0 ? c : a.CompareTo(b); });
+            int middle = indices.Length / 2; return new Node(indices[middle], axis, Build(indices[..middle], depth + 1), Build(indices[(middle + 1)..], depth + 1));
+        }
+        public int Nearest(int color)
+        {
+            int best = int.MaxValue, bestDistance = int.MaxValue;
+            void Visit(Node? node)
+            {
+                if (node is null) return;
+                int c = palette[node.Index], r = ((color >> 16) & 255) - ((c >> 16) & 255), g = ((color >> 8) & 255) - ((c >> 8) & 255), b = (color & 255) - (c & 255), distance = r*r + g*g + b*b;
+                if (distance < bestDistance || distance == bestDistance && node.Index < best) { bestDistance = distance; best = node.Index; }
+                int diff = ((color >> (16 - node.Axis * 8)) & 255) - Channel(node.Index, node.Axis);
+                Visit(diff <= 0 ? node.Left : node.Right);
+                if (diff * diff <= bestDistance) Visit(diff <= 0 ? node.Right : node.Left);
+            }
+            Visit(root); return best;
+        }
     }
 
     /// <summary>View-only highlight: keep the chosen color intact and mute all other regions.</summary>
@@ -134,20 +169,6 @@ public static class DesignProcessor
             int b = (c & 255) - (color & 255);
             int distance = r * r + g * g + b * b;
             if (distance < bestDistance) { best = i; bestDistance = distance; }
-        }
-        return best;
-    }
-
-    private static int Nearest(int color, int[] palette)
-    {
-        int best = 0, distance = int.MaxValue;
-        for (int i = 0; i < palette.Length; i++)
-        {
-            int r = ((color >> 16) & 255) - ((palette[i] >> 16) & 255);
-            int g = ((color >> 8) & 255) - ((palette[i] >> 8) & 255);
-            int b = (color & 255) - (palette[i] & 255);
-            int d = r * r + g * g + b * b;
-            if (d < distance) { best = i; distance = d; }
         }
         return best;
     }

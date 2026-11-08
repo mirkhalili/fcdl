@@ -90,7 +90,7 @@ public partial class MainWindow : Window
             int initialHeight = Math.Min(DesignProcessor.MaxPixels / initialWidth, Math.Max(1, (int)Math.Floor(result.Image.PixelHeight * scale)));
             await Task.Run(() => next.ApplySize(initialWidth, initialHeight));
             path = filename; projectPath = null; projectCreated = DateTimeOffset.Now; metadata = new(); LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); LoadSimulationSettings(new SimulationSettings()); ClearHistory(); sourceName = Path.GetFileName(filename); current = result; session = next; RebuildPaletteEntries();
-            WidthInput.Text = initialWidth.ToString(); HeightInput.Text = initialHeight.ToString(); ColorInput.Text = "50";
+            WidthInput.Text = initialWidth.ToString(); HeightInput.Text = initialHeight.ToString(); ColorInput.Text = "256";
             FileValue.Text = Path.GetFileName(filename); FormatValue.Text = $"{result.Format} · {result.Image.Format.BitsPerPixel} bpp";
             zoom = 1; SetZoom(1); stage = Stage.Size; projectDirty = true; ShowStage();
             StatusText.Text = scale < 1 ? T("تصویر بزرگ بود؛ اندازه اولیه متناسب با سقف ۴ میلیون پیکسل کاهش یافت.", "Image was scaled to fit the 4-million-pixel processing limit.") : T("اندازه اولیه اعمال شد؛ در صورت نیاز آن را تغییر دهید.", "Original dimensions applied; change them if needed.");
@@ -130,7 +130,7 @@ public partial class MainWindow : Window
         SimulationSaveButton.IsEnabled = !busy && stage == Stage.Simulation && simulationPreview is not null && simulationMap is not null;
         MachinePreviewButton.IsEnabled = !busy && stage == Stage.Weft && MachineInput() is not null;
         SelvedgePreviewButton.IsEnabled = !busy && stage == Stage.Selvedge && MachineInput() is not null;
-        MachineExportButton.IsEnabled = !busy && stage == Stage.Machine && (machineFormatIndex is 1 or 4) && session is not null &&
+        MachineExportButton.IsEnabled = !busy && stage == Stage.Machine && (machineFormatIndex is 1 or 4 or 5) && session is not null &&
             (MachineUseSource.IsChecked == true || (session.CanSave && !SizeDirty && !ColorsDirty));
         SaveSizeButton.IsEnabled = !busy && stage == Stage.Size && session?.Resized is not null && !SizeDirty;
         SaveColorButton.IsEnabled = !busy && stage == Stage.Colors && session?.ColorPreview is not null && !SizeDirty && !ColorsDirty;
@@ -169,7 +169,7 @@ public partial class MainWindow : Window
             current = new ImageResult(session.Source, 1, 0, "SAM");
             WidthInput.Text = state.WidthInput; HeightInput.Text = state.HeightInput; ColorInput.Text = state.ColorInput;
             english = state.English; stage = Enum.Parse<Stage>(state.Stage); machineFormatIndex = state.MachineFormatIndex;
-            switch (machineFormatIndex) { case 0: FormatJC4.IsChecked = true; break; case 1: FormatJC5.IsChecked = true; break; case 2: FormatZC5.IsChecked = true; break; case 3: FormatEP.IsChecked = true; break; case 4: FormatJC6.IsChecked = true; break; }
+            switch (machineFormatIndex) { case 0: FormatJC4.IsChecked = true; break; case 1: FormatJC5.IsChecked = true; break; case 2: FormatZC5.IsChecked = true; break; case 3: FormatEP.IsChecked = true; break; case 4: FormatJC6.IsChecked = true; break; case 5: FormatBonas.IsChecked = true; break; }
             RebuildPaletteEntries(state.PatternNames);
             FileValue.Text = Path.GetFileName(filename); FormatValue.Text = "SAM"; SetZoom(1); projectDirty = false; UpdateLabels(); ShowStage();
             StatusText.Text = T("پروژه باز شد؛ تصویر و پترن‌ها در پروژه قرار دارند.", "Project opened; the image and patterns are embedded."); loaded = true;
@@ -331,8 +331,8 @@ public partial class MainWindow : Window
     private async Task ApplyColorsAsync(bool confirm)
     {
         if (busy || session?.Resized is null || SizeDirty) return;
-        if (!NumberInput.TryInt(ColorInput.Text, out int colors) || colors is < 1 or > 50)
-        { MessageBox.Show(this, T("تعداد رنگ باید بین ۱ تا ۵۰ باشد.", "The color count must be between 1 and 50.")); return; }
+        if (!NumberInput.TryInt(ColorInput.Text, out int colors) || colors is < 1 or > 256)
+        { MessageBox.Show(this, T("تعداد رنگ باید بین ۱ تا ۲۵۶ باشد.", "The color count must be between 1 and 256.")); return; }
         if (confirm && !ConfirmPatternLoss()) return;
         var before = CaptureHistory(); SetBusy(true); StatusText.Text = T("در حال بررسی رنگ‌ها…", "Analyzing colors…");
         try
@@ -1145,9 +1145,9 @@ public partial class MainWindow : Window
     private async void MachinePreview_Click(object sender, RoutedEventArgs e) { if (!busy) await ComposeMachineAsync(); }
     private async void MachineExport_Click(object sender, RoutedEventArgs e)
     {
-        if (busy || machineFormatIndex is not (1 or 4) || session is null || path is null) return;
+        if (busy || machineFormatIndex is not (1 or 4 or 5) || session is null || path is null) return;
         var composed = await ComposeMachineAsync(); if (composed is null) return;
-        string format = machineFormatIndex == 4 ? "JC6" : "JC5";
+        string format = machineFormatIndex == 4 ? "JC6" : machineFormatIndex == 5 ? "Bonas JC5" : "JC5";
         bool overwriteColumns = !appliedWeft.AbsoluteLayout && appliedWeft.BoxEnabled && appliedWeft.BoxPlacement == 2;
         string warning = T($"خروجی {format} آزمایشی و تک‌ناحیه‌ای است: {composed.Image.PixelWidth} قلاب و {composed.Image.PixelHeight} رج. بیت ۱ سیاه است. " + (overwriteColumns ? "قلاب‌های فرمان محتوای ستون‌های موجود را جایگزین می‌کنند. " : "") + "توالی و نگاشت منطقی را در پیش‌نمایش و اتصال و قطبیت قلاب‌های واقعی را با متخصص دستگاه بررسی کنید. ادامه می‌دهید؟",
             $"Experimental single-area {format}: {composed.Image.PixelWidth} hooks and {composed.Image.PixelHeight} picks. Bit 1 is black. " + (overwriteColumns ? "Signal hooks replace existing columns. " : "") + "Verify the preview, physical wiring and signal polarity with the machine specialist. Continue?");
@@ -1185,7 +1185,7 @@ public partial class MainWindow : Window
             var next = new WorkflowSession(image); next.ApplySize(image.PixelWidth, image.PixelHeight);
             session = next; path = filename; projectPath = null; projectCreated = DateTimeOffset.Now; metadata = new(); LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); LoadSimulationSettings(new SimulationSettings()); ClearHistory(); sourceName = Path.GetFileName(path);
             current = new ImageResult(image, 1, 0, "JC5 (experimental)"); RebuildPaletteEntries();
-            WidthInput.Text = image.PixelWidth.ToString(); HeightInput.Text = image.PixelHeight.ToString(); ColorInput.Text = "50";
+            WidthInput.Text = image.PixelWidth.ToString(); HeightInput.Text = image.PixelHeight.ToString(); ColorInput.Text = "256";
             FileValue.Text = sourceName; FormatValue.Text = "JC5 · experimental"; stage = Stage.Size; SetZoom(1); projectDirty = true; ShowStage();
             StatusText.Text = T("JC5 باز شد؛ از مرحله اندازه می‌توانید نقشه را BMP یا TIFF ذخیره کنید. داده‌های غیرتصویری و بیت‌های اضافی حفظ نمی‌شوند.", "JC5 opened; save the hook map as BMP or TIFF from the size stage. Non-image data and padding bits are not preserved.");
         }
@@ -1253,15 +1253,14 @@ public partial class MainWindow : Window
                 reportAnalysis = await Task.Run(() => DesignAnalysis.Analyze(DesignAnalysis.ReadBinary(fabric), fabric.PixelWidth, fabric.PixelHeight));
             }
             string name = projectPath is null ? T("پروژه جدید", "New project") : Path.GetFileNameWithoutExtension(projectPath);
-            var page = DesignReport.CreatePage(currentSession, entries, name, projectCreated, english, metadata, setup, reportAnalysis, reportMap); reportPages.Add(DesignReport.Render(page));
+            for (int palettePage = 0; palettePage < (entries.Count + 49) / 50; palettePage++) { var page = DesignReport.CreatePage(currentSession, entries, name, projectCreated, english, metadata, setup, reportAnalysis, reportMap, palettePage); reportPages.Add(DesignReport.Render(page)); }
             if (currentSession.CanSave && currentSession.PatternPreview is { } woven)
             {
                 var simSettings = ReadSimulationSettings(); FabricSimulation.Validate(simSettings);
                 var simMap = await Task.Run(() => MachineComposer.Compose(woven, setup, false)); var fabric = CompositionView.Fabric(simMap);
-                BitmapSource simulated;
-                if (simSettings.Mode == 2) simulated = simulationPreview ?? throw new InvalidOperationException(T("ابتدا نمای 3D را در شبیه‌سازی ثبت کنید.", "Capture the 3D simulation view first."));
-                else simulated = await Task.Run(() => FabricSimulation.Render(fabric, simSettings, simMap.RowWefts));
-                foreach (var simPage in DesignReport.CreateSimulationPages(simulated, simSettings, FabricSimulation.WeftIds(appliedWeft), english)) reportPages.Add(DesignReport.Render(simPage));
+                var normalSettings = simSettings with { Mode = 0 };
+                var simulated = await Task.Run(() => FabricSimulation.Render(fabric, normalSettings, simMap.RowWefts));
+                foreach (var simPage in DesignReport.CreateSimulationPages(simulated, normalSettings, FabricSimulation.WeftIds(appliedWeft), english)) reportPages.Add(DesignReport.Render(simPage));
             }
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
@@ -1293,8 +1292,8 @@ public partial class MainWindow : Window
         SizeTitle.Text = T("مرحله ۱ · تغییر اندازه", "Stage 1 · Resize"); SizeHint.Text = T("ابعاد خروجی را وارد و اعمال کنید. تصویر سمت چپ نتیجه همین مرحله است.", "Set and apply the output dimensions; the preview shows the result.");
         WidthLabel.Text = T("عرض (پیکسل)", "Width (px)"); HeightLabel.Text = T("ارتفاع (پیکسل)", "Height (px)"); ApplySizeButton.Content = T("اعمال اندازه", "Apply size"); SaveSizeButton.Content = T("ذخیره خروجی اندازه", "Save resized image"); ToColorButton.Content = T("مرحله بعد: رنگ ←", "Next: colors →");
         SizeNotice.Text = T("تصویر پیکسلی با نزدیک‌ترین همسایه و PDF/AI از منبع برداری بدون هموارسازی تغییر اندازه می‌یابند؛ نسبت ابعاد خودکار حفظ نمی‌شود.", "Raster images use nearest-neighbor; PDF/AI are rerendered from vectors without smoothing. Aspect ratio is not locked.");
-        ColorTitle.Text = T("مرحله ۲ · کاهش رنگ", "Stage 2 · Colors"); ColorHint.Text = T("ورودی این مرحله تصویر تغییراندازه‌یافته است؛ بیش از ۵۰ رنگ به‌طور خودکار کاهش می‌یابد.", "Input is the resized image; over 50 colors are reduced automatically.");
-        ColorLimitLabel.Text = T("حداکثر تعداد رنگ (۱ تا ۵۰)", "Maximum colors (1–50)"); ApplyColorButton.Content = T("اعمال تعداد رنگ", "Apply color limit"); SaveColorButton.Content = T("ذخیره خروجی رنگ", "Save color image"); ToPatternButton.Content = T("مرحله بعد: بافت ←", "Next: patterns →");
+        ColorTitle.Text = T("مرحله ۲ · کاهش رنگ", "Stage 2 · Colors"); ColorHint.Text = T("ورودی این مرحله تصویر تغییراندازه‌یافته است؛ ابتدا تا ۲۵۶ رنگ سازگار با تصویر نمایش داده می‌شود؛ سپس تعداد را کاهش دهید.", "Input is the resized image; up to 256 adaptive colors are shown first; reduce the count as needed.");
+        ColorLimitLabel.Text = T("حداکثر تعداد رنگ (۱ تا ۲۵۶)", "Maximum colors (1–256)"); ApplyColorButton.Content = T("اعمال تعداد رنگ", "Apply color limit"); SaveColorButton.Content = T("ذخیره خروجی رنگ", "Save color image"); ToPatternButton.Content = T("مرحله بعد: بافت ←", "Next: patterns →");
         SaveButton.Content = T("ذخیره تصویر", "Save image");
         ColorSelectionHint.Text = T("برای ادغام، دو رنگ را انتخاب کنید.", "Select two colors to merge."); DeleteColorButton.Content = T("حذف رنگ انتخابی", "Remove selected"); MergeColorButton.Content = T("ادغام دو رنگ", "Merge two colors");
         BankTitle.Text = T("بانک و طراحی بافت", "Weave bank and editor"); BankHint.Text = T("یک بافت انتخاب کنید یا روی شبکه ترسیم کنید.", "Select a weave or draw on the grid."); BankBackButton.Content = T("بازگشت", "Back");
@@ -1304,7 +1303,7 @@ public partial class MainWindow : Window
         RandomWeaveButton.Content = T("بافت تصادفی", "Random weaves"); BankListTitle.Text = T("بافت‌های بانک", "Weave library"); BankUseButton.Content = T("اختصاص به رنگ", "Apply to color"); BankEditButton.Content = T("ویرایش انتخاب‌شده", "Edit selection"); BankImportButton.Content = T("افزودن از تصویر یا PDF", "Import image or PDF"); BankDeleteButton.Content = T("حذف از بانک", "Delete from bank");
         UpdateWindowTitle();
         DeveloperText.Text = T("برنامه‌نویس: میرخلیلی", "Developer: Mirkhalili");
-        MachineTitle.Text = T("خروجی ماشین", "Machine output"); MachineHint.Text = T("JC5 و JC6 تک‌ناحیه‌ای بر اساس نمونه DesignScope به‌صورت آزمایشی فعال هستند؛ سایر قالب‌ها پشتیبانی نمی‌شوند.", "Experimental single-area JC5 and JC6 based on DesignScope samples; other formats are not supported.");
+        MachineTitle.Text = T("خروجی ماشین", "Machine output"); MachineHint.Text = T("JC5 و JC6 و نمایه Bonas JC5 تک‌ناحیه‌ای بر اساس نمونه‌ها آزمایشی‌اند؛ سازگاری دستگاه را مستقل بررسی کنید. EP پشتیبانی نمی‌شود.", "Experimental single-area JC5, JC6 and Bonas JC5 sample profile; verify with your controller. EP is unsupported.");
         MachineFormatLabel.Text = T("قالب هدف", "Target format"); MachineRedAsBlack.Content = T("نمایش بافت به رنگ قرمز / قرمز = بیت فعال", "Display active pixels in red / red = active"); MachineLegacyImport.Content = T("خواندن فایل خروجی نسخه قدیمی ۰۰۶", "Import a file created by old version 006"); MachineUseSource.Content = T("استفاده از نقشه اصلی به جای نتیجه بافت", "Use original hook map instead of pattern result"); MachineExportButton.Content = T("تبدیل و ذخیره فایل ماشین", "Convert and save loom file"); MachineImportButton.Content = T("انتخاب فایل ماشین", "Select loom file");
         SelvedgeTitle.Text = T("تعریف کناره", "Selvedges"); WeftTitle.Text = T("تعریف پودگذاری", "Weft / box motion"); MachineSetupHint.Text = T("کناره‌ها به عرض طرح اضافه می‌شوند؛ برای هر سمت، پهنا و بافت بانک را انتخاب کنید.", "Selvedges are added to the design width; select a width and library weave for each side.");
         WeftHint.Text = T("شماره ستون‌ها از ۱ و از چپ است؛ ستون‌های خالی سفید می‌مانند.", "Columns are numbered from 1 at the left; unused columns stay white."); TotalHooksLabel.Text = T("تعداد کل تارها (خالی = خودکار)", "Total hooks (blank = automatic)"); DesignStartLabel.Text = T("شروع طرح (خالی = پس از کناره)", "Design start (blank = after selvedge)"); WeftCountLabel.Text = T("تعداد پود", "Number of wefts"); WeftStartLabel.Text = T("شروع پود از ستون", "Weft starting column"); SelvedgePreviewButton.Content = T("پیش‌نمایش کناره‌ها", "Preview selvedges"); LeftSelvedgeBank.Content = T("انتخاب کناره چپ از بانک", "Choose left weave from bank"); RightSelvedgeBank.Content = T("انتخاب کناره راست از بانک", "Choose right weave from bank"); LegacySetup.Header = T("تنظیمات قدیمی پروژه", "Legacy project settings"); UpgradeLayoutButton.Content = T("تغییر به چیدمان جدید", "Switch to new layout");

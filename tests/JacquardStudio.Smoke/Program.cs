@@ -67,14 +67,14 @@ internal static class Program
             using (var zip = ZipFile.Open(legacySam, ZipArchiveMode.Update))
             {
                 var entryManifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(entryManifest.Open())) json = reader.ReadToEnd();
-                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":11", "\"Version\":1"));
+                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":1"));
             }
             Check(ProjectFile.Load(legacySam).Session.CanSave, "legacy SAM version one loads");
             string legacyV2 = Path.Combine(dir, "legacy-v2.sam"); File.Copy(projectPath, legacyV2);
             using (var zip = ZipFile.Open(legacyV2, ZipArchiveMode.Update))
             {
                 var old = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(old.Open())) json = reader.ReadToEnd();
-                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":11", "\"Version\":2"));
+                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":2"));
             }
             Check(ProjectFile.Load(legacyV2).Session.CanSave, "legacy SAM version two loads");
             Expect<IOException>(() => ProjectFile.Save(projectPath, projectState, new[] { projectPath }));
@@ -148,6 +148,7 @@ internal static class Program
             var referenceMap = ImageLoader.Load(Path.Combine(dir, "baft.bmp"), 0).Image;
             Expect<InvalidDataException>(() => Jc5Codec.Encode(referenceMap, "test.jc5"));
             byte[] generated = Jc5Codec.Encode(referenceMap, "test.jc5", true);
+            Check(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(dir, "machin.jc5")))).Equals("A378D4FA18D1641BBB7453AC3BE8B35D4D1B1CCB0FE7F5BFA97E5392693E04C7"), "Bonas user sample is the same JC5 fixture, independently identified");
             var refBytes = new byte[1200 * 1200 * 4];
             new FormatConvertedBitmap(referenceMap, PixelFormats.Bgra32, null, 0).CopyPixels(refBytes, 1200 * 4, 0);
             foreach (string file in new[] { "machin.jc5", "machin.jc6" })
@@ -203,7 +204,7 @@ internal static class Program
             var mergedDown = DesignProcessor.MergeColors(multi, 2, 0);
             Check(mergedDown.Indices.SequenceEqual(new byte[] {0, 1, 0, 0, 0}) && mergedDown.Counts.SequenceEqual(new[] {4, 1}), "merge handles source after target");
             Check(MachineFileNaming.SuggestedName(4) == "design6.jc5" && MachineFileNaming.ValidDestination("design6.jc5", 4) && MachineFileNaming.ValidDestination("طرح۶.jc5", 4), "JC6 uses jc5 extension with 6");
-            Check(!MachineFileNaming.ValidDestination("design.jc5", 4) && !MachineFileNaming.ValidDestination("design6.jc6", 4) && MachineFileNaming.ValidDestination("design.jc5", 1), "JC6 name and extension validation");
+            Check(!MachineFileNaming.ValidDestination("design.jc5", 4) && !MachineFileNaming.ValidDestination("design6.jc6", 4) && MachineFileNaming.ValidDestination("design.jc5", 1) && MachineFileNaming.ValidDestination("bonas.jc5", 5), "JC6 and Bonas naming validation");
             var colorStats = new PaletteEntry { ColorCode = "#ABCDEF", PixelCount = 25, Percent = 25.0 };
             Check(colorStats.ColorCode == "#ABCDEF" && colorStats.PixelCount == 25 && colorStats.Percent == 25.0, "color stats fields");
             // Per-user bank writes self-contained immutable copies and survives a new bank instance.
@@ -246,10 +247,10 @@ internal static class Program
             ProjectFile.Save(colorProject, new ProjectState(colorProjectSession, "sample.bmp", "3", "2", "50", "Patterns", false, 1, colorProjectSession.Patterns.Select(_ => (string?)"composite").ToArray()), Array.Empty<string>());
             Check(ProjectFile.Load(colorProject).Session.Patterns[0]!.WeftColors!.SequenceEqual(restoredComposite.WeftColors), "composite colors survive SAM v8");
             string colorV7 = Path.Combine(dir, "colored-v7.sam"); File.Copy(colorProject, colorV7);
-            using (var zip = ZipFile.Open(colorV7, ZipArchiveMode.Update)) { var coloredManifestEntry = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestEntry.Open())) json = r.ReadToEnd(); coloredManifestEntry.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":11", "\"Version\":7")); }
+            using (var zip = ZipFile.Open(colorV7, ZipArchiveMode.Update)) { var coloredManifestEntry = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestEntry.Open())) json = r.ReadToEnd(); coloredManifestEntry.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":7")); }
             Check(ProjectFile.Load(colorV7).Session.Patterns[0]!.WeftColors is null, "SAM v7 still loads without new visual metadata");
             string colorV8 = Path.Combine(dir, "colored-v8.sam"); File.Copy(colorProject, colorV8);
-            using (var zip = ZipFile.Open(colorV8, ZipArchiveMode.Update)) { var coloredManifestV8 = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestV8.Open())) json = r.ReadToEnd(); coloredManifestV8.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":11", "\"Version\":8")); }
+            using (var zip = ZipFile.Open(colorV8, ZipArchiveMode.Update)) { var coloredManifestV8 = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestV8.Open())) json = r.ReadToEnd(); coloredManifestV8.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":8")); }
             Check(ProjectFile.Load(colorV8).Session.Patterns[0]!.WeftColors!.SequenceEqual(restoredComposite.WeftColors), "SAM v8 composite colors remain compatible");
 
             Check(Math.Abs(YarnGeometry.ToTex(90, 2) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 1) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 4) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(59.0541, 3) - 10) < .0001, "yarn count conversions");
@@ -346,18 +347,23 @@ internal static class Program
             var flat = FabricSimulation.Render(image, simSettings with { Mode = 0 }); var relief = FabricSimulation.Render(image, simSettings with { Mode = 1 });
             var flatBytes = new byte[flat.PixelWidth * flat.PixelHeight * 4]; var reliefBytes = new byte[flatBytes.Length]; flat.CopyPixels(flatBytes, flat.PixelWidth * 4, 0); relief.CopyPixels(reliefBytes, relief.PixelWidth * 4, 0);
             Check(!flatBytes.SequenceEqual(reliefBytes), "flat and relief rendering are distinct");
+            Check(FabricSimulation.WarpOnTop(new byte[]{0,255}, 2, 0, 0, 0) == false && FabricSimulation.WarpOnTop(new byte[]{0,255}, 2, 1, 0, 0), "black places weft on top and white places warp on top");
             var structure = new SimulationSettings(WarpColor:"#CC0000", WeftColor:"#00AA00", Mode:0, WarpCount:"30", WarpDensity:"40", WeftDensity:"40");
             var oneCross = BitmapSource.Create(1,1,96,96,PixelFormats.Gray8,null,new byte[]{0},1); oneCross.Freeze();
             byte[] View(SimulationSettings value) { var im = FabricSimulation.Render(oneCross, value); var bytes = new byte[im.PixelWidth * im.PixelHeight * 4]; im.CopyPixels(bytes, im.PixelWidth * 4, 0); return bytes; }
-            var thick = View(structure); Check(Enumerable.Range(0, thick.Length / 4).Any(i => thick[i*4] == 28 && thick[i*4+1] == 28 && thick[i*4+2] == 28), "reference-style normal fabric has visible yarn outlines at default scale"); var thin = View(structure with { WarpCount="5" });
+            var thick = View(structure); var thin = View(structure with { WarpCount="5" });
             Check(!thick.SequenceEqual(thin), "warp yarn count changes rendered width");
             Check(!thick.SequenceEqual(View(structure with { Wefts = new[]{new SimulatedYarn("1",0,"#00AA00","5")} })), "weft yarn count changes rendered width");
             Check(!thick.SequenceEqual(View(structure with { MaterialDensity="2" })), "effective density changes rendered diameter");
             var differentSpacing = FabricSimulation.Render(image, structure with { WarpDensity="20", WeftDensity="40" });
             Check(differentSpacing.PixelWidth == 96 && differentSpacing.PixelHeight == 32, "fabric aspect ratio follows physical warp and weft spacing");
             var noGap = View(structure with { WarpDensity="50", WeftDensity="50" }); var moreGap = View(structure with { WarpDensity="20", WeftDensity="20" });
-            int White(byte[] b) => Enumerable.Range(0,b.Length/4).Count(i => b[i*4] >= 248 && b[i*4+1] >= 248 && b[i*4+2] >= 248);
+            int White(byte[] b) => Enumerable.Range(0,b.Length/4).Count(i => b[i*4] >= 230 && b[i*4+1] >= 230 && b[i*4+2] >= 230);
             Check(White(moreGap) > White(noGap), "lower thread density creates visible openings");
+            var crossingMap = BitmapSource.Create(2,1,96,96,PixelFormats.Gray8,null,new byte[]{0,255},2); var crossing = FabricSimulation.Render(crossingMap, structure); var crossingBytes = new byte[crossing.PixelWidth * crossing.PixelHeight * 4]; crossing.CopyPixels(crossingBytes, crossing.PixelWidth * 4, 0);
+            int weftPixel = (8 * crossing.PixelWidth + 8) * 4, warpPixel = (8 * crossing.PixelWidth + 24) * 4;
+            Check(crossingBytes[weftPixel+1] > crossingBytes[weftPixel+2] && crossingBytes[warpPixel+2] > crossingBytes[warpPixel+1], "normal simulation draws black map pixels as weft and white as warp");
+            int nearJoin = (8 * crossing.PixelWidth + 15) * 4; Check(crossingBytes[nearJoin+1] < crossingBytes[weftPixel+1], "weft softly darkens approaching an overlying warp");
             Check(Math.Abs(FabricSimulation.Number("۱٫۵") - 1.5) < .001, "Persian decimal input");
             Expect<ArgumentException>(() => FabricSimulation.Validate(structure with { WarpDensity="0" }));
             Expect<ArgumentException>(() => FabricSimulation.Validate(structure with { Wefts = new[]{new SimulatedYarn("1",0,"#00AA00","0")} }));
@@ -370,11 +376,12 @@ internal static class Program
             var v10Settings = simSettings with { Mode = 2 }; string v10File = Path.Combine(dir, "sim-v10.sam");
             ProjectFile.Save(v10File, new ProjectState(autoSession,"sample.bmp","3","2","50","Simulation",false,1,autoSession.Patterns.Select(_ => (string?)"pattern").ToArray(), Simulation:v10Settings), Array.Empty<string>());
             Check(ProjectFile.Load(v10File).Simulation!.Mode == 2, "SAM v10 preserves simulation mode");
-            using (var zip = ZipFile.Open(v10File, ZipArchiveMode.Update)) { var old = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(old.Open())) json = r.ReadToEnd(); old.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":11", "\"Version\":9")); }
+            using (var zip = ZipFile.Open(v10File, ZipArchiveMode.Update)) { var old = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(old.Open())) json = r.ReadToEnd(); old.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":9")); }
             Check(ProjectFile.Load(v10File).Simulation!.Mode == 1, "SAM v9 defaults to the legacy relief appearance");
             var multiSettings = simSettings with { WarpCount = "۲۰", WarpUnit = 3, WarpDensity = "۳۵", WeftDensity = "۲۵", MaterialDensity = "۰٫۸", Wefts = new[] { new SimulatedYarn("1", 1, "#FF0000", "40", 0), new SimulatedYarn("2", 2, "#00FF00", "30", 3), new SimulatedYarn("3", 0, "#0000FF", "150", 1) } };
             var whiteMap = BitmapSource.Create(1, 2, 96, 96, PixelFormats.Gray8, null, new byte[]{255,255}, 1);
-            var multiImage = FabricSimulation.Render(whiteMap, multiSettings with { Weave = 0 }, new[]{"1","2"});
+            var blackMap = BitmapSource.Create(1, 2, 96, 96, PixelFormats.Gray8, null, new byte[]{0,0}, 1);
+            var multiImage = FabricSimulation.Render(blackMap, multiSettings with { Weave = 0 }, new[]{"1","2"});
             var simColors = new byte[multiImage.PixelWidth * multiImage.PixelHeight * 4]; multiImage.CopyPixels(simColors, multiImage.PixelWidth * 4, 0);
             int redIndex = ((multiImage.PixelHeight / 4) * multiImage.PixelWidth + multiImage.PixelWidth / 2) * 4, greenIndex = ((multiImage.PixelHeight * 3 / 4) * multiImage.PixelWidth + multiImage.PixelWidth / 2) * 4;
             Check(simColors[redIndex+2] > simColors[redIndex+1] && simColors[greenIndex+1] > simColors[greenIndex+2], "applied row sequence chooses the corresponding weft color");
@@ -395,7 +402,7 @@ internal static class Program
             using (var zip = ZipFile.Open(simV6, ZipArchiveMode.Update))
             {
                 var manifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(manifest.Open())) json = reader.ReadToEnd();
-                manifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":11", "\"Version\":6"));
+                manifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":6"));
             }
             Check(ProjectFile.Load(simV6).Simulation!.Wefts is null, "SAM v6 uses its original single-weft fallback");
             var invalidPosition = new MachineSetup(BoxEnabled:true, AbsoluteLayout:true, DesignStart:"3", WeftStart:PositionNumbers.ToStored("0"), WeftCount:"1"); Expect<ArgumentException>(() => MachineComposer.Compose(image, invalidPosition));
@@ -470,7 +477,7 @@ internal static class Program
             using (var zip = ZipFile.Open(v4File, ZipArchiveMode.Update))
             {
                 var item = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(item.Open())) json = reader.ReadToEnd();
-                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":11", "\"Version\":4"));
+                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":12", "\"Version\":4"));
             }
             var oldV4 = ProjectFile.Load(v4File); Check(oldV4.DraftWeft is null && oldV4.Machine!.AbsoluteLayout && DesignAnalysis.ReadBinary(MachineComposer.Compose(image, oldV4.Machine).Image).SequenceEqual(positionedPixels), "SAM v4 absolute settings remain applied");
             var composedState = new ProjectState(bankSession,"sample.bmp","3","2","50","Machine",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,setup);
@@ -501,6 +508,16 @@ internal static class Program
             var manyImage = BitmapSource.Create(10, 10, 96, 96, PixelFormats.Bgra32, null, many, 40);
             var reduced = DesignProcessor.Prepare(manyImage, 10, 10, 50);
             Check(reduced.SourceColorCount == 100 && reduced.Colors.Length <= 50, "automatic reduction to <=50");
+            var rgb256 = Enumerable.Range(0,256).SelectMany(i => new byte[] { (byte)i, (byte)(255-i), (byte)(i ^ 93), 255 }).ToArray();
+            var indexedInput = BitmapSource.Create(256,1,96,96,PixelFormats.Bgra32,null,rgb256,1024); indexedInput.Freeze(); var indexedSession = new WorkflowSession(indexedInput); indexedSession.ApplySize(256,1); indexedSession.ApplyColors(256);
+            Check(indexedSession.Palette!.Colors.Length == 256 && indexedSession.ColorPreview!.Format == PixelFormats.Indexed8, "initial indexed 8-bit palette includes 256 colors");
+            var indexedPixels = new byte[rgb256.Length]; new FormatConvertedBitmap(indexedSession.ColorPreview, PixelFormats.Bgra32, null, 0).CopyPixels(indexedPixels,1024,0); Check(indexedPixels.SequenceEqual(rgb256), "initial indexed preview preserves every original color");
+            indexedSession.AssignPatterns(Enumerable.Range(0,256).Select(_ => new WeavePattern(1,1,new byte[]{0})).ToArray()); indexedSession.TogglePixel(0,0);
+            string indexedPath = Path.Combine(dir,"indexed256.sam"); ProjectFile.Save(indexedPath,new ProjectState(indexedSession,"256.bmp","256","1","256","Patterns",false,5,Enumerable.Repeat<string?>("pattern",256).ToArray(), Machine:setup),Array.Empty<string>());
+            var indexedLoaded = ProjectFile.Load(indexedPath); Check(indexedLoaded.MachineFormatIndex == 5 && indexedLoaded.Session.Palette!.Colors.Length == 256 && indexedLoaded.Session.Patterns.All(p => p is not null), "256 assigned patterns and Bonas JC5 profile survive SAM");
+            var allReduced = DesignProcessor.Prepare(indexedInput,256,1,17);
+            for (int i=0;i<256;i++) { int rgb = (rgb256[4*i+2]<<16)|(rgb256[4*i+1]<<8)|rgb256[4*i]; int Distance(int c) { int r=((rgb>>16)&255)-((c>>16)&255), g=((rgb>>8)&255)-((c>>8)&255), bl=(rgb&255)-(c&255); return r*r+g*g+bl*bl; } int expected = Enumerable.Range(0,allReduced.Colors.Length).OrderBy(k => Distance(allReduced.Colors[k])).ThenBy(k => k).First(); Check(allReduced.Indices[i] == expected, "palette acceleration equals brute-force nearest color"); }
+
             var fiftyImage = BitmapSource.Create(50, 1, 96, 96, PixelFormats.Bgra32, null, many.Take(200).ToArray(), 200);
             var fullProject = new WorkflowSession(fiftyImage); fullProject.ApplySize(50,1); fullProject.ApplyColors(50);
             Check(fullProject.Palette!.Colors.Length == 50, "maximum palette fixture");
@@ -510,7 +527,7 @@ internal static class Program
             Check(ProjectFile.Load(fullProjectPath).Session.PixelOverrides![0] == 2 && ProjectFile.Load(fullProjectPath).Machine?.LeftPattern is not null, "50 weaves, overrides and two selvedges fit SAM entry limit");
             var less = DesignProcessor.Prepare(manyImage, 10, 10, 3);
             Check(less.Colors.Length <= 3 && less.Counts.Sum() == 100, "requested color reduction");
-            Expect<ArgumentOutOfRangeException>(() => DesignProcessor.Prepare(manyImage, 10, 10, 51));
+            Expect<ArgumentOutOfRangeException>(() => DesignProcessor.Prepare(manyImage, 10, 10, 257));
             Expect<ArgumentOutOfRangeException>(() => DesignProcessor.Prepare(manyImage, 4001, 1000, 5));
             var transparent = BitmapSource.Create(1, 1, 96, 96, PixelFormats.Bgra32, null, new byte[] {0, 0, 0, 0}, 4);
             Check(DesignProcessor.Prepare(transparent, 1, 1, 1).Colors.Single() == 0xFFFFFF, "transparent pixels become white without blending");
@@ -543,7 +560,7 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
-            Check(AppVersion.Display == "023.9.0.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "024.10.0.1-a1", "QAVNS version from version.txt");
             var reportEntries = bankSession.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = bankSession.Palette.Counts[index], Percent = 100d * bankSession.Palette.Counts[index] / bankSession.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; if (bankSession.Patterns[index] is { } p) e.Restore("sample", p); return e; }).ToArray();
             var fullEntries = fullProject.Palette!.Colors.Select((color, index) => { var e = new PaletteEntry { Index = index, ColorCode = $"#{color:X6}", PixelCount = fullProject.Palette.Counts[index], Percent = 100d * fullProject.Palette.Counts[index] / fullProject.Palette.Indices.Length, Brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color)) }; e.Restore("sample", fullProject.Patterns[index]!); return e; }).ToArray();
             var fullMap = MachineComposer.Compose(fullProject.PatternPreview!, new MachineSetup("2", "1", edgeLeft, edgeRight, "left", "right", AbsoluteLayout: true, TotalHooks: "54", DesignStart: "3"));
@@ -554,6 +571,9 @@ internal static class Program
             var reportColumns = reportBody.Children.OfType<System.Windows.Controls.Grid>().Single();
             var reportRows = reportColumns.Children.OfType<System.Windows.Controls.StackPanel>().SelectMany(x => x.Children.OfType<System.Windows.Controls.Grid>()).ToArray();
             Check(reportRows.Length == 50 && reportRows.All(r => r.TransformToAncestor(fullPage).TransformBounds(new System.Windows.Rect(r.RenderSize)).Bottom <= fullPage.ActualHeight - 35), "all fifty report rows fit above footer with range section");
+            var indexedEntries = indexedSession.Palette!.Colors.Select((color,index) => new PaletteEntry { Index=index, Brush=new SolidColorBrush(Color.FromRgb((byte)(color>>16),(byte)(color>>8),(byte)color)) }).ToArray();
+            int reportedColors = 0; for (int pageNo=0;pageNo<6;pageNo++) { var colorPage=(System.Windows.Controls.Grid)DesignReport.CreatePage(indexedSession,indexedEntries,"256",null,true,palettePage:pageNo); DesignReport.Render(colorPage); var body=colorPage.Children.OfType<System.Windows.Controls.Grid>().Single(x => System.Windows.Controls.Grid.GetRow(x)==3); var cols=body.Children.OfType<System.Windows.Controls.Grid>().Single(); reportedColors += cols.Children.OfType<System.Windows.Controls.StackPanel>().Sum(x => x.Children.OfType<System.Windows.Controls.Grid>().Count()); }
+            Check(reportedColors == 256, "all 256 palette entries appear on paginated report pages");
             Check(DesignReport.PersianDate(new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero)) == "1403/01/01", "solar Hijri report date");
             Check(DesignReport.PersianDate(null).Contains("نامشخص"), "legacy creation date not invented");
             var reportImage = DesignReport.Render(DesignReport.CreatePage(bankSession, reportEntries, "نمونه", new DateTimeOffset(2024, 3, 20, 12, 0, 0, TimeSpan.Zero), false, machine: absolute, analysis: fabricStats, composition: positioned));
@@ -568,6 +588,8 @@ internal static class Program
             var reportIds = Enumerable.Range(1, 50).Select(x => x.ToString()).ToArray();
             var simulationPages = DesignReport.CreateSimulationPages(multiImage, multiSettings, reportIds, false);
             Check(simulationPages.Count == 2, "all weft yarn metadata is paginated");
+            int totalYarnRows = 0; foreach (System.Windows.Controls.Grid yarnPage in simulationPages) { DesignReport.Render(yarnPage); var table = yarnPage.Children.OfType<System.Windows.Controls.Grid>().Single(x => System.Windows.Controls.Grid.GetRow(x) == 3); totalYarnRows += table.Children.OfType<System.Windows.Controls.StackPanel>().Sum(x => x.Children.OfType<System.Windows.Controls.Grid>().Count() - 1); }
+            Check(totalYarnRows == 51, "yarn table includes warp and all fifty wefts");
             var secondPage = DesignReport.Render(simulationPages[0]); string multiPdf = Path.Combine(dir, "multi-report.pdf");
             DesignReport.SavePdf(new[]{reportImage, secondPage}, multiPdf, Array.Empty<string>());
             Check(System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(multiPdf)).Contains("/Count 2"), "multi-page simulation PDF");

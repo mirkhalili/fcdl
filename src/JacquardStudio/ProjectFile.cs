@@ -27,7 +27,7 @@ public static class ProjectFile
     private sealed class Manifest
     {
         public Manifest() { }
-        public int Version { get; set; } = 11;
+        public int Version { get; set; } = 12;
         public int? VectorPageIndex { get; set; }
         public MachineInfo? Machine { get; set; }
         public WeftSettings? DraftWeft { get; set; }
@@ -163,9 +163,9 @@ public static class ProjectFile
         if (file.Length > MaxArchiveBytes) throw new InvalidDataException("Project exceeds 128 MiB.");
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
-        if (zip.Entries.Count > 58) throw new InvalidDataException("Too many project entries.");
+        if (zip.Entries.Count > 264) throw new InvalidDataException("Too many project entries.");
         var m = JsonSerializer.Deserialize<Manifest>(ReadEntry(zip, "manifest.json", MaxManifestBytes)) ?? throw new InvalidDataException("Missing project manifest.");
-        if (m.Version is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10 or 11)) throw new NotSupportedException("Unsupported SAM project version.");
+        if (m.Version is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10 or 11 or 12)) throw new NotSupportedException("Unsupported SAM project version.");
         if (m.Version == 1 && m.HasOverrides) throw new InvalidDataException("Overrides require SAM version 2.");
         if (m.Version < 3 && m.Machine is not null) throw new InvalidDataException("Machine setup requires SAM version 3.");
         CheckDimensions(m.SourceWidth, m.SourceHeight, (int)ImageLoader.MaxPixels);
@@ -187,7 +187,7 @@ public static class ProjectFile
         }
         if (m.Colors is not null)
         {
-            if (resized is null || m.Colors.Length is < 1 or > 50 || m.Colors.Any(c => c < 0 || c > 0xffffff) || m.Colors.Distinct().Count() != m.Colors.Length || m.ColorLimit is not (>= 1 and <= 50) || m.Colors.Length > m.ColorLimit || m.SourceColors < m.Colors.Length || m.SourceColors > (long)m.ResizeWidth * m.ResizeHeight || m.Patterns is null || m.Patterns.Length != m.Colors.Length)
+            if (resized is null || m.Colors.Length is < 1 or > 256 || m.Colors.Any(c => c < 0 || c > 0xffffff) || m.Colors.Distinct().Count() != m.Colors.Length || m.ColorLimit is not (>= 1 and <= 256) || m.Colors.Length > m.ColorLimit || m.SourceColors < m.Colors.Length || m.SourceColors > (long)m.ResizeWidth * m.ResizeHeight || m.Patterns is null || m.Patterns.Length != m.Colors.Length)
                 throw new InvalidDataException("Invalid project palette.");
             int pixels = checked(m.ResizeWidth * m.ResizeHeight);
             byte[] indices = ReadEntry(zip, "indices.bin", pixels, pixels); int[] counts = new int[m.Colors.Length];
@@ -205,7 +205,7 @@ public static class ProjectFile
             }
         }
         else if (m.ColorLimit is not null || m.Patterns is not null || m.HasOverrides) throw new InvalidDataException("Invalid project state.");
-        if (m.MachineFormatIndex is < 0 or > 4) throw new InvalidDataException("Invalid machine format selection.");
+        if (m.MachineFormatIndex is < 0 or > 5) throw new InvalidDataException("Invalid machine format selection.");
         string stage = Bounded(m.Stage, 16, "Size");
         if (stage is not ("Size" or "Colors" or "Patterns" or "Machine" or "Analysis" or "Floats" or "Selvedge" or "Weft" or "Simulation")) throw new InvalidDataException("Invalid workflow stage.");
         if ((stage == "Colors" && resized is null) || ((stage is "Patterns" or "Analysis" or "Floats" or "Selvedge" or "Weft" or "Simulation") && palette is null)) throw new InvalidDataException("Stage lacks required data.");
