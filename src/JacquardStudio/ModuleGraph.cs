@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine }
+public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave }
 public enum ModuleData { Image, Palette, Weaves, Fabric, Preview }
 public sealed record ModuleColorEdit(string InputHash, PaletteResult Palette, bool[] Locks);
 public sealed class ModuleNode
@@ -39,7 +39,7 @@ public sealed class ModuleGraph
     {
         ModuleKind.Load or ModuleKind.Resize => ModuleData.Image,
         ModuleKind.Colors => ModuleData.Palette,
-        ModuleKind.Weaves => ModuleData.Weaves,
+        ModuleKind.Weaves or ModuleKind.CreateWeave => ModuleData.Weaves,
         ModuleKind.Simulation => ModuleData.Preview,
         _ => ModuleData.Fabric
     };
@@ -71,6 +71,7 @@ public sealed class ModuleGraph
     public void Validate()
     {
         if (Nodes is null || Edges is null || Nodes.Count > 128 || Edges.Count > 256 || Nodes.Any(n => n is null || n.Id == Guid.Empty || !Enum.IsDefined(n.Kind) || !double.IsFinite(n.X) || !double.IsFinite(n.Y) || n.X is < 0 or > 10000 || n.Y is < 0 or > 10000 || n.Label is null || n.Label.Length > 255 || n.Weaves is null || n.Weaves.Count > 256 || n.WeaveNames is null || n.WeaveNames.Count != n.Weaves.Count || n.WeaveNames.Any(x => x is null || x.Length > 100) || n.WeaveAssignments is null || n.WeaveAssignments.Count > 256 || n.Machine is null || n.Simulation is null) || Nodes.Select(n => n.Id).Distinct().Count() != Nodes.Count) throw new InvalidDataException("Invalid graph nodes.");
+        if (Nodes.Any(n => n.Kind == ModuleKind.CreateWeave && (n.Weaves.Count > 1 || n.Weaves.Any(p => p is null || p.Width > WeaveEditor.MaxSide || p.Height > WeaveEditor.MaxSide)))) throw new InvalidDataException("A weave designer node holds at most one weave.");
         foreach (var n in Nodes) if (n.ColorEdit is { } edit)
         {
             var p=edit.Palette;
@@ -113,6 +114,7 @@ public static class ModuleExecutor
                     else palette = DesignProcessor.Prepare(image,image.PixelWidth,image.PixelHeight,node.ColorLimit);
                     result = new(ModuleData.Palette,DesignProcessor.RenderColors(palette),palette); break;
                 case ModuleKind.Weaves:
+                case ModuleKind.CreateWeave:
                     if (node.Weaves.Count == 0) throw new InvalidOperationException("Add at least one weave to the module.");
                     result = new(ModuleData.Weaves, Fabric3DWindow.PatternBitmap(node.Weaves[0]), Weaves: node.Weaves); break;
                 case ModuleKind.ApplyWeaves:

@@ -210,6 +210,10 @@ internal static class Program
             Check(savedEdit.Locks.Single() && savedEdit.Palette.Counts.Single()==6 && ModuleExecutor.Run(editRestored,graphApply.Id)[graphColors.Id].Palette!.Indices.SequenceEqual(editing.Palette!.Indices), "graph palette edits and locks survive project roundtrip");
             editRestored.Nodes.Single(n=>n.Id==graphResize.Id).Width=2; Expect<InvalidOperationException>(()=>ModuleExecutor.Run(editRestored,graphApply.Id));
             graphColors.ColorEdit=new ModuleColorEdit(ModuleExecutor.ImageFingerprint(editedInput), editing.Palette! with { Counts=new[]{99} }, editing.LockedColors); Expect<InvalidDataException>(()=>graph.Validate()); graphColors.ColorEdit=null;
+            var designer=graph.Add(ModuleKind.CreateWeave, 500, 350); designer.Weaves.Add(PatternLibrary.Presets[0].Pattern); designer.WeaveNames.Add("designed");
+            graph.Connect(designer.Id,graphApply.Id,"weaves"); Check(ModuleExecutor.Run(graph,graphApply.Id)[designer.Id].Weaves!.Count==1, "independent weave designer node feeds a downstream mapping");
+            ModuleProjectFile.Save(graphPath,graph); var designerRestored=ModuleProjectFile.Load(graphPath); Check(designerRestored.Nodes.Single(n=>n.Id==designer.Id).Weaves.Single().Values.SequenceEqual(designer.Weaves[0].Values) && ModuleExecutor.Run(designerRestored,graphApply.Id)[graphApply.Id].Image is not null, "designed weave node survives project roundtrip and runs");
+            designer.Weaves.Add(PatternLibrary.Presets[0].Pattern); designer.WeaveNames.Add("too many"); Expect<InvalidDataException>(()=>graph.Validate()); designer.Weaves.RemoveAt(1); designer.WeaveNames.RemoveAt(1);
             graphRestored.Disconnect(graphApply.Id,"weaves"); Expect<InvalidOperationException>(()=>ModuleExecutor.Run(graphRestored,graphMachine.Id));
             var manual = new WorkflowSession(b.Image); manual.ApplySize(3, 2); manual.ApplyColors(50);
             var firstPattern = new WeavePattern(1, 1, new byte[] {0}); var targetPattern = new WeavePattern(1, 1, new byte[] {255});
@@ -603,8 +607,14 @@ internal static class Program
             var app = new App { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
             var moduleWindow = new ModuleWindow(); var moduleFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
             var moduleGraph = (ModuleGraph)typeof(ModuleWindow).GetField("graph",moduleFlags)!.GetValue(moduleWindow)!;
+            static double Brightness(Brush brush) { var c=((SolidColorBrush)brush).Color; return .2126*c.R+.7152*c.G+.0722*c.B; }
+            ThemeManager.Apply(false,false); Check(Brightness((Brush)app.FindResource("PrimaryText")) > Brightness((Brush)app.FindResource("GraphNode")) + 100, "dark theme text contrasts with graph nodes");
+            ThemeManager.Apply(true,false); Check(Brightness((Brush)app.FindResource("PrimaryText")) + 100 < Brightness((Brush)app.FindResource("GraphNode")), "light theme text contrasts with graph nodes");
+            var themedInput=new System.Windows.Controls.TextBox(); themedInput.ApplyTemplate(); Check(Brightness(themedInput.Foreground)+100 < Brightness(themedInput.Background), "light themed text input is readable");
+            var themedCombo=new System.Windows.Controls.ComboBox { ItemsSource=new[]{"one", "two"}, SelectedIndex=0 }; themedCombo.ApplyTemplate(); Check(themedCombo.Template.FindName("PART_Popup",themedCombo) is System.Windows.Controls.Primitives.Popup, "themed combo retains dropdown popup");
+            ThemeManager.Apply(false,false); Check(Brightness(themedInput.Foreground) > Brightness(themedInput.Background)+100, "existing inputs update on dark theme change");
             var moduleLibrary = (System.Windows.Controls.StackPanel)moduleWindow.FindName("ModuleLibrary");
-            Check(moduleLibrary.Children.Count == 11 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
+            Check(moduleLibrary.Children.Count == 12 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
             ((System.Windows.Controls.DockPanel)moduleLibrary.Children[1]).Children.OfType<System.Windows.Controls.Button>().Last().RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             var addedResize = moduleGraph.Nodes.Last(); Check(moduleGraph.Nodes.Count == 11 && addedResize.Kind == ModuleKind.Resize, "adding a second independent module through the library");
             var nodeLayer = (System.Windows.Controls.Canvas)moduleWindow.FindName("NodeLayer");
@@ -615,8 +625,15 @@ internal static class Program
             var graphEditor=new MainWindow(); graphEditor.ConfigureModuleEditor(ModuleKind.Colors,editing);
             Check(((System.Windows.Controls.Grid)graphEditor.FindName("Navigation")).Visibility==System.Windows.Visibility.Collapsed && ((System.Windows.Controls.Button)graphEditor.FindName("ModuleApplyButton")).Visibility==System.Windows.Visibility.Visible, "graph color editor opens legacy palette UI with apply and without navigation");
             graphEditor.Close();
+            var weaveEditorWindow=new MainWindow(); weaveEditorWindow.ConfigureWeaveModuleEditor(PatternLibrary.Presets[0].Pattern,"test weave");
+            var gallery=(System.Windows.Controls.ListBox)weaveEditorWindow.FindName("BankList"); Check(gallery.ItemTemplate==app.FindResource("WeaveGalleryItem") && gallery.ItemsPanel==app.FindResource("WeaveGalleryPanel"), "legacy bank uses compact weave previews");
+            var weaveGrid=(WeaveEditor)weaveEditorWindow.FindName("WeaveCanvas"); weaveGrid.ApplyHelper("invert"); var expectedWeave=weaveGrid.Snapshot();
+            var waitTicks=0; var busyField=typeof(MainWindow).GetField("busy",moduleFlags)!; var applyTimer=new System.Windows.Threading.DispatcherTimer { Interval=TimeSpan.FromMilliseconds(20) };
+            applyTimer.Tick+=(_,_)=>{ if (++waitTicks > 1000) { applyTimer.Stop(); weaveEditorWindow.Close(); return; } if (!(bool)busyField.GetValue(weaveEditorWindow)!) { applyTimer.Stop(); ((System.Windows.Controls.Button)weaveEditorWindow.FindName("ModuleApplyButton")).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); } }; applyTimer.Start();
+            Check(weaveEditorWindow.ShowDialog()==true && weaveEditorWindow.ModuleWeaveResult!.Values.SequenceEqual(expectedWeave.Values) && weaveEditorWindow.ModuleWeaveName=="test weave", "full legacy weave designer applies edited pattern to the graph");
+
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "027.0.0.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "028.0.0.2-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));

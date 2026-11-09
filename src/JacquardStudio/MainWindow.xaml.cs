@@ -17,6 +17,8 @@ public partial class MainWindow : Window
     private bool english, busy, bankOpen, lightTheme, projectDirty, allowClose, closePromptActive;
     private ModuleKind? moduleEditorKind;
     public WorkflowSession? ModuleEditorResult { get; private set; }
+    public WeavePattern? ModuleWeaveResult { get; private set; }
+    public string ModuleWeaveName { get; private set; } = "";
     private int? bankTargetIndex;
     private string? bankSelvedgeSide;
     private readonly WeaveBank bank = new();
@@ -68,9 +70,27 @@ public partial class MainWindow : Window
         ModuleApplyButton.Visibility=ModuleCancelButton.Visibility=Visibility.Visible; ToColorButton.Visibility=ToPatternButton.Visibility=Visibility.Collapsed;
         RebuildPaletteEntries(); ShowStage(); UpdateWindowTitle();
     }
+    /// <summary>Expose the original weave designer and bank on an independent node draft.</summary>
+    public void ConfigureWeaveModuleEditor(WeavePattern? initial, string? name)
+    {
+        moduleEditorKind=ModuleKind.CreateWeave; AllowDrop=false; bankOpen=true;
+        Navigation.Visibility=Visibility.Collapsed;
+        OpenButton.Visibility=SaveProjectButton.Visibility=SaveProjectAsButton.Visibility=InfoButton.Visibility=ReportButton.Visibility=BankButton.Visibility=Visibility.Collapsed;
+        BankBackButton.Visibility=BankUseButton.Visibility=Visibility.Collapsed;
+        ModuleApplyButton.Visibility=ModuleCancelButton.Visibility=Visibility.Visible;
+        if(initial is not null) { WeaveCanvas.SetPattern(initial); WeaveWidth.Text=initial.Width.ToString(); WeaveHeight.Text=initial.Height.ToString(); }
+        WeaveName.Text=string.IsNullOrWhiteSpace(name) ? "بافت پروژه" : name;
+        ShowStage(); Loaded += async (_,_) => await ReloadBankAsync();
+    }
     private void ModuleApply_Click(object sender,RoutedEventArgs e)
     {
-        if (busy || session is null || moduleEditorKind is null) return;
+        if (busy || moduleEditorKind is null) return;
+        if (moduleEditorKind==ModuleKind.CreateWeave)
+        {
+            if (string.IsNullOrWhiteSpace(WeaveName.Text) || WeaveName.Text.Trim().Length>100) { MessageBox.Show(this,T("نام بافت باید ۱ تا ۱۰۰ حرف باشد.","The weave name must contain 1 to 100 characters.")); return; }
+            ModuleWeaveResult=WeaveCanvas.Snapshot(); ModuleWeaveName=WeaveName.Text.Trim(); allowClose=true; DialogResult=true; return;
+        }
+        if (session is null) return;
         if (SizeDirty || moduleEditorKind==ModuleKind.Colors && ColorsDirty) { MessageBox.Show(this,T("ابتدا تغییر اندازه یا تعداد رنگ را در همین پنجره اعمال کنید.","Apply the current size or color limit first.")); return; }
         ModuleEditorResult=session.Snapshot(); allowClose=true; DialogResult=true;
     }
@@ -1344,7 +1364,7 @@ public partial class MainWindow : Window
     }
     private void About_Click(object sender, RoutedEventArgs e) => new AboutWindow(english) { Owner = this }.ShowDialog();
     private void Language_Click(object sender, RoutedEventArgs e) { english = !english; MarkProjectDirty(); UpdateLabels(); ShowStage(); }
-    private void Theme_Click(object sender, RoutedEventArgs e) { lightTheme = !lightTheme; ThemeManager.Apply(lightTheme, true); RefreshControls(); }
+    private void Theme_Click(object sender, RoutedEventArgs e) { lightTheme = !ThemeManager.IsLight; ThemeManager.Apply(lightTheme, true); RefreshControls(); }
     private void UpdateLabels()
     {
         FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
