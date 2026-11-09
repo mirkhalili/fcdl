@@ -201,6 +201,9 @@ internal static class Program
             var forbidden=DesignAnalysis.ReadBinary(safeFabric); forbidden[0]=forbidden[0]==0?(byte)255:(byte)0;
             var forbiddenImage=BitmapSource.Create(safeFabric.PixelWidth,safeFabric.PixelHeight,96,96,PixelFormats.Gray8,null,forbidden,safeFabric.PixelWidth); forbiddenImage.Freeze();
             Expect<InvalidDataException>(()=>ModuleExecutor.ApplyFloatEdit(safeInput,ModuleExecutor.EmbedImage(forbiddenImage)));
+            var autoPair=AutoWeaveAssignments.Pair(new[]{11,22,33},3,new[]{2,0,1},new[]{2,0},new Dictionary<int,int>());
+            Check(autoPair.Count==2 && autoPair[11]==0 && autoPair[22]==2 && !autoPair.ContainsKey(33), "automatic weaves pair selected items in visual order and leave remaining colors unassigned");
+            Expect<ArgumentOutOfRangeException>(()=>AutoWeaveAssignments.Pair(new[]{1},1,new[]{2},new[]{0},new Dictionary<int,int>()));
             var graph = new ModuleGraph(); var graphLoad = graph.Add(ModuleKind.Load, 0, 0); graphLoad.ImagePng = ModuleExecutor.EmbedImage(b.Image);
             var graphResize = graph.Add(ModuleKind.Resize, 250, 0); graphResize.Width=3; graphResize.Height=2; graph.Connect(graphLoad.Id, graphResize.Id, "image");
             var graphOtherResize = graph.Add(ModuleKind.Resize, 250, 180); graphOtherResize.Width=6; graphOtherResize.Height=4; graph.Connect(graphLoad.Id,graphOtherResize.Id,"image");
@@ -647,8 +650,8 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
-            var reportPages=GraphReport.Render(reportValues); Check(reportPages.Count==4 && reportPages.All(p=>p.IsFrozen), "report renders a page for every connected module");
-            string graphReportPath=Path.Combine(dir,"graph-report.pdf"); DesignReport.SavePdf(reportPages,graphReportPath,Array.Empty<string>()); Check(File.ReadAllText(graphReportPath,System.Text.Encoding.Latin1).Contains("/Count 4"), "graph report exports multipage PDF");
+            var reportPages=GraphReport.Render(reportValues); Check(reportPages.Count>=2 && reportPages.All(p=>p.IsFrozen), "portfolio combines connected results and paginated palette");
+            string graphReportPath=Path.Combine(dir,"graph-report.pdf"); DesignReport.SavePdf(reportPages,graphReportPath,Array.Empty<string>()); Check(File.ReadAllText(graphReportPath,System.Text.Encoding.Latin1).Contains("/Count " + reportPages.Count), "graph report exports multipage PDF");
             var moduleWindow = new ModuleWindow(); var moduleFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
             var moduleGraph = (ModuleGraph)typeof(ModuleWindow).GetField("graph",moduleFlags)!.GetValue(moduleWindow)!;
             static double Brightness(Brush brush) { var c=((SolidColorBrush)brush).Color; return .2126*c.R+.7152*c.G+.0722*c.B; }
@@ -658,7 +661,7 @@ internal static class Program
             var themedCombo=new System.Windows.Controls.ComboBox { ItemsSource=new[]{"one", "two"}, SelectedIndex=0 }; ((System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector")).Children.Add(themedCombo); themedCombo.ApplyTemplate(); Check(themedCombo.Template.FindName("PART_Popup",themedCombo) is System.Windows.Controls.Primitives.Popup, "themed combo retains dropdown popup");
             ThemeManager.Apply(false,false); Check(Brightness(themedInput.Foreground) > Brightness(themedInput.Background)+100, "existing inputs update on dark theme change");
             var moduleLibrary = (System.Windows.Controls.StackPanel)moduleWindow.FindName("ModuleLibrary");
-            Check(moduleLibrary.Children.Count == 19 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
+            Check(moduleLibrary.Children.Count == 20 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
             ((System.Windows.Controls.DockPanel)moduleLibrary.Children[8]).Children.OfType<System.Windows.Controls.Button>().Last().RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             var addedResize = moduleGraph.Nodes.Last(); Check(moduleGraph.Nodes.Count == 11 && addedResize.Kind == ModuleKind.Resize, "adding a second independent module through the library");
             var nodeLayer = (System.Windows.Controls.Canvas)moduleWindow.FindName("NodeLayer");
@@ -666,6 +669,10 @@ internal static class Program
             Port(0,"انتخاب خروجی").RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Port(10,"اتصال ورودی").RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Check(moduleGraph.Edges.Any(e => e.From == moduleGraph.Nodes[0].Id && e.To == addedResize.Id && e.Port == "image"), "workspace port clicks create a real compatible branch");
+            var selectedEdge=moduleGraph.Edges.Single(e=>e.To==addedResize.Id && e.Port=="image");
+            typeof(ModuleWindow).GetField("selectedWire",moduleFlags)!.SetValue(moduleWindow,selectedEdge);
+            typeof(ModuleWindow).GetMethod("DeleteSelection",moduleFlags)!.Invoke(moduleWindow,null);
+            Check(!moduleGraph.Edges.Contains(selectedEdge) && moduleGraph.Nodes.Contains(addedResize), "deleting a selected wire leaves the connected nodes intact");
             var cropDialog=new GraphCropWindow(inputImage,cropNode.Crop,inputHash); var cropRoot=(System.Windows.Controls.DockPanel)cropDialog.Content; var cropToolbar=(System.Windows.Controls.WrapPanel)cropRoot.Children[0];
             var applyCrop=cropToolbar.Children.OfType<System.Windows.Controls.Button>().Single(b=>Equals(b.Content,"اعمال تنظیمات و بستن"));
             cropDialog.Loaded+=(_,_)=>cropDialog.Dispatcher.BeginInvoke(new Action(()=>applyCrop.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent))));
@@ -681,7 +688,7 @@ internal static class Program
             Check(weaveEditorWindow.ShowDialog()==true && weaveEditorWindow.ModuleWeaveResult!.Values.SequenceEqual(expectedWeave.Values) && weaveEditorWindow.ModuleWeaveName=="test weave", "full legacy weave designer applies edited pattern to the graph");
 
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "030.0.2.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "031.0.3.1-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));

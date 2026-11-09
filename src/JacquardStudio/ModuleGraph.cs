@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit }
+public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves }
 public enum ModuleData { Image, Palette, Weaves, Fabric, Preview, Report, Any, MachineConfig, Metadata }
 public sealed record DesignField(string Title, string Text);
 public sealed record ModuleColorEdit(string InputHash, PaletteResult Palette, bool[] Locks);
@@ -69,21 +69,21 @@ public sealed class ModuleGraph
         ModuleKind.Resize or ModuleKind.Colors or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image },
         ModuleKind.Weft => new Dictionary<string, ModuleData> { ["fabric"] = ModuleData.Fabric, ["machine"] = ModuleData.MachineConfig },
         ModuleKind.Report => new Dictionary<string, ModuleData> { ["report"] = ModuleData.Any },
-        ModuleKind.ApplyWeaves => new Dictionary<string, ModuleData> { ["palette"] = ModuleData.Palette, ["weaves"] = ModuleData.Weaves },
+        ModuleKind.ApplyWeaves or ModuleKind.AutoWeaves => new Dictionary<string, ModuleData> { ["palette"] = ModuleData.Palette, ["weaves"] = ModuleData.Weaves },
         ModuleKind.Selvedge or ModuleKind.Floats or ModuleKind.Tension or ModuleKind.Simulation or ModuleKind.Machine => new Dictionary<string, ModuleData> { ["fabric"] = ModuleData.Fabric },
         _ => new Dictionary<string, ModuleData>()
     };
     public ModuleNode Add(ModuleKind kind, double x, double y)
     {
         if (Nodes.Count >= 128 || !Enum.IsDefined(kind) || !double.IsFinite(x) || !double.IsFinite(y) || x is < 0 or > 10000 || y is < 0 or > 10000) throw new ArgumentException("Invalid module or position.");
-        var node = new ModuleNode { Kind = kind, X = x, Y = y }; Nodes.Add(node); return node;
+        var node = new ModuleNode { Kind = kind, X = x, Y = y, DefaultWeaveIndex = kind==ModuleKind.AutoWeaves ? -1 : 0 }; Nodes.Add(node); return node;
     }
     /// <summary>Place existing nodes in insertion order without altering connections.</summary>
     public void Arrange(int rows, int columns)
     {
         if(rows < 1 || columns < 1 || columns > 40 || rows > 55) throw new ArgumentException("تعداد ردیف و ستون معتبر نیست.");
         columns=Math.Max(columns,(Nodes.Count+rows-1)/rows); if(columns>40) throw new ArgumentException("تعداد ستون لازم بیش از حد مجاز است.");
-        for(int i=0;i<Nodes.Count;i++) { Nodes[i].X=80+(i%columns)*250; Nodes[i].Y=80+(i/columns)*180; }
+        for(int i=0;i<Nodes.Count;i++) { Nodes[i].X=80+(i%columns)*250; Nodes[i].Y=80+(i/columns)*(Nodes.Any(n=>n.Kind==ModuleKind.AiEdit) ? 320 : 180); }
     }
     public void Remove(Guid id) { Nodes.RemoveAll(n => n.Id == id); Edges.RemoveAll(e => e.From == id || e.To == id); }
     public void Disconnect(Guid to, string port) => Edges.RemoveAll(e => e.To == to && e.Port == port);
@@ -183,9 +183,10 @@ public static class ModuleExecutor
                     if (node.Weaves.Count == 0) throw new InvalidOperationException("Add at least one weave to the module.");
                     result = new(ModuleData.Weaves, Fabric3DWindow.PatternBitmap(node.Weaves[0]), Weaves: node.Weaves); break;
                 case ModuleKind.ApplyWeaves:
+                case ModuleKind.AutoWeaves:
                     var p = Input("palette").Palette!; var patterns = Input("weaves").Weaves!;
                     var assigned = p.Colors.Select(c => { if(node.CustomWeaves.TryGetValue(c,out var custom)) return (WeavePattern?)custom; int k = node.WeaveAssignments.GetValueOrDefault(c,node.DefaultWeaveIndex); if ((uint)k >= (uint)patterns.Count) throw new ArgumentException("A color refers to a missing weave."); return (WeavePattern?)patterns[k]; }).ToArray();
-                    result = new(ModuleData.Fabric, DesignProcessor.Render(p,assigned)); break;
+                    result = new(ModuleData.Fabric, DesignProcessor.Render(p,assigned),Palette:p,Weaves:assigned.Select(x=>x!).ToArray()); break;
                 case ModuleKind.Selvedge:
                     var edgeInput = Input("fabric"); if (edgeInput.Composition is { SignalHooks.Length: > 0 }) throw new InvalidOperationException("Add selvedges before weft signal placement.");
                     var body = edgeInput.Image!; var edgeMap = MachineComposer.Compose(body,MachineComposer.BeforeWeft(node.Machine));

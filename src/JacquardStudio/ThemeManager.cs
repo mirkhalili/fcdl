@@ -27,7 +27,7 @@ public static class ThemeManager
             ? new[] { "#DFE2E4", "#C5C9CD", "#F0F1F2", "#E9EBED", "#F8F9FA", "#E2E6E9", "#CDD2D5", "#A95B16", "#BDDAED" }
             : new[] { "#242424", "#343434", "#303030", "#292929", "#383838", "#303030", "#252525", "#F39A4A", "#485761" };
         for (int i = 0; i < graphKeys.Length; i++) app.Resources[graphKeys[i]] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(graphColors[i]));
-        app.Resources["ActionBackground"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(light ? "#176956" : "#287764"));
+        app.Resources["ActionBackground"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(light ? "#E3EAF0" : "#263749"));
         Changed?.Invoke(null, EventArgs.Empty);
         if (!persist) return;
         try { Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!); File.WriteAllText(SettingsPath, light ? "light" : "dark"); }

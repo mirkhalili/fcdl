@@ -6,9 +6,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>JacquardStudio</AssemblyName>
-    <Version>30.0.2.1</Version>
-    <AssemblyVersion>30.0.2.1</AssemblyVersion>
-    <FileVersion>30.0.2.1</FileVersion>
+    <Version>31.0.3.1</Version>
+    <AssemblyVersion>31.0.3.1</AssemblyVersion>
+    <FileVersion>31.0.3.1</FileVersion>
     <InformationalVersion>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/../../version.txt').Trim())</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Product>Jacquard Studio</Product>
@@ -25,6 +25,7 @@
     <Content Include="Assets/HelixToolkit-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
     <Resource Include="Assets/Fonts/*.ttf" />
     <Resource Include="Assets/app.ico" />
+    <Resource Include="Assets/Brands/*" />
     <Resource Include="Help.fa.txt" />
     <Content Include="Assets/Fonts/OFL.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
