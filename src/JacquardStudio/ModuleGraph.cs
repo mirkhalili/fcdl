@@ -69,6 +69,7 @@ public sealed class ModuleGraph
     }
     public void Remove(Guid id) { Nodes.RemoveAll(n => n.Id == id); Edges.RemoveAll(e => e.From == id || e.To == id); }
     public void Disconnect(Guid to, string port) => Edges.RemoveAll(e => e.To == to && e.Port == port);
+    public void Disconnect(Guid from, Guid to, string port) => Edges.RemoveAll(e => e.From == from && e.To == to && e.Port == port);
     public void Connect(Guid from, Guid to, string port)
     {
         var source = Nodes.SingleOrDefault(n => n.Id == from) ?? throw new ArgumentException("Source module not found.");

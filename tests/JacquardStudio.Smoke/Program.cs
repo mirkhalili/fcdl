@@ -230,7 +230,7 @@ internal static class Program
             Expect<ArgumentException>(()=>GraphImageOperations.Repeat(repeatSource,int.MaxValue,int.MaxValue,RepeatMode.Straight));
             Check(ModuleExecutor.Run(graph,repeatNode.Id)[repeatNode.Id].Image!.PixelWidth==4, "repeat node processes crop output");
             var reportNode=graph.Add(ModuleKind.Report,500,400); graph.Connect(graphResize.Id,reportNode.Id,"report"); graph.Connect(graphColors.Id,reportNode.Id,"report"); graph.Connect(designer.Id,reportNode.Id,"report"); graph.Connect(repeatNode.Id,reportNode.Id,"report");
-            graph.Connect(graphResize.Id,reportNode.Id,"report"); var reportValues=ModuleExecutor.Run(graph,reportNode.Id)[reportNode.Id].ReportItems!;
+            graph.Connect(graphResize.Id,reportNode.Id,"report"); graph.Disconnect(designer.Id,reportNode.Id,"report"); Check(graph.Edges.Count(e=>e.To==reportNode.Id)==3, "report disconnect removes only the chosen input"); graph.Connect(designer.Id,reportNode.Id,"report"); var reportValues=ModuleExecutor.Run(graph,reportNode.Id)[reportNode.Id].ReportItems!;
             Check(reportValues.Count==4 && reportValues.Any(x=>x.Value.Palette is not null) && reportValues.Any(x=>x.Value.Weaves is not null), "report aggregates independent connected module types without duplicate links");
             var secondReport=graph.Add(ModuleKind.Report,750,400); graph.Connect(reportNode.Id,secondReport.Id,"report"); Expect<ArgumentException>(()=>graph.Connect(secondReport.Id,reportNode.Id,"report")); graph.Remove(secondReport.Id);
             var capacity=new ModuleGraph(); var capacityReport=capacity.Add(ModuleKind.Report,0,0); for(int i=0;i<16;i++) capacity.Connect(capacity.Add(ModuleKind.Load,0,0).Id,capacityReport.Id,"report"); Expect<ArgumentException>(()=>capacity.Connect(capacity.Add(ModuleKind.Load,0,0).Id,capacityReport.Id,"report")); Check(capacity.Edges.Count==16, "report input is capped without partial connection");
@@ -649,6 +649,10 @@ internal static class Program
             Port(0,"انتخاب خروجی").RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Port(10,"اتصال ورودی").RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Check(moduleGraph.Edges.Any(e => e.From == moduleGraph.Nodes[0].Id && e.To == addedResize.Id && e.Port == "image"), "workspace port clicks create a real compatible branch");
+            var cropDialog=new GraphCropWindow(inputImage,cropNode.Crop,inputHash); var cropRoot=(System.Windows.Controls.DockPanel)cropDialog.Content; var cropToolbar=(System.Windows.Controls.WrapPanel)cropRoot.Children[0];
+            var applyCrop=cropToolbar.Children.OfType<System.Windows.Controls.Button>().Single(b=>Equals(b.Content,"اعمال و بستن"));
+            cropDialog.Loaded+=(_,_)=>cropDialog.Dispatcher.BeginInvoke(new Action(()=>applyCrop.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent))));
+            Check(cropDialog.ShowDialog()==true && cropDialog.Result==cropNode.Crop, "crop window commits the current boundary on Apply");
             var graphEditor=new MainWindow(); graphEditor.ConfigureModuleEditor(ModuleKind.Colors,editing);
             Check(((System.Windows.Controls.Grid)graphEditor.FindName("Navigation")).Visibility==System.Windows.Visibility.Collapsed && ((System.Windows.Controls.Button)graphEditor.FindName("ModuleApplyButton")).Visibility==System.Windows.Visibility.Visible, "graph color editor opens legacy palette UI with apply and without navigation");
             graphEditor.Close();
