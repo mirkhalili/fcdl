@@ -149,6 +149,7 @@ public static class ModuleExecutor
                     using (var stream = new MemoryStream(bytes)) { var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad); var bitmap = decoder.Frames[0]; bitmap.Freeze(); VectorDocument? vector=null; if(node.Kind==ModuleKind.VectorLoad && !string.IsNullOrEmpty(node.VectorPdfBase64)) { var pdf=Convert.FromBase64String(node.VectorPdfBase64); if(pdf.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("Vector source is too large."); vector=new VectorDocument(pdf,node.SourcePage); } result = new(ModuleData.Image, bitmap, Vector:vector); } break;
                 case ModuleKind.Resize:
                     var sourceValue = Input("image"); var source = sourceValue.Image!; int w = node.Width == 0 ? source.PixelWidth : node.Width, h = node.Height == 0 ? source.PixelHeight : node.Height;
+                    if(w<1 || h<1 || (long)w*h>DesignProcessor.MaxPixels) throw new ArgumentOutOfRangeException(nameof(node.Width),"Resize exceeds the 4 million pixel limit.");
                     result = new(ModuleData.Image, sourceValue.Vector is { } vectorSource ? PdfImageLoader.Render(vectorSource.PdfBytes,vectorSource.PageIndex,w,h).Image : DesignProcessor.Resize(source,w,h), Vector:sourceValue.Vector); break;
                 case ModuleKind.MachineDefinition:
                     MachineProfile.Validate(node.Machine,node.Manufacturer); result=new(ModuleData.MachineConfig,Machine:node.Machine); break;
