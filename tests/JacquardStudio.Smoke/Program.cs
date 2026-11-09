@@ -687,6 +687,21 @@ internal static class Program
             applyTimer.Tick+=(_,_)=>{ if (++waitTicks > 1000) { applyTimer.Stop(); weaveEditorWindow.Close(); return; } if (!(bool)busyField.GetValue(weaveEditorWindow)!) { applyTimer.Stop(); ((System.Windows.Controls.Button)weaveEditorWindow.FindName("ModuleApplyButton")).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); } }; applyTimer.Start();
             Check(weaveEditorWindow.ShowDialog()==true && weaveEditorWindow.ModuleWeaveResult!.Values.SequenceEqual(expectedWeave.Values) && weaveEditorWindow.ModuleWeaveName=="test weave", "full legacy weave designer applies edited pattern to the graph");
 
+            // Exercise the actual card action and connected upstream evaluation, not only the dialog constructor.
+            moduleGraph.Nodes[0].ImagePng=ModuleExecutor.EmbedImage(b.Image);
+            var liveCrop=moduleGraph.Add(ModuleKind.Crop,850,650); moduleGraph.Connect(moduleGraph.Nodes[0].Id,liveCrop.Id,"image");
+            typeof(ModuleWindow).GetMethod("RenderGraph",moduleFlags)!.Invoke(moduleWindow,null); moduleWindow.Show();
+            bool cropOpened=false,cropLoaded=false; int cropTicks=0; var cropTimer=new System.Windows.Threading.DispatcherTimer { Interval=TimeSpan.FromMilliseconds(20) };
+            cropTimer.Tick+=(_,_)=>{
+                var opened=app.Windows.OfType<GraphCropWindow>().FirstOrDefault(w=>w.IsVisible); if(opened is null) { if(++cropTicks>300) cropTimer.Stop(); return; }
+                cropOpened=true; var toolbar=(System.Windows.Controls.WrapPanel)((System.Windows.Controls.DockPanel)opened.Content).Children[0];
+                var apply=toolbar.Children.OfType<System.Windows.Controls.Button>().Single(x=>Equals(x.Content,"اعمال تنظیمات و بستن"));
+                if(apply.IsEnabled || ++cropTicks>300) { cropLoaded=apply.IsEnabled; cropTimer.Stop(); opened.DialogResult=false; }
+            };
+            cropTimer.Start(); var liveCard=(System.Windows.Controls.Border)nodeLayer.Children[nodeLayer.Children.Count-1]; var liveInner=(System.Windows.Controls.Grid)liveCard.Child;
+            var headerBorder=(System.Windows.Controls.Border)liveInner.Children[0]; var headerGrid=(System.Windows.Controls.Grid)headerBorder.Child; var editButton=headerGrid.Children.OfType<System.Windows.Controls.Button>().Single();
+            editButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); cropTimer.Stop();
+            Check(cropOpened && cropLoaded, "crop card button opens dialog and loads its connected input");
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
             Check(AppVersion.Display == "031.0.3.1-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
