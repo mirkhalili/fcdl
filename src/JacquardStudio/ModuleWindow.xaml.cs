@@ -16,6 +16,7 @@ public partial class ModuleWindow : Window
     private IReadOnlyDictionary<Guid,ModuleValue> results = new Dictionary<Guid,ModuleValue>();
     private Guid? selected, connecting, dragging;
     private Point libraryDragStart;
+    private bool panning; private Point panOrigin; private double panX, panY;
     private Point dragStart; private double dragX, dragY, zoom = 1;
     private bool dirty, busy, closing;
     private string? projectPath;
@@ -159,18 +160,40 @@ public partial class ModuleWindow : Window
     private void ZoomIn_Click(object sender,RoutedEventArgs e) => SetZoom(zoom*1.25);
     private void ZoomOut_Click(object sender,RoutedEventArgs e) => SetZoom(zoom/1.25);
     private void SetZoom(double value) { zoom=Math.Clamp(value,.5,2); GraphCanvas.LayoutTransform=new ScaleTransform(zoom,zoom); ZoomLabel.Text=$"{zoom*100:0}%"; }
+    private void GraphScroll_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (busy || e.ChangedButton != MouseButton.Middle) return;
+        panning=true; panOrigin=e.GetPosition(GraphScroll); panX=GraphScroll.HorizontalOffset; panY=GraphScroll.VerticalOffset; GraphScroll.CaptureMouse(); GraphScroll.Cursor=Cursors.ScrollAll; e.Handled=true;
+    }
+    private void GraphScroll_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!panning || e.MiddleButton != MouseButtonState.Pressed) return;
+        var point=e.GetPosition(GraphScroll); GraphScroll.ScrollToHorizontalOffset(panX + panOrigin.X-point.X); GraphScroll.ScrollToVerticalOffset(panY + panOrigin.Y-point.Y); e.Handled=true;
+    }
+    private void GraphScroll_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!panning || e.ChangedButton != MouseButton.Middle) return;
+        panning=false; GraphScroll.ReleaseMouseCapture(); GraphScroll.Cursor=null; e.Handled=true;
+    }
+    private void GraphScroll_LostMouseCapture(object sender, MouseEventArgs e) { if (e.OriginalSource==GraphScroll) { panning=false; GraphScroll.Cursor=null; } }
+    private void GraphScroll_MouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (busy || (Keyboard.Modifiers & ModifierKeys.Control)==0) return;
+        var anchor=e.GetPosition(GraphCanvas); var pointer=e.GetPosition(GraphScroll); SetZoom(zoom*(e.Delta>0 ? 1.25 : 0.8)); GraphScroll.UpdateLayout();
+        GraphScroll.ScrollToHorizontalOffset(anchor.X*zoom-pointer.X); GraphScroll.ScrollToVerticalOffset(anchor.Y*zoom-pointer.Y); e.Handled=true;
+    }
     private ModuleNode? Current => selected is Guid id ? graph.Nodes.FirstOrDefault(n=>n.Id==id) : null;
     private void Inspect()
     {
         Inspector.Children.Clear(); var node=Current; if (node is null) { Inspector.Children.Add(Note("یک ماژول را انتخاب کنید.")); return; }
-        var spec=Spec(node.Kind); Inspector.Children.Add(new TextBlock { Text=spec.name, FontSize=19, FontWeight=FontWeights.Bold, Foreground=CategoryBrush(spec.color), Margin=new Thickness(0,0,0,4) }); Inspector.Children.Add(Note(spec.subtitle));
+        var spec=Spec(node.Kind); Inspector.Children.Add(new TextBlock { Text=spec.name, FontSize=19, FontWeight=FontWeights.Bold, Margin=new Thickness(0,0,0,4) }); Inspector.Children.Add(Note(spec.subtitle));
         Inspector.Children.Add(Note("ورودی‌ها: " + (ModuleGraph.Inputs(node.Kind).Count==0 ? "بدون ورودی" : string.Join(" · ",ModuleGraph.Inputs(node.Kind).Keys.Select(p => PortName(p)+(graph.Edges.Any(e=>e.To==node.Id && e.Port==p) ? " ✓" : " ○"))))));
         void Field(string label,string value,Action<string> assign)
         {
             Inspector.Children.Add(new TextBlock { Text=label, FontSize=12, Margin=new Thickness(0,10,0,4) }); var input=new TextBox { Text=value, Padding=new Thickness(7), FlowDirection=FlowDirection.LeftToRight };
             input.LostKeyboardFocus += (_,_) => { if (input.Text!=value) { try { assign(input.Text); Changed(); value=input.Text; } catch (ArgumentException ex) { input.Text=value; MessageBox.Show(this,ex.Message); } } }; Inspector.Children.Add(input);
         }
-        void Button(string text,Action action) { var b=new Button { Content=text, Margin=new Thickness(0,8,0,0), Padding=new Thickness(8), Background=ResourceBrush("ButtonBackground"), BorderBrush=ResourceBrush("ButtonBorder"), Foreground=ResourceBrush("PrimaryText") }; b.Click+=(_,_)=>action(); Inspector.Children.Add(b); }
+        void Button(string text,Action action) { var b=new Button { Content=text, Margin=new Thickness(0,8,0,0), Padding=new Thickness(8) }; b.Click+=(_,_)=>action(); Inspector.Children.Add(b); }
         switch (node.Kind)
         {
             case ModuleKind.Load:
@@ -229,7 +252,7 @@ public partial class ModuleWindow : Window
             if (node.Kind==ModuleKind.Tension && value.Analysis is { } analysis) resultPanel.Children.Add(Note($"میانگین: {analysis.Mean:0.##} · دامنه انحراف: {analysis.DeviationPercent.Min():0.#}% تا {analysis.DeviationPercent.Max():0.#}%"));
         }
     }
-    private static TextBlock Note(string text)=>new() { Text=text,TextWrapping=TextWrapping.Wrap,FontSize=11,Foreground=ResourceBrush("Muted"),Margin=new Thickness(0,4,0,4) };
+    private static TextBlock Note(string text) { var note=new TextBlock { Text=text,TextWrapping=TextWrapping.Wrap,FontSize=11,Margin=new Thickness(0,4,0,4) }; note.SetResourceReference(TextBlock.ForegroundProperty,"Muted"); return note; }
     private static int Parse(string text,int fallback) => NumberInput.TryInt(text,out int n) ? n : throw new ArgumentException("عدد واردشده معتبر نیست.");
     private async Task ChooseImage(ModuleNode node)
     {
@@ -247,7 +270,7 @@ public partial class ModuleWindow : Window
         {
             var items=bank.Load(out int skipped); var dialog=new Window { Title="انتخاب بافت از بانک",Width=450,Height=580,Owner=Window.GetWindow(Inspector) ?? this,WindowStartupLocation=WindowStartupLocation.CenterOwner,FlowDirection=FlowDirection.RightToLeft,Background=ResourceBrush("Surface"), Foreground=ResourceBrush("PrimaryText") };
             var root=new DockPanel { Margin=new Thickness(15) }; var hint=new TextBlock { Text="برای انتخاب چند بافت از Ctrl یا Shift استفاده کنید.", TextWrapping=TextWrapping.Wrap, Margin=new Thickness(0,0,0,10) }; DockPanel.SetDock(hint,Dock.Top); root.Children.Add(hint); var confirm=new Button { Content="افزودن بافت‌های انتخاب‌شده",Margin=new Thickness(0,10,0,0) }; DockPanel.SetDock(confirm,Dock.Bottom); root.Children.Add(confirm);
-            var list=WeaveGallery(items, true); root.Children.Add(list); dialog.Content=root;
+            var list=WeaveGallery(items, true); root.Children.Add(list); dialog.SetResourceReference(Window.BackgroundProperty,"Surface"); dialog.SetResourceReference(Window.ForegroundProperty,"PrimaryText"); dialog.Content=root;
             confirm.Click+=(_,_)=>{ var chosen=list.SelectedItems.OfType<BankItem>().ToArray(); if (node.Weaves.Count+chosen.Length>256) { MessageBox.Show(dialog,"حداکثر ۲۵۶ بافت مجاز است."); return; } foreach(var item in chosen) { node.Weaves.Add(new WeavePattern(item.Pattern.Width,item.Pattern.Height,(byte[])item.Pattern.Values.Clone(),WeaveBank.CopyColors(item.Pattern.WeftColors))); node.WeaveNames.Add(item.Name); } if(chosen.Length>0) Changed(); dialog.DialogResult=true; };
             dialog.ShowDialog(); Inspect(); if(skipped>0) Status.Text=$"{skipped} بافت نامعتبر بانک نادیده گرفته شد.";
         } catch (Exception ex) when(ex is IOException or ArgumentException or UnauthorizedAccessException) { MessageBox.Show(this,ex.Message); }
@@ -258,7 +281,7 @@ public partial class ModuleWindow : Window
         {
             var items=bank.Load(out _); var dialog=new Window { Title=left ? "بافت کناره چپ" : "بافت کناره راست",Width=420,Height=540,Owner=Window.GetWindow(Inspector) ?? this,WindowStartupLocation=WindowStartupLocation.CenterOwner,FlowDirection=FlowDirection.RightToLeft,Background=ResourceBrush("Surface"), Foreground=ResourceBrush("PrimaryText") };
             var root=new DockPanel { Margin=new Thickness(15) }; var confirm=new Button { Content="انتخاب بافت",Margin=new Thickness(0,10,0,0) }; DockPanel.SetDock(confirm,Dock.Bottom); root.Children.Add(confirm);
-            var list=WeaveGallery(items, false); root.Children.Add(list); dialog.Content=root;
+            var list=WeaveGallery(items, false); root.Children.Add(list); dialog.SetResourceReference(Window.BackgroundProperty,"Surface"); dialog.SetResourceReference(Window.ForegroundProperty,"PrimaryText"); dialog.Content=root;
             confirm.Click+=(_,_)=>{ if(list.SelectedItem is not BankItem item)return; var p=new WeavePattern(item.Pattern.Width,item.Pattern.Height,(byte[])item.Pattern.Values.Clone(),WeaveBank.CopyColors(item.Pattern.WeftColors)); node.Machine=left ? node.Machine with { LeftPattern=p,LeftName=item.Name } : node.Machine with { RightPattern=p,RightName=item.Name }; Changed(); dialog.DialogResult=true; };
             dialog.ShowDialog(); Inspect();
         } catch(Exception ex) when(ex is IOException or ArgumentException or UnauthorizedAccessException) { MessageBox.Show(this,ex.Message); }
@@ -295,7 +318,7 @@ public partial class ModuleWindow : Window
         InspectorHost.Content=null; Inspect(); var dialog=new Window { Title=Spec(node.Kind).name, Width=720,Height=760,MinWidth=500,MinHeight=450,Owner=Window.GetWindow(Inspector) ?? this,WindowStartupLocation=WindowStartupLocation.CenterOwner,FlowDirection=FlowDirection.RightToLeft,Background=ResourceBrush("Surface"),Foreground=ResourceBrush("PrimaryText") };
         var root=new DockPanel { Margin=new Thickness(24) }; var bottom=new StackPanel { Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,12,0,0) }; DockPanel.SetDock(bottom,Dock.Bottom); root.Children.Add(bottom);
         var apply=new Button { Content="اعمال تنظیمات و بستن",Background=Brush("#0E806C"),Foreground=Brush("#FFFFFF"),Margin=new Thickness(4),Padding=new Thickness(14,9,14,9) }; var cancel=new Button { Content="انصراف",Margin=new Thickness(4),Padding=new Thickness(14,9,14,9) }; var run=new Button { Content="به‌روزرسانی پیش‌نمایش",Margin=new Thickness(4),Padding=new Thickness(14,9,14,9) }; bottom.Children.Add(apply); bottom.Children.Add(cancel); bottom.Children.Add(run);
-        root.Children.Add(new ScrollViewer { Content=Inspector,VerticalScrollBarVisibility=ScrollBarVisibility.Auto }); dialog.Content=root;
+        root.Children.Add(new ScrollViewer { Content=Inspector,VerticalScrollBarVisibility=ScrollBarVisibility.Auto }); dialog.SetResourceReference(Window.BackgroundProperty,"Surface"); dialog.SetResourceReference(Window.ForegroundProperty,"PrimaryText"); dialog.Content=root;
         apply.Click+=async (_,_)=>{ if(await ExecuteAsync(node)) dialog.DialogResult=true; }; run.Click+=async (_,_)=>await ExecuteAsync(node); cancel.Click+=(_,_)=>{ if(!busy)dialog.DialogResult=false; }; dialog.Closing+=(_,e)=>{ if(busy)e.Cancel=true; };
         bool accepted=dialog.ShowDialog()==true;
         ((ScrollViewer)root.Children[^1]).Content=null; InspectorHost.Content=Inspector;
