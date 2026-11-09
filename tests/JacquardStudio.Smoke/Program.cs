@@ -184,6 +184,11 @@ internal static class Program
             for (int i = 0; i < 1200 * 1200; i++)
                 Check(woven[i * 4] == (refBytes[i * 4 + 1] == 0 ? 0 : 255), "reference pattern placement and phase");
             // Manual edits preserve every pixel, target color, remaining patterns, and SAM state.
+            var profilePath=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"test-machine.samm");
+            var profileSetup=new MachineSetup(AbsoluteLayout:true,TotalHooks:"30",DesignStart:"4",WeftStart:"1");
+            MachineProfile.Save(profilePath,profileSetup,"Bonas"); var loadedProfile=MachineProfile.Load(profilePath);
+            Check(loadedProfile.Manufacturer=="Bonas" && loadedProfile.Setup.TotalHooks=="30" && loadedProfile.Setup.DesignStart=="4", "independent machine profile roundtrip");
+            Expect<ArgumentException>(()=>MachineProfile.Validate(profileSetup with { DesignStart="30" },"Bonas"));
             var graph = new ModuleGraph(); var graphLoad = graph.Add(ModuleKind.Load, 0, 0); graphLoad.ImagePng = ModuleExecutor.EmbedImage(b.Image);
             var graphResize = graph.Add(ModuleKind.Resize, 250, 0); graphResize.Width=3; graphResize.Height=2; graph.Connect(graphLoad.Id, graphResize.Id, "image");
             var graphOtherResize = graph.Add(ModuleKind.Resize, 250, 180); graphOtherResize.Width=6; graphOtherResize.Height=4; graph.Connect(graphLoad.Id,graphOtherResize.Id,"image");
@@ -234,7 +239,7 @@ internal static class Program
             Check(reportValues.Count==4 && reportValues.Any(x=>x.Value.Palette is not null) && reportValues.Any(x=>x.Value.Weaves is not null), "report aggregates independent connected module types without duplicate links");
             var secondReport=graph.Add(ModuleKind.Report,750,400); graph.Connect(reportNode.Id,secondReport.Id,"report"); Expect<ArgumentException>(()=>graph.Connect(secondReport.Id,reportNode.Id,"report")); graph.Remove(secondReport.Id);
             var capacity=new ModuleGraph(); var capacityReport=capacity.Add(ModuleKind.Report,0,0); for(int i=0;i<16;i++) capacity.Connect(capacity.Add(ModuleKind.Load,0,0).Id,capacityReport.Id,"report"); Expect<ArgumentException>(()=>capacity.Connect(capacity.Add(ModuleKind.Load,0,0).Id,capacityReport.Id,"report")); Check(capacity.Edges.Count==16, "report input is capped without partial connection");
-            var previousWires=graph.Edges.ToArray(); var oldCoords=graph.Nodes.Select(n=>(n.X,n.Y)).ToArray(); Expect<ArgumentException>(()=>graph.Arrange(1,1)); Check(graph.Nodes.Select(n=>(n.X,n.Y)).SequenceEqual(oldCoords), "invalid layout is atomic");
+            var previousWires=graph.Edges.ToArray(); var oldCoords=graph.Nodes.Select(n=>(n.X,n.Y)).ToArray(); Expect<ArgumentException>(()=>graph.Arrange(0,1)); Check(graph.Nodes.Select(n=>(n.X,n.Y)).SequenceEqual(oldCoords), "invalid layout is atomic"); graph.Arrange(1,1); Check(graph.Nodes.Select(n=>(n.X,n.Y)).Distinct().Count()==graph.Nodes.Count, "layout expands columns for insufficient capacity");
             graph.Arrange(5,4); Check(graph.Edges.SequenceEqual(previousWires) && graph.Nodes[1].X==330 && graph.Nodes[4].Y==260, "grid layout positions nodes without changing connections");
             string graphSam=Path.Combine(dir,"graph.sam"); ModuleProjectFile.Save(graphSam,graph); var loadedSam=ModuleProjectFile.Load(graphSam); Check(ModuleProjectFile.IsGraph(graphSam) && loadedSam.Nodes.Single(n=>n.Id==cropNode.Id).Crop==cropNode.Crop && ModuleExecutor.Run(loadedSam,reportNode.Id)[reportNode.Id].ReportItems!.Count==4, "SAM graph persists crop, repeat and multiple report links");
             loadedSam.Nodes.Single(n=>n.Id==graphResize.Id).Width=2; Expect<InvalidOperationException>(()=>ModuleExecutor.Run(loadedSam,reportNode.Id));
@@ -641,8 +646,8 @@ internal static class Program
             var themedCombo=new System.Windows.Controls.ComboBox { ItemsSource=new[]{"one", "two"}, SelectedIndex=0 }; ((System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector")).Children.Add(themedCombo); themedCombo.ApplyTemplate(); Check(themedCombo.Template.FindName("PART_Popup",themedCombo) is System.Windows.Controls.Primitives.Popup, "themed combo retains dropdown popup");
             ThemeManager.Apply(false,false); Check(Brightness(themedInput.Foreground) > Brightness(themedInput.Background)+100, "existing inputs update on dark theme change");
             var moduleLibrary = (System.Windows.Controls.StackPanel)moduleWindow.FindName("ModuleLibrary");
-            Check(moduleLibrary.Children.Count == 15 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
-            ((System.Windows.Controls.DockPanel)moduleLibrary.Children[4]).Children.OfType<System.Windows.Controls.Button>().Last().RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Check(moduleLibrary.Children.Count == 19 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
+            ((System.Windows.Controls.DockPanel)moduleLibrary.Children[8]).Children.OfType<System.Windows.Controls.Button>().Last().RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             var addedResize = moduleGraph.Nodes.Last(); Check(moduleGraph.Nodes.Count == 11 && addedResize.Kind == ModuleKind.Resize, "adding a second independent module through the library");
             var nodeLayer = (System.Windows.Controls.Canvas)moduleWindow.FindName("NodeLayer");
             System.Windows.Controls.Button Port(int index, string tip) { var card=(System.Windows.Controls.Border)nodeLayer.Children[index]; var inner=(System.Windows.Controls.Grid)card.Child; var ports=(System.Windows.Controls.Grid)inner.Children[1]; return ports.Children.OfType<System.Windows.Controls.Button>().Single(b => ((string?)b.ToolTip)?.Contains(tip)==true); }
@@ -650,7 +655,7 @@ internal static class Program
             Port(10,"اتصال ورودی").RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Check(moduleGraph.Edges.Any(e => e.From == moduleGraph.Nodes[0].Id && e.To == addedResize.Id && e.Port == "image"), "workspace port clicks create a real compatible branch");
             var cropDialog=new GraphCropWindow(inputImage,cropNode.Crop,inputHash); var cropRoot=(System.Windows.Controls.DockPanel)cropDialog.Content; var cropToolbar=(System.Windows.Controls.WrapPanel)cropRoot.Children[0];
-            var applyCrop=cropToolbar.Children.OfType<System.Windows.Controls.Button>().Single(b=>Equals(b.Content,"اعمال و بستن"));
+            var applyCrop=cropToolbar.Children.OfType<System.Windows.Controls.Button>().Single(b=>Equals(b.Content,"اعمال تنظیمات و بستن"));
             cropDialog.Loaded+=(_,_)=>cropDialog.Dispatcher.BeginInvoke(new Action(()=>applyCrop.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent))));
             Check(cropDialog.ShowDialog()==true && cropDialog.Result==cropNode.Crop, "crop window commits the current boundary on Apply");
             var graphEditor=new MainWindow(); graphEditor.ConfigureModuleEditor(ModuleKind.Colors,editing);

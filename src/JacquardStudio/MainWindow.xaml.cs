@@ -19,6 +19,11 @@ public partial class MainWindow : Window
     public WorkflowSession? ModuleEditorResult { get; private set; }
     public WeavePattern? ModuleWeaveResult { get; private set; }
     public string ModuleWeaveName { get; private set; } = "";
+    private int moduleProtectedLeft, moduleProtectedRight;
+    public int EditedFloatMinimum { get; private set; }
+    public bool EditedFloatWarp { get; private set; }
+    private IReadOnlyList<BankItem> connectedWeaves = Array.Empty<BankItem>();
+    public Visibility ConnectedWeavesVisibility => moduleEditorKind==ModuleKind.ApplyWeaves ? Visibility.Visible : Visibility.Collapsed;
     private int? bankTargetIndex;
     private string? bankSelvedgeSide;
     private readonly WeaveBank bank = new();
@@ -60,15 +65,22 @@ public partial class MainWindow : Window
 
     public MainWindow() { InitializeComponent(); SimulationWarpYarn.ItemsSource = FabricSimulation.YarnNames; SimulationWarpUnit.ItemsSource = YarnGeometry.Units; SimulationWarpColorHost.Children.Add(warpSwatch); warpSwatch.ColorChanged += (_, _) => SimulationSettingsChanged(); LoadSimulationSettings(new SimulationSettings()); selvedgeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) }; selvedgeTimer.Tick += async (_, _) => { selvedgeTimer.Stop(); if (!busy && !bankOpen) { if (stage == Stage.Selvedge) await PreviewSelvedgesAsync(false); else if (stage is Stage.Weft or Stage.Machine) await ComposeMachineAsync(false); } }; WeaveCanvas.Changed += (_, _) => { WeaveCanvas.SizeForScrolling(); RefreshControls(); }; WeaveCanvas.SizeForScrolling(); lightTheme = ThemeManager.ReadLight(); ThemeManager.Apply(lightTheme, false); VersionText.Text = AppVersion.Display; LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); UpdateLabels(); RefreshControls(); UpdateWindowTitle(); }
     /// <summary>Use the existing stage UI on an isolated snapshot; no graph state changes before Apply.</summary>
-    public void ConfigureModuleEditor(ModuleKind kind, WorkflowSession prepared)
+    public void ConfigureModuleEditor(ModuleKind kind, WorkflowSession prepared, IReadOnlyList<BankItem>? projectWeaves=null)
     {
-        if (kind is not (ModuleKind.Resize or ModuleKind.Colors)) throw new ArgumentException("This module is not supported by the legacy stage editor.");
-        moduleEditorKind=kind; AllowDrop=false; session=prepared.Snapshot(); path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"jacquard-graph-input"); sourceName="Graph input"; current=new ImageResult(session.Source,1,0,"Graph");
+        if (kind is not (ModuleKind.Resize or ModuleKind.Colors or ModuleKind.ApplyWeaves or ModuleKind.Floats or ModuleKind.Tension)) throw new ArgumentException("This module is not supported by the legacy stage editor.");
+        moduleEditorKind=kind; connectedWeaves=projectWeaves ?? Array.Empty<BankItem>(); AllowDrop=false; session=prepared.Snapshot(); path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"jacquard-graph-input"); sourceName="Graph input"; current=new ImageResult(session.Source,1,0,"Graph");
         WidthInput.Text=session.Resized!.PixelWidth.ToString(); HeightInput.Text=session.Resized.PixelHeight.ToString(); ColorInput.Text=(session.AppliedColorLimit ?? 256).ToString();
-        stage=kind==ModuleKind.Resize ? Stage.Size : Stage.Colors; Navigation.Visibility=Visibility.Collapsed;
+        stage=kind switch { ModuleKind.Resize => Stage.Size, ModuleKind.ApplyWeaves => Stage.Patterns, ModuleKind.Floats => Stage.Floats, ModuleKind.Tension => Stage.Analysis, _ => Stage.Colors }; Navigation.Visibility=Visibility.Collapsed;
         OpenButton.Visibility=SaveProjectButton.Visibility=SaveProjectAsButton.Visibility=InfoButton.Visibility=ReportButton.Visibility=BankButton.Visibility=Visibility.Collapsed;
         ModuleApplyButton.Visibility=ModuleCancelButton.Visibility=Visibility.Visible; ToColorButton.Visibility=ToPatternButton.Visibility=Visibility.Collapsed;
         RebuildPaletteEntries(); ShowStage(); UpdateWindowTitle();
+    }
+    public void ConfigureBinaryModuleEditor(ModuleKind kind, WorkflowSession prepared, int minimum, bool warp, int protectedLeft, int protectedRight)
+    {
+        if(kind is not (ModuleKind.Floats or ModuleKind.Tension)) throw new ArgumentException("Invalid binary editor.");
+        moduleProtectedLeft=protectedLeft; moduleProtectedRight=protectedRight; ConfigureModuleEditor(kind,prepared);
+        FloatMinimum.Text=minimum.ToString(); FloatWarp.IsChecked=warp; FloatWeft.IsChecked=!warp;
+        Loaded+=async (_,_)=>{ if(await ComposeMachineAsync(true) is not null && kind==ModuleKind.Tension) await RunAnalysisAsync(); };
     }
     /// <summary>Expose the original weave designer and bank on an independent node draft.</summary>
     public void ConfigureWeaveModuleEditor(WeavePattern? initial, string? name)
@@ -91,7 +103,10 @@ public partial class MainWindow : Window
             ModuleWeaveResult=WeaveCanvas.Snapshot(); ModuleWeaveName=WeaveName.Text.Trim(); allowClose=true; DialogResult=true; return;
         }
         if (session is null) return;
+        if (bankOpen) { MessageBox.Show(this,T("ابتدا از بانک به ماژول بازگردید.","Return from the bank before applying.")); return; }
+        if (moduleEditorKind==ModuleKind.ApplyWeaves && !session.CanSave) { MessageBox.Show(this,T("ابتدا برای همه رنگ‌ها بافت انتخاب کنید.","Assign a weave to every color first.")); return; }
         if (SizeDirty || moduleEditorKind==ModuleKind.Colors && ColorsDirty) { MessageBox.Show(this,T("ابتدا تغییر اندازه یا تعداد رنگ را در همین پنجره اعمال کنید.","Apply the current size or color limit first.")); return; }
+        if(moduleEditorKind==ModuleKind.Floats) { if(!NumberInput.TryInt(FloatMinimum.Text,out int minimum) || minimum<1 || minimum>DesignProcessor.MaxPixels) {MessageBox.Show(this,"حداقل طول فلوت معتبر نیست.");return;} EditedFloatMinimum=minimum; EditedFloatWarp=FloatWarp.IsChecked==true; }
         ModuleEditorResult=session.Snapshot(); allowClose=true; DialogResult=true;
     }
     private void ModuleCancel_Click(object sender,RoutedEventArgs e) { if (busy) return; allowClose=true; DialogResult=false; }
@@ -660,6 +675,7 @@ public partial class MainWindow : Window
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or OverflowException) { MessageBox.Show(this, ex.Message, Title); }
         finally { SetBusy(false); }
         if (plan is null) return;
+        if(moduleEditorKind==ModuleKind.Floats && (moduleProtectedLeft>0 || moduleProtectedRight>0)) { var filtered=plan.Points.Where(p=>p.X>=moduleProtectedLeft && p.X<currentSession.Palette!.Width-moduleProtectedRight).ToArray(); plan=new FloatCorrectionPlan(filtered,plan.Skipped+plan.Points.Count-filtered.Length); }
         if (plan.Points.Count == 0) { FloatAutoResult.Text = T($"نقطه قابل اصلاحی پیدا نشد؛ {plan.Skipped:N0} مرکز خارج از طرح یا روی فرمان است.", $"No editable centers found; {plan.Skipped:N0} are outside the design or on signal hooks."); return; }
         string prompt = T($"مرکز {plan.Points.Count:N0} فلوت در طرح سیاه/سفید معکوس می‌شود؛ {plan.Skipped:N0} مرکز کناره یا فرمان تغییر نمی‌کند. اصلاح انجام شود؟", $"Toggle {plan.Points.Count:N0} float centers in the design; {plan.Skipped:N0} centers on selvedges or signal hooks are skipped. Apply?");
         if (MessageBox.Show(this, prompt, Title, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
@@ -715,7 +731,7 @@ public partial class MainWindow : Window
         Point p = e.GetPosition(PreviewImage); if (p.X < 0 || p.Y < 0 || p.X >= PreviewImage.ActualWidth || p.Y >= PreviewImage.ActualHeight) return;
         int x = (int)(p.X * map.Image.PixelWidth / PreviewImage.ActualWidth), y = (int)(p.Y * map.Image.PixelHeight / PreviewImage.ActualHeight);
         int bodyX = x - map.DesignStart;
-        if (bodyX < 0 || bodyX >= session.Palette!.Width || map.SignalHooks.Contains(x))
+        if (bodyX < 0 || bodyX >= session.Palette!.Width || map.SignalHooks.Contains(x) || moduleEditorKind==ModuleKind.Floats && (bodyX<moduleProtectedLeft || bodyX>=session.Palette.Width-moduleProtectedRight))
         { StatusText.Text = T("فقط نقاط خود طرح قابل ویرایش‌اند؛ کناره را از تنظیمات کناره تغییر دهید.", "Only design pixels can be edited; change selvedges in their settings."); return; }
         bool rescan = floatRuns is not null; int index = floatIndex, minimum = lastFloatMinimum; var direction = lastFloatDirection; var before = CaptureHistory(); SetBusy(true);
         try { await Task.Run(() => session.TogglePixel(bodyX, y)); RecordHistory(before); StatusText.Text = T("نقطه اصلاح شد؛ پروژه را ذخیره کنید.", "Pixel edited; save the project."); }
@@ -767,6 +783,15 @@ public partial class MainWindow : Window
         if (busy) return;
         if (bankOpen) { if (ConfirmDiscardDrawing()) { bankOpen = false; bankTargetIndex = null; bankSelvedgeSide = null; WeaveCanvas.DiscardChanges(); ShowStage(); } return; }
         bankTargetIndex = null; bankSelvedgeSide = null; bankOpen = true; ShowStage(); await ReloadBankAsync();
+    }
+    private async void ConnectedWeave_Click(object sender,RoutedEventArgs e)
+    {
+        if(busy || moduleEditorKind!=ModuleKind.ApplyWeaves || session?.Palette is null || (sender as Button)?.DataContext is not PaletteEntry entry) return;
+        var dialog=new Window { Title="بافت‌های متصل",Width=460,Height=540,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,FlowDirection=FlowDirection.RightToLeft }; dialog.SetResourceReference(BackgroundProperty,"Surface");
+        var root=new DockPanel { Margin=new Thickness(14) }; var confirm=new Button { Content="انتخاب بافت",Margin=new Thickness(4) }; DockPanel.SetDock(confirm,Dock.Bottom); root.Children.Add(confirm);
+        var list=new ListBox { ItemsSource=connectedWeaves,ItemsPanel=(ItemsPanelTemplate)Application.Current.FindResource("WeaveGalleryPanel"),ItemTemplate=(DataTemplate)Application.Current.FindResource("WeaveGalleryItem"),ItemContainerStyle=(Style)Application.Current.FindResource("WeaveGalleryListItem") }; list.SetResourceReference(Control.BackgroundProperty,"ListBackground"); root.Children.Add(list); dialog.Content=root;
+        confirm.Click+=(_,_)=>{if(list.SelectedItem is BankItem)dialog.DialogResult=true;}; if(dialog.ShowDialog()!=true || list.SelectedItem is not BankItem item)return;
+        var before=CaptureHistory(); SetBusy(true); try { await Task.Run(()=>session.AssignPattern(entry.Index,item.Pattern)); RecordHistory(before); entry.Restore(item.Name,item.Pattern); ShowStage(); } catch(Exception ex) when(ex is ArgumentException or InvalidOperationException) { MessageBox.Show(this,ex.Message); } finally { SetBusy(false); }
     }
     private async void PatternBank_Click(object sender, RoutedEventArgs e)
     {
