@@ -184,6 +184,23 @@ internal static class Program
             for (int i = 0; i < 1200 * 1200; i++)
                 Check(woven[i * 4] == (refBytes[i * 4 + 1] == 0 ? 0 : 255), "reference pattern placement and phase");
             // Manual edits preserve every pixel, target color, remaining patterns, and SAM state.
+            var graph = new ModuleGraph(); var graphLoad = graph.Add(ModuleKind.Load, 0, 0); graphLoad.ImagePng = ModuleExecutor.EmbedImage(b.Image);
+            var graphResize = graph.Add(ModuleKind.Resize, 250, 0); graphResize.Width=3; graphResize.Height=2; graph.Connect(graphLoad.Id, graphResize.Id, "image");
+            var graphOtherResize = graph.Add(ModuleKind.Resize, 250, 180); graphOtherResize.Width=6; graphOtherResize.Height=4; graph.Connect(graphLoad.Id,graphOtherResize.Id,"image");
+            var graphColors = graph.Add(ModuleKind.Colors, 500, 0); graphColors.ColorLimit=2; graph.Connect(graphResize.Id,graphColors.Id,"image");
+            var graphWeaves = graph.Add(ModuleKind.Weaves, 500, 180); graphWeaves.Weaves.Add(PatternLibrary.Presets[0].Pattern); graphWeaves.WeaveNames.Add("plain");
+            var graphApply = graph.Add(ModuleKind.ApplyWeaves, 750, 0); graph.Connect(graphColors.Id,graphApply.Id,"palette"); graph.Connect(graphWeaves.Id,graphApply.Id,"weaves");
+            var graphFloat = graph.Add(ModuleKind.Floats, 1000, 0); graphFloat.FloatMinimum=2; graph.Connect(graphApply.Id,graphFloat.Id,"fabric");
+            var graphTension=graph.Add(ModuleKind.Tension,1250,0); graph.Connect(graphFloat.Id,graphTension.Id,"fabric");
+            var graphWeft=graph.Add(ModuleKind.Weft,1500,0); graphWeft.Machine=new MachineSetup(AbsoluteLayout:true,BoxEnabled:true,DesignStart:"1",WeftStart:"0",WeftCount:"1"); graph.Connect(graphTension.Id,graphWeft.Id,"fabric");
+            var graphMachine=graph.Add(ModuleKind.Machine,1750,0); graph.Connect(graphWeft.Id,graphMachine.Id,"fabric");
+            var graphSimulation=graph.Add(ModuleKind.Simulation,1750,200); graphSimulation.Simulation=new SimulationSettings(Mode:0); graph.Connect(graphWeft.Id,graphSimulation.Id,"fabric");
+            var executed=ModuleExecutor.Run(graph,graphMachine.Id); Check(executed[graphMachine.Id].Image!.PixelWidth==4 && executed[graphTension.Id].Analysis is not null && executed[graphWeft.Id].Composition!.RowWefts.Length==2, "connected modules execute real image, weave, float, analysis, weft and machine data");
+            Check(ModuleExecutor.Run(graph,graphSimulation.Id)[graphSimulation.Id].Image is not null && ModuleExecutor.Run(graph,graphOtherResize.Id)[graphOtherResize.Id].Image!.PixelWidth==6, "independent image and simulation branches execute");
+            Expect<ArgumentException>(()=>graph.Connect(graphColors.Id,graphFloat.Id,"fabric")); Expect<ArgumentException>(()=>graph.Connect(graphTension.Id,graphFloat.Id,"fabric"));
+            Check(graph.Edges.Any(e=>e.From==graphApply.Id && e.To==graphFloat.Id), "failed connection is atomic and leaves original edge");
+            string graphPath=Path.Combine(dir,"workflow.jgw"); ModuleProjectFile.Save(graphPath,graph); var graphRestored=ModuleProjectFile.Load(graphPath); Check(graphRestored.Nodes.Count==graph.Nodes.Count && ModuleExecutor.Run(graphRestored,graphMachine.Id)[graphMachine.Id].Image!.PixelWidth==4, "graph, embedded source, patterns, settings and connections survive round trip");
+            graphRestored.Disconnect(graphApply.Id,"weaves"); Expect<InvalidOperationException>(()=>ModuleExecutor.Run(graphRestored,graphMachine.Id));
             var manual = new WorkflowSession(b.Image); manual.ApplySize(3, 2); manual.ApplyColors(50);
             var firstPattern = new WeavePattern(1, 1, new byte[] {0}); var targetPattern = new WeavePattern(1, 1, new byte[] {255});
             manual.AssignPattern(0, firstPattern); manual.AssignPattern(1, targetPattern);
@@ -574,7 +591,7 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
-            Check(AppVersion.Display == "025.11.0.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "026.0.1.0-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));

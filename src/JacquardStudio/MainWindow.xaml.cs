@@ -163,6 +163,7 @@ public partial class MainWindow : Window
             pair.Item1.BorderBrush = active ? (Brush)FindResource("Accent") : (Brush)FindResource("ButtonBorder");
         }
     }
+    public async void OpenLegacyProject(string filename) => await LoadProjectAsync(filename);
     private async Task LoadProjectAsync(string filename)
     {
         SetBusy(true); StatusText.Text = T("در حال باز کردن پروژه…", "Opening project…"); bool loaded = false;
