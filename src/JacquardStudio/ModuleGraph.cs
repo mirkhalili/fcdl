@@ -26,6 +26,7 @@ public sealed class ModuleNode
     public bool AutoCorrect { get; set; }
     public MachineSetup Machine { get; set; } = new();
     public SimulationSettings Simulation { get; set; } = new(Mode: 0);
+    public int MachineFormat { get; set; } = 1;
 }
 public sealed record ModuleEdge(Guid From, Guid To, string Port);
 public sealed class ModuleGraph
@@ -109,7 +110,8 @@ public static class ModuleExecutor
                     var assigned = p.Colors.Select(c => { int k = node.WeaveAssignments.GetValueOrDefault(c,0); if ((uint)k >= (uint)patterns.Count) throw new ArgumentException("A color refers to a missing weave."); return (WeavePattern?)patterns[k]; }).ToArray();
                     result = new(ModuleData.Fabric, DesignProcessor.Render(p,assigned)); break;
                 case ModuleKind.Selvedge:
-                    var body = Input("fabric").Image!; var edgeMap = MachineComposer.Compose(body,MachineComposer.BeforeWeft(node.Machine));
+                    var edgeInput = Input("fabric"); if (edgeInput.Composition is { SignalHooks.Length: > 0 }) throw new InvalidOperationException("Add selvedges before weft signal placement.");
+                    var body = edgeInput.Image!; var edgeMap = MachineComposer.Compose(body,MachineComposer.BeforeWeft(node.Machine));
                     result = new(ModuleData.Fabric,edgeMap.Image,Composition:edgeMap); break;
                 case ModuleKind.Floats:
                     var input = Input("fabric"); var view = input.Composition is null ? input.Image! : CompositionView.Fabric(input.Composition); byte[] map = DesignAnalysis.ReadBinary(view);
@@ -126,7 +128,8 @@ public static class ModuleExecutor
                     var original = Input("fabric"); var woven = original.Composition is null ? original.Image! : CompositionView.Fabric(original.Composition);
                     result = original with { Analysis = DesignAnalysis.Analyze(DesignAnalysis.ReadBinary(woven),woven.PixelWidth,woven.PixelHeight) }; break;
                 case ModuleKind.Weft:
-                    var upstream = Input("fabric").Image!; var composed = MachineComposer.Compose(upstream,node.Machine);
+                    var beforeWeft = Input("fabric"); if (beforeWeft.Composition is { SignalHooks.Length: > 0 }) throw new InvalidOperationException("This branch already has weft signal columns.");
+                    var upstream = beforeWeft.Image!; var composed = MachineComposer.Compose(upstream,node.Machine);
                     result = new(ModuleData.Fabric,composed.Image,Composition:composed); break;
                 case ModuleKind.Simulation:
                     var cloth = Input("fabric"); var area = cloth.Composition is null ? cloth.Image! : CompositionView.Fabric(cloth.Composition);

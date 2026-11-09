@@ -145,8 +145,8 @@ public partial class ModuleWindow : Window
                     }
                 } break;
             case ModuleKind.Selvedge:
-                Field("عرض کناره چپ",node.Machine.LeftWidth,s=>node.Machine=node.Machine with { LeftWidth=s, LeftPattern=PatternLibrary.Presets[0].Pattern });
-                Field("عرض کناره راست",node.Machine.RightWidth,s=>node.Machine=node.Machine with { RightWidth=s, RightPattern=PatternLibrary.Presets[0].Pattern }); Inspector.Children.Add(Note("بافت پیش‌فرض کناره: بافت نخست بانک.")); break;
+                Field("عرض کناره چپ",node.Machine.LeftWidth,s=>node.Machine=node.Machine with { LeftWidth=s, LeftPattern=node.Machine.LeftPattern ?? PatternLibrary.Presets[0].Pattern });
+                Field("عرض کناره راست",node.Machine.RightWidth,s=>node.Machine=node.Machine with { RightWidth=s, RightPattern=node.Machine.RightPattern ?? PatternLibrary.Presets[0].Pattern }); Button("انتخاب بافت کناره چپ",()=>ChooseSelvedge(node,true)); Button("انتخاب بافت کناره راست",()=>ChooseSelvedge(node,false)); break;
             case ModuleKind.Floats:
                 Field("حداقل طول فلوت",node.FloatMinimum.ToString(),s=>node.FloatMinimum=Parse(s,0));
                 var dir=new ComboBox { ItemsSource=new[]{"تار / Warp","پود / Weft"},SelectedIndex=node.FloatWarp?0:1, Margin=new Thickness(0,8,0,0) }; dir.SelectionChanged+=(_,_)=>{node.FloatWarp=dir.SelectedIndex==0;Changed();}; Inspector.Children.Add(dir);
@@ -154,12 +154,19 @@ public partial class ModuleWindow : Window
             case ModuleKind.Tension: Inspector.Children.Add(Note("تحلیل نسبی تار؛ مقدار فیزیکی کشش نیست. خروجی پارچه بدون تغییر ادامه می‌یابد.")); break;
             case ModuleKind.Weft:
                 Field("تعداد پود (۰ = بدون فرمان)",node.Machine.WeftCount,s=>{ int count=Parse(s,0); if (count is < 0 or > 256) throw new ArgumentException("تعداد پود باید بین ۰ تا ۲۵۶ باشد."); node.Machine=node.Machine with { AbsoluteLayout=true,BoxEnabled=count>0,WeftCount=s,DesignStart=count.ToString(),WeftStart="0" }; });
-                Field("توالی پودها",node.Machine.Sequence,s=>node.Machine=node.Machine with { Sequence=s }); Field("تعداد کل تار (خالی = خودکار)",node.Machine.TotalHooks,s=>node.Machine=node.Machine with { TotalHooks=s }); Inspector.Children.Add(Note("قلاب‌ها و قطبیت باید مستقل روی دستگاه بررسی شوند.")); break;
+                Field("توالی پودها",node.Machine.Sequence,s=>node.Machine=node.Machine with { Sequence=s }); Field("تعداد کل تار (خالی = خودکار)",node.Machine.TotalHooks,s=>node.Machine=node.Machine with { TotalHooks=s });
+                Field("ستون شروع پود (از ۱)",PositionNumbers.ToDisplay(node.Machine.WeftStart),s=>node.Machine=node.Machine with { WeftStart=PositionNumbers.ToStored(s) }); Field("ستون شروع طرح (از ۱)",PositionNumbers.ToDisplay(node.Machine.DesignStart),s=>node.Machine=node.Machine with { DesignStart=PositionNumbers.ToStored(s) });
+                var bottom=new CheckBox { Content="توالی از پایین شروع شود",IsChecked=node.Machine.StartFromBottom,Margin=new Thickness(0,10,0,0) }; bottom.Click+=(_,_)=>{node.Machine=node.Machine with { StartFromBottom=bottom.IsChecked==true };Changed();}; Inspector.Children.Add(bottom); Inspector.Children.Add(Note("قلاب‌ها و قطبیت باید مستقل روی دستگاه بررسی شوند.")); break;
             case ModuleKind.Simulation:
                 Field("رنگ تار #RRGGBB",node.Simulation.WarpColor,s=>node.Simulation=node.Simulation with { WarpColor=s }); Field("رنگ پود #RRGGBB",node.Simulation.WeftColor,s=>node.Simulation=node.Simulation with { WeftColor=s });
+                Field("نمره نخ تار",node.Simulation.WarpCount,s=>node.Simulation=node.Simulation with { WarpCount=s }); Field("تراکم تار / سانتی‌متر",node.Simulation.WarpDensity,s=>node.Simulation=node.Simulation with { WarpDensity=s }); Field("تراکم پود / سانتی‌متر",node.Simulation.WeftDensity,s=>node.Simulation=node.Simulation with { WeftDensity=s }); Field("چگالی مؤثر نخ",node.Simulation.MaterialDensity,s=>node.Simulation=node.Simulation with { MaterialDensity=s });
+                var warpYarn=new ComboBox { ItemsSource=FabricSimulation.YarnNames,SelectedIndex=node.Simulation.WarpYarn,Margin=new Thickness(0,8,0,0) }; warpYarn.SelectionChanged+=(_,_)=>{node.Simulation=node.Simulation with { WarpYarn=warpYarn.SelectedIndex };Changed();}; Inspector.Children.Add(warpYarn);
+                var weftYarn=new ComboBox { ItemsSource=FabricSimulation.YarnNames,SelectedIndex=node.Simulation.WeftYarn,Margin=new Thickness(0,8,0,0) }; weftYarn.SelectionChanged+=(_,_)=>{node.Simulation=node.Simulation with { WeftYarn=weftYarn.SelectedIndex };Changed();}; Inspector.Children.Add(weftYarn);
                 var mode=new ComboBox { ItemsSource=new[]{"معمولی","پرز نخ"},SelectedIndex=Math.Clamp(node.Simulation.Mode,0,1),Margin=new Thickness(0,10,0,0) }; mode.SelectionChanged+=(_,_)=>{node.Simulation=node.Simulation with { Mode=mode.SelectedIndex };Changed();}; Inspector.Children.Add(mode); break;
             case ModuleKind.Machine:
-                Inspector.Children.Add(Note("خروجی آزمایشی JC5 / Bonas. ابتدا ماژول را اجرا و نقشه را بررسی کنید.")); Button("ذخیره فایل ماشین JC5",()=>ExportMachine(node)); break;
+                Inspector.Children.Add(Note("خروجی آزمایشی. ابتدا ماژول را اجرا و نقشه را بررسی کنید."));
+                var format=new ComboBox { ItemsSource=new[]{"JC5","JC6 (نام شامل 6)","Bonas JC5"}, SelectedIndex=node.MachineFormat==4 ? 1 : node.MachineFormat==5 ? 2 : 0, Margin=new Thickness(0,8,0,0) }; format.SelectionChanged+=(_,_)=>{node.MachineFormat=format.SelectedIndex==1 ? 4 : format.SelectedIndex==2 ? 5 : 1;Changed();}; Inspector.Children.Add(format);
+                Button("ذخیره فایل ماشین JC5",()=>ExportMachine(node)); break;
         }
         if (results.TryGetValue(node.Id,out var value))
         {
@@ -188,6 +195,17 @@ public partial class ModuleWindow : Window
             dialog.ShowDialog(); Inspect(); if(skipped>0) Status.Text=$"{skipped} بافت نامعتبر بانک نادیده گرفته شد.";
         } catch (Exception ex) when(ex is IOException or ArgumentException or UnauthorizedAccessException) { MessageBox.Show(this,ex.Message); }
     }
+    private void ChooseSelvedge(ModuleNode node, bool left)
+    {
+        try
+        {
+            var items=bank.Load(out _); var dialog=new Window { Title=left ? "بافت کناره چپ" : "بافت کناره راست",Width=420,Height=540,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,FlowDirection=FlowDirection.RightToLeft,Background=Brush("#192838") };
+            var root=new DockPanel { Margin=new Thickness(15) }; var confirm=new Button { Content="انتخاب بافت",Margin=new Thickness(0,10,0,0) }; DockPanel.SetDock(confirm,Dock.Bottom); root.Children.Add(confirm);
+            var list=new ListBox { ItemsSource=items,DisplayMemberPath=nameof(BankItem.Name) }; root.Children.Add(list); dialog.Content=root;
+            confirm.Click+=(_,_)=>{ if(list.SelectedItem is not BankItem item)return; var p=new WeavePattern(item.Pattern.Width,item.Pattern.Height,(byte[])item.Pattern.Values.Clone(),WeaveBank.CopyColors(item.Pattern.WeftColors)); node.Machine=left ? node.Machine with { LeftPattern=p,LeftName=item.Name } : node.Machine with { RightPattern=p,RightName=item.Name }; Changed(); dialog.DialogResult=true; };
+            dialog.ShowDialog(); Inspect();
+        } catch(Exception ex) when(ex is IOException or ArgumentException or UnauthorizedAccessException) { MessageBox.Show(this,ex.Message); }
+    }
     private void CreateWeave(ModuleNode node)
     {
         if(node.Weaves.Count>=256) { MessageBox.Show(this,"حداکثر ۲۵۶ بافت مجاز است."); return; }
@@ -209,7 +227,8 @@ public partial class ModuleWindow : Window
     private void ExportMachine(ModuleNode node)
     {
         if(!results.TryGetValue(node.Id,out var value) || value.Image is null) { MessageBox.Show(this,"ابتدا ماژول ماشین را اجرا کنید."); return; }
-        var dialog=new SaveFileDialog { Filter="JC5 (*.jc5)|*.jc5",FileName="design.jc5",AddExtension=true }; if(dialog.ShowDialog(this)!=true) return;
+        var dialog=new SaveFileDialog { Filter="JC5 (*.jc5)|*.jc5",FileName=MachineFileNaming.SuggestedName(node.MachineFormat),AddExtension=true }; if(dialog.ShowDialog(this)!=true) return;
+        if (!MachineFileNaming.ValidDestination(dialog.FileName,node.MachineFormat)) { MessageBox.Show(this,"نام یا پسوند فایل برای قالب انتخاب‌شده معتبر نیست."); return; }
         try { Jc5Codec.Save(value.Image,dialog.FileName,new[]{projectPath}.OfType<string>()); Status.Text="فایل آزمایشی ماشین ذخیره شد؛ پیش از تولید آن را بررسی کنید."; } catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException) { MessageBox.Show(this,ex.Message); }
     }
     private bool ConfirmDiscard() { if(!dirty)return true; var result=MessageBox.Show(this,"تغییرات پروژه ذخیره نشده‌اند. ذخیره شوند؟","پروژه",MessageBoxButton.YesNoCancel,MessageBoxImage.Warning); return result==MessageBoxResult.No || result==MessageBoxResult.Yes && SaveGraph(false); }
