@@ -212,7 +212,7 @@ public static class ModuleExecutor
                     var upstream = beforeWeft.Image!; var setup=node.Machine; var machineEdge=graph.Edges.SingleOrDefault(e=>e.To==id && e.Port=="machine");
                     if(machineEdge is not null) { var profile=Evaluate(machineEdge.From).Machine ?? throw new InvalidOperationException("تنظیم ماشین موجود نیست."); setup=profile with { AbsoluteLayout=true, BoxEnabled=node.Machine.BoxEnabled, WeftCount=node.Machine.WeftCount, Sequence=node.Machine.Sequence, StartFromBottom=node.Machine.StartFromBottom }; }
                     var composed = MachineComposer.Compose(upstream,setup);
-                    result = new(ModuleData.Fabric,composed.Image,Composition:composed); break;
+                    result = new(ModuleData.Fabric,composed.Image,Composition:composed,Machine:setup); break;
                 case ModuleKind.Simulation:
                     var cloth = Input("fabric"); var area = cloth.Composition is null ? cloth.Image! : CompositionView.Fabric(cloth.Composition);
                     result = new(ModuleData.Preview,FabricSimulation.Render(area,node.Simulation,cloth.Composition?.RowWefts)); break;
@@ -250,10 +250,10 @@ public static class ModuleExecutor
         if(node.Kind==ModuleKind.Crop && node.Crop is { } c) lines.Add($"برش: ({c.X}, {c.Y}) · {c.Width} × {c.Height}");
         if(node.Kind==ModuleKind.Resize) lines.Add($"اندازه درخواستی: {node.Width} × {node.Height} (صفر یعنی اندازه ورودی)");
         if(node.Kind==ModuleKind.Colors) lines.Add($"حداکثر رنگ: {node.ColorLimit} · رنگ‌های قفل‌شده: {node.ColorEdit?.Locks.Count(x=>x) ?? 0}");
-        if(node.Kind==ModuleKind.ApplyWeaves) lines.Add($"تخصیص‌های انتخابی رنگ به بافت: {node.WeaveAssignments.Count}؛ رنگ‌های دیگر از بافت اول استفاده می‌کنند.");
+        if(node.Kind==ModuleKind.ApplyWeaves) lines.Add($"تخصیص‌های بانک: {node.WeaveAssignments.Count} · بافت‌های سفارشی: {node.CustomWeaves.Count} · شاخص بافت پیش‌فرض: {node.DefaultWeaveIndex}");
         if(node.Kind==ModuleKind.Selvedge) lines.Add($"کناره چپ: {node.Machine.LeftWidth} ({node.Machine.LeftName}) · راست: {node.Machine.RightWidth} ({node.Machine.RightName})");
         if(node.Kind==ModuleKind.Floats) lines.Add("اصلاح خودکار: " + (node.AutoCorrect ? "فعال" : "غیرفعال"));
-        if(node.Kind==ModuleKind.Weft) lines.Add($"تعداد پود: {node.Machine.WeftCount} · توالی: {node.Machine.Sequence} · شروع طرح: {PositionNumbers.ToDisplay(node.Machine.DesignStart)} · شروع پود: {PositionNumbers.ToDisplay(node.Machine.WeftStart)}");
+        if(node.Kind==ModuleKind.Weft && value.Machine is { } used) lines.Add($"تعداد پود: {used.WeftCount} · توالی: {used.Sequence} · شروع طرح: {PositionNumbers.ToDisplay(used.DesignStart)} · شروع پود: {PositionNumbers.ToDisplay(used.WeftStart)}");
         if(node.Kind==ModuleKind.Simulation) lines.Add($"حالت: {node.Simulation.Mode} · نمره تار: {node.Simulation.WarpCount} · تراکم تار/پود: {node.Simulation.WarpDensity} / {node.Simulation.WeftDensity} · رنگ تار/پود: {node.Simulation.WarpColor} / {node.Simulation.WeftColor} (نمایش تقریبی)");
         if(node.Kind==ModuleKind.Machine) lines.Add($"قالب: {node.MachineFormat} · خروجی ماشین آزمایشی؛ نگاشت و قطبیت باید مستقل بررسی شود.");
         if(value.DesignFields is { } fields) foreach(var field in fields) lines.Add(field.Title + ": " + field.Text);
