@@ -95,3 +95,5 @@ JC4، JC5 و JC6 نام کنترلر هستند و لزوماً پسوند فا�
 Version 024.10.0.1-a1 adds a sample-based experimental Bonas JC5 profile, an adaptive indexed 8-bit initial palette (up to 256 colors), soft normal and yarn-fiber fabric previews, and paginated yarn/color reports. The Bonas profile is verified against one provided EAT OpenWeave sample only; verify the file and hook polarity on the intended controller before production. See [stage 24 notes](Docs/32-stage-24.md).
 
 Version 025.11.0.1-a1 adds rectangular color selection, multi-color merge/removal, sortable palette columns, persistent color locks and a PNG palette table. See [stage 25 notes](Docs/33-stage-25.md) for lock behavior and limitations.
+
+Version 026.0.1.0-a1 introduces an experimental node-based graph workspace. The migration is **not yet feature-complete**; existing SAM projects and advanced operations remain in the separate legacy workspace and are not automatically converted into graph nodes. See [stage 26 migration status](Docs/34-stage-26.md).

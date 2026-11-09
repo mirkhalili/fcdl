@@ -41,3 +41,4 @@
 
 - [Stage 24: Bonas JC5 sample, 8-bit adaptive palette, and fabric/yarn report](32-stage-24.md)
 - [Stage 25: palette region selection, sorting, locks and PNG export](33-stage-25.md)
+- [Stage 26: modular workspace and migration status](34-stage-26.md)

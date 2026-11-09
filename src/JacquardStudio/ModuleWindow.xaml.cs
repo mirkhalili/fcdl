@@ -57,12 +57,14 @@ public partial class ModuleWindow : Window
         foreach (var (a,b,port) in new[] { (load,resize,"image"),(resize,colors,"image"),(colors,apply,"palette"),(weaves,apply,"weaves"),(apply,floats,"fabric"),(floats,tension,"fabric"),(tension,weft,"fabric"),(weft,machine,"fabric"),(weft,simulation,"fabric") }) graph.Connect(a.Id,b.Id,port);
         selected = load.Id; connecting = null; projectPath = null; results = new Dictionary<Guid,ModuleValue>();
     }
-    private void Changed() { dirty = true; results = new Dictionary<Guid,ModuleValue>(); UpdateTitle(); }
+    private void Changed() { dirty = true; results = new Dictionary<Guid,ModuleValue>(); foreach (var child in Inspector.Children.OfType<FrameworkElement>().Where(e => Equals(e.Tag, "module-result")).ToArray()) Inspector.Children.Remove(child); UpdateTitle(); }
     private void UpdateTitle() => Title = $"Jacquard Studio · {(projectPath is null ? "پروژه جدید" : System.IO.Path.GetFileName(projectPath))}{(dirty ? " *" : "")}";
     private static string PortName(string port) => port switch { "image" => "تصویر", "palette" => "رنگ‌ها", "weaves" => "بافت‌ها", _ => "پارچه" };
     private void RenderGraph()
     {
         NodeLayer.Children.Clear(); cards.Clear();
+        GraphCanvas.Width = Math.Max(2600, graph.Nodes.Select(n => n.X + 300).DefaultIfEmpty(0).Max()); GraphCanvas.Height = Math.Max(1700, graph.Nodes.Select(n => n.Y + 220).DefaultIfEmpty(0).Max());
+        NodeLayer.Width = WireLayer.Width = GraphCanvas.Width; NodeLayer.Height = WireLayer.Height = GraphCanvas.Height;
         foreach (var node in graph.Nodes)
         {
             var spec = Spec(node.Kind); var card = new Border { Width = 210, Height = 132, Background = Brush("#192838"), BorderBrush = Brush(node.Id == selected ? "#48DAB7" : "#354B5E"), BorderThickness = new Thickness(node.Id == selected ? 2 : 1), CornerRadius = new CornerRadius(12), Cursor = Cursors.Hand, ToolTip = "انتخاب و جابه‌جایی ماژول" };
@@ -170,11 +172,12 @@ public partial class ModuleWindow : Window
         }
         if (results.TryGetValue(node.Id,out var value))
         {
-            Inspector.Children.Add(new TextBlock { Text="پیش‌نمایش خروجی",FontSize=13,FontWeight=FontWeights.Bold,Margin=new Thickness(0,18,0,6) });
-            if (value.Image is not null) { var image=new Image { Source=value.Image,MaxHeight=220,Stretch=Stretch.Uniform }; RenderOptions.SetBitmapScalingMode(image,BitmapScalingMode.NearestNeighbor); Inspector.Children.Add(new Border { Background=Brush("#0C1620"),Padding=new Thickness(8),CornerRadius=new CornerRadius(8),Child=image }); }
-            if (value.Palette is not null) Inspector.Children.Add(Note($"{value.Palette.Width} × {value.Palette.Height} · {value.Palette.Colors.Length} رنگ"));
-            if (node.Kind==ModuleKind.Floats) Inspector.Children.Add(Note($"تعداد فلوت‌های یافته‌شده: {value.FloatCount}"));
-            if (node.Kind==ModuleKind.Tension && value.Analysis is { } analysis) Inspector.Children.Add(Note($"میانگین: {analysis.Mean:0.##} · دامنه انحراف: {analysis.DeviationPercent.Min():0.#}% تا {analysis.DeviationPercent.Max():0.#}%"));
+            var resultPanel = new StackPanel { Tag = "module-result" }; Inspector.Children.Add(resultPanel);
+            resultPanel.Children.Add(new TextBlock { Text="پیش‌نمایش خروجی",FontSize=13,FontWeight=FontWeights.Bold,Margin=new Thickness(0,18,0,6) });
+            if (value.Image is not null) { var image=new Image { Source=value.Image,MaxHeight=220,Stretch=Stretch.Uniform }; RenderOptions.SetBitmapScalingMode(image,BitmapScalingMode.NearestNeighbor); resultPanel.Children.Add(new Border { Background=Brush("#0C1620"),Padding=new Thickness(8),CornerRadius=new CornerRadius(8),Child=image }); }
+            if (value.Palette is not null) resultPanel.Children.Add(Note($"{value.Palette.Width} × {value.Palette.Height} · {value.Palette.Colors.Length} رنگ"));
+            if (node.Kind==ModuleKind.Floats) resultPanel.Children.Add(Note($"تعداد فلوت‌های یافته‌شده: {value.FloatCount}"));
+            if (node.Kind==ModuleKind.Tension && value.Analysis is { } analysis) resultPanel.Children.Add(Note($"میانگین: {analysis.Mean:0.##} · دامنه انحراف: {analysis.DeviationPercent.Min():0.#}% تا {analysis.DeviationPercent.Max():0.#}%"));
         }
     }
     private static TextBlock Note(string text)=>new() { Text=text,TextWrapping=TextWrapping.Wrap,FontSize=11,Foreground=Brush("#91AABB"),Margin=new Thickness(0,4,0,4) };

@@ -199,6 +199,8 @@ internal static class Program
             Check(ModuleExecutor.Run(graph,graphSimulation.Id)[graphSimulation.Id].Image is not null && ModuleExecutor.Run(graph,graphOtherResize.Id)[graphOtherResize.Id].Image!.PixelWidth==6, "independent image and simulation branches execute");
             Expect<ArgumentException>(()=>graph.Connect(graphColors.Id,graphFloat.Id,"fabric")); Expect<ArgumentException>(()=>graph.Connect(graphTension.Id,graphFloat.Id,"fabric"));
             Check(graph.Edges.Any(e=>e.From==graphApply.Id && e.To==graphFloat.Id), "failed connection is atomic and leaves original edge");
+            var secondWeft = graph.Add(ModuleKind.Weft,1900,0); graph.Connect(graphWeft.Id,secondWeft.Id,"fabric"); Expect<InvalidOperationException>(()=>ModuleExecutor.Run(graph,secondWeft.Id)); graph.Remove(secondWeft.Id);
+            var lateSelvedge = graph.Add(ModuleKind.Selvedge,1900,0); graph.Connect(graphWeft.Id,lateSelvedge.Id,"fabric"); Expect<InvalidOperationException>(()=>ModuleExecutor.Run(graph,lateSelvedge.Id)); graph.Remove(lateSelvedge.Id);
             string graphPath=Path.Combine(dir,"workflow.jgw"); ModuleProjectFile.Save(graphPath,graph); var graphRestored=ModuleProjectFile.Load(graphPath); Check(graphRestored.Nodes.Count==graph.Nodes.Count && ModuleExecutor.Run(graphRestored,graphMachine.Id)[graphMachine.Id].Image!.PixelWidth==4, "graph, embedded source, patterns, settings and connections survive round trip");
             graphRestored.Disconnect(graphApply.Id,"weaves"); Expect<InvalidOperationException>(()=>ModuleExecutor.Run(graphRestored,graphMachine.Id));
             var manual = new WorkflowSession(b.Image); manual.ApplySize(3, 2); manual.ApplyColors(50);
