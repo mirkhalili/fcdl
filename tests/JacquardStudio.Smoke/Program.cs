@@ -184,11 +184,23 @@ internal static class Program
             for (int i = 0; i < 1200 * 1200; i++)
                 Check(woven[i * 4] == (refBytes[i * 4 + 1] == 0 ? 0 : 255), "reference pattern placement and phase");
             // Manual edits preserve every pixel, target color, remaining patterns, and SAM state.
-            var profilePath=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"test-machine.samm");
+            var profilePath=System.IO.Path.Combine(dir,"test-machine.samm");
             var profileSetup=new MachineSetup(AbsoluteLayout:true,TotalHooks:"30",DesignStart:"4",WeftStart:"1");
             MachineProfile.Save(profilePath,profileSetup,"Bonas"); var loadedProfile=MachineProfile.Load(profilePath);
             Check(loadedProfile.Manufacturer=="Bonas" && loadedProfile.Setup.TotalHooks=="30" && loadedProfile.Setup.DesignStart=="4", "independent machine profile roundtrip");
             Expect<ArgumentException>(()=>MachineProfile.Validate(profileSetup with { DesignStart="30" },"Bonas"));
+            using (var fakeClient=new System.Net.Http.HttpClient(new FakeImageHandler(Convert.ToBase64String(File.ReadAllBytes(pngPath)))))
+            {
+                var aiPng=AiImageEdit.GenerateAsync(b.Image,"make it blue","test-key",fakeClient).GetAwaiter().GetResult();
+                Check(!string.IsNullOrEmpty(aiPng), "AI edit uses injected HTTP handler and returns a decoded image without a real service");
+            }
+            var safeMap=MachineComposer.Compose(b.Image,new MachineSetup(LeftWidth:"1",RightWidth:"1",LeftPattern:new WeavePattern(1,1,new byte[]{0}),RightPattern:new WeavePattern(1,1,new byte[]{255}),AbsoluteLayout:true,TotalHooks:"9",DesignStart:"3"));
+            var safeInput=new ModuleValue(ModuleData.Fabric,safeMap.Image,Composition:safeMap); var safeFabric=CompositionView.Fabric(safeMap);
+            var sameEdited=ModuleExecutor.ApplyFloatEdit(safeInput,ModuleExecutor.EmbedImage(safeFabric));
+            Check(DesignAnalysis.ReadBinary(sameEdited.Image!).SequenceEqual(DesignAnalysis.ReadBinary(safeMap.Image)), "float edits preserve signal and outside-fabric columns");
+            var forbidden=DesignAnalysis.ReadBinary(safeFabric); forbidden[0]=forbidden[0]==0?(byte)255:(byte)0;
+            var forbiddenImage=BitmapSource.Create(safeFabric.PixelWidth,safeFabric.PixelHeight,96,96,PixelFormats.Gray8,null,forbidden,safeFabric.PixelWidth); forbiddenImage.Freeze();
+            Expect<InvalidDataException>(()=>ModuleExecutor.ApplyFloatEdit(safeInput,ModuleExecutor.EmbedImage(forbiddenImage)));
             var graph = new ModuleGraph(); var graphLoad = graph.Add(ModuleKind.Load, 0, 0); graphLoad.ImagePng = ModuleExecutor.EmbedImage(b.Image);
             var graphResize = graph.Add(ModuleKind.Resize, 250, 0); graphResize.Width=3; graphResize.Height=2; graph.Connect(graphLoad.Id, graphResize.Id, "image");
             var graphOtherResize = graph.Add(ModuleKind.Resize, 250, 180); graphOtherResize.Width=6; graphOtherResize.Height=4; graph.Connect(graphLoad.Id,graphOtherResize.Id,"image");
@@ -669,7 +681,7 @@ internal static class Program
             Check(weaveEditorWindow.ShowDialog()==true && weaveEditorWindow.ModuleWeaveResult!.Values.SequenceEqual(expectedWeave.Values) && weaveEditorWindow.ModuleWeaveName=="test weave", "full legacy weave designer applies edited pattern to the graph");
 
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "029.0.1.2-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "030.0.2.1-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));
@@ -850,5 +862,17 @@ internal static class Program
     {
         try { action(); } catch (T) { return; }
         throw new Exception("Expected " + typeof(T).Name);
+    }
+}
+
+internal sealed class FakeImageHandler : System.Net.Http.HttpMessageHandler
+{
+    private readonly string png;
+    public FakeImageHandler(string png) => this.png=png;
+    protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request,CancellationToken cancellationToken)
+    {
+        if(request.Method!=System.Net.Http.HttpMethod.Post || request.RequestUri?.Host!="api.openai.com" || request.Headers.Authorization?.Scheme!="Bearer") throw new InvalidOperationException("Unexpected AI request");
+        var payload=System.Text.Json.JsonSerializer.Serialize(new { data=new[]{new { b64_json=png }} });
+        return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content=new System.Net.Http.StringContent(payload) });
     }
 }
