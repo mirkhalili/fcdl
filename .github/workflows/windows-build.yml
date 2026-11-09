@@ -51,7 +51,7 @@ jobs:
         with:
           name: JacquardStudio-Windows-x64
           path: artifacts/previous
-          run-id: 42506148542
+          run-id: 42578532770
           github-token: ${{ github.token }}
       - name: Test per-user installer upgrade
         shell: pwsh
@@ -65,7 +65,7 @@ jobs:
           if ($oldResult.ExitCode -ne 0) { throw "Old installer failed: $($oldResult.ExitCode)" }
           $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{5C0E5A7E-DF2A-4D61-9039-B9EC80CD87AD}_is1'
           $before = Get-ItemProperty $key
-          if ($before.DisplayVersion -ne '025.11.0.1-a1') { throw "Old version not found: $($before.DisplayVersion)" }
+          if ($before.DisplayVersion -ne '026.0.1.0-a1') { throw "Old version not found: $($before.DisplayVersion)" }
           $new = (Get-ChildItem artifacts/installer/*Setup.exe | Select-Object -First 1).FullName
           $newResult = Start-Process -FilePath $new -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-') -Wait -PassThru
           if ($newResult.ExitCode -ne 0) { throw "New installer failed: $($newResult.ExitCode)" }

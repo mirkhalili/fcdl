@@ -20,6 +20,8 @@
         </Border>
         <Border Grid.Row="1" Background="{DynamicResource HeaderBackground}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
             <StackPanel Orientation="Horizontal" FlowDirection="RightToLeft" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="20,0">
+                <Button x:Name="ModuleApplyButton" Content="اعمال تنظیمات و بستن" Click="ModuleApply_Click" Visibility="Collapsed" Height="42" Padding="10,4" Margin="3" Background="#0E806C"/>
+                <Button x:Name="ModuleCancelButton" Content="انصراف" Click="ModuleCancel_Click" Visibility="Collapsed" Height="42" Padding="10,4" Margin="3"/>
                 <Button x:Name="LanguageButton" Content="EN" ToolTip="تغییر زبان" AutomationProperties.Name="Change language" Click="Language_Click" Width="48" Height="42" Padding="4" Margin="3"/>
                 <Button x:Name="ThemeButton" Content="☼" ToolTip="تغییر تم" AutomationProperties.Name="Change theme" Click="Theme_Click" Width="48" Height="42" Padding="4" Margin="3"/>
                 <Button x:Name="SaveProjectButton" Content="&#xE74E;" FontFamily="Segoe MDL2 Assets" ToolTip="ذخیره پروژه" AutomationProperties.Name="Save project" Click="SaveProject_Click" Width="48" Height="42" Padding="4" Margin="3" IsEnabled="False"/>

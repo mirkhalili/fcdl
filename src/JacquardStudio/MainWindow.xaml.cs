@@ -15,6 +15,8 @@ public partial class MainWindow : Window
     private enum Stage { Size, Colors, Patterns, Machine, Analysis, Floats, Selvedge, Weft, Simulation }
     private Stage stage = Stage.Size;
     private bool english, busy, bankOpen, lightTheme, projectDirty, allowClose, closePromptActive;
+    private ModuleKind? moduleEditorKind;
+    public WorkflowSession? ModuleEditorResult { get; private set; }
     private int? bankTargetIndex;
     private string? bankSelvedgeSide;
     private readonly WeaveBank bank = new();
@@ -55,6 +57,24 @@ public partial class MainWindow : Window
     private readonly List<HistoryState> undoHistory = new(), redoHistory = new();
 
     public MainWindow() { InitializeComponent(); SimulationWarpYarn.ItemsSource = FabricSimulation.YarnNames; SimulationWarpUnit.ItemsSource = YarnGeometry.Units; SimulationWarpColorHost.Children.Add(warpSwatch); warpSwatch.ColorChanged += (_, _) => SimulationSettingsChanged(); LoadSimulationSettings(new SimulationSettings()); selvedgeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) }; selvedgeTimer.Tick += async (_, _) => { selvedgeTimer.Stop(); if (!busy && !bankOpen) { if (stage == Stage.Selvedge) await PreviewSelvedgesAsync(false); else if (stage is Stage.Weft or Stage.Machine) await ComposeMachineAsync(false); } }; WeaveCanvas.Changed += (_, _) => { WeaveCanvas.SizeForScrolling(); RefreshControls(); }; WeaveCanvas.SizeForScrolling(); lightTheme = ThemeManager.ReadLight(); ThemeManager.Apply(lightTheme, false); VersionText.Text = AppVersion.Display; LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); UpdateLabels(); RefreshControls(); UpdateWindowTitle(); }
+    /// <summary>Use the existing stage UI on an isolated snapshot; no graph state changes before Apply.</summary>
+    public void ConfigureModuleEditor(ModuleKind kind, WorkflowSession prepared)
+    {
+        if (kind is not (ModuleKind.Resize or ModuleKind.Colors)) throw new ArgumentException("This module is not supported by the legacy stage editor.");
+        moduleEditorKind=kind; AllowDrop=false; session=prepared.Snapshot(); path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"jacquard-graph-input"); sourceName="Graph input"; current=new ImageResult(session.Source,1,0,"Graph");
+        WidthInput.Text=session.Resized!.PixelWidth.ToString(); HeightInput.Text=session.Resized.PixelHeight.ToString(); ColorInput.Text=(session.AppliedColorLimit ?? 256).ToString();
+        stage=kind==ModuleKind.Resize ? Stage.Size : Stage.Colors; Navigation.Visibility=Visibility.Collapsed;
+        OpenButton.Visibility=SaveProjectButton.Visibility=SaveProjectAsButton.Visibility=InfoButton.Visibility=ReportButton.Visibility=BankButton.Visibility=Visibility.Collapsed;
+        ModuleApplyButton.Visibility=ModuleCancelButton.Visibility=Visibility.Visible; ToColorButton.Visibility=ToPatternButton.Visibility=Visibility.Collapsed;
+        RebuildPaletteEntries(); ShowStage(); UpdateWindowTitle();
+    }
+    private void ModuleApply_Click(object sender,RoutedEventArgs e)
+    {
+        if (busy || session is null || moduleEditorKind is null) return;
+        if (SizeDirty || moduleEditorKind==ModuleKind.Colors && ColorsDirty) { MessageBox.Show(this,T("ابتدا تغییر اندازه یا تعداد رنگ را در همین پنجره اعمال کنید.","Apply the current size or color limit first.")); return; }
+        ModuleEditorResult=session.Snapshot(); allowClose=true; DialogResult=true;
+    }
+    private void ModuleCancel_Click(object sender,RoutedEventArgs e) { if (busy) return; allowClose=true; DialogResult=false; }
     private void UpdateWindowTitle() => Title = $"Jacquard Studio ({(projectPath is null ? T("پروژه جدید", "New project") : Path.GetFileNameWithoutExtension(projectPath))}{(projectDirty && session is not null ? " *" : "")})";
     private void MarkProjectDirty() { if (session is not null) { projectDirty = true; UpdateWindowTitle(); } }
     private string T(string fa, string en) => english ? en : fa;
@@ -484,13 +504,14 @@ public partial class MainWindow : Window
         if (busy) return;
         if (e.Key == Key.F1) { Help_Click(sender, e); e.Handled = true; return; }
         var mods = Keyboard.Modifiers;
-        if (mods == ModifierKeys.Alt && (int)e.Key >= (int)Key.D1 && (int)e.Key <= (int)Key.D9 && !bankOpen)
+        if (moduleEditorKind is null && mods == ModifierKeys.Alt && (int)e.Key >= (int)Key.D1 && (int)e.Key <= (int)Key.D9 && !bankOpen)
         {
             Button[] buttons = { OpenButton, SizeStepButton, ColorStepButton, PatternStepButton, SelvedgeStepButton, FloatStepButton, AnalysisStepButton, WeftStepButton, SimulationStepButton };
             var button = buttons[(int)e.Key - (int)Key.D1]; if (button.IsEnabled) button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); e.Handled = true; return;
         }
         if ((mods & ModifierKeys.Control) == 0 || (mods & ModifierKeys.Alt) != 0) return;
         bool shift = (mods & ModifierKeys.Shift) != 0;
+        if (moduleEditorKind is not null && e.Key is (Key.O or Key.S or Key.P or Key.B)) { e.Handled=true; return; }
         if (e.Key == Key.O && !bankOpen) { Open_Click(sender, e); }
         else if (e.Key == Key.S && !bankOpen) { if (shift) SaveProjectAs_Click(sender, e); else SaveProject_Click(sender, e); }
         else if (e.Key == Key.P && ReportButton.IsEnabled) Report_Click(sender, e);
@@ -744,6 +765,7 @@ public partial class MainWindow : Window
     }
     private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        if (moduleEditorKind is not null) { if (busy) e.Cancel=true; return; }
         if (allowClose) return;
         e.Cancel = true; if (busy || closePromptActive) return;
         closePromptActive = true;

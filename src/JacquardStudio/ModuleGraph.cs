@@ -8,6 +8,7 @@ namespace JacquardStudio;
 
 public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine }
 public enum ModuleData { Image, Palette, Weaves, Fabric, Preview }
+public sealed record ModuleColorEdit(string InputHash, PaletteResult Palette, bool[] Locks);
 public sealed class ModuleNode
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -16,6 +17,7 @@ public sealed class ModuleNode
     public string Label { get; set; } = "";
     public int Width { get; set; } public int Height { get; set; }
     public int ColorLimit { get; set; } = 256;
+    public ModuleColorEdit? ColorEdit { get; set; }
     public string? ImagePng { get; set; }
     public List<WeavePattern> Weaves { get; set; } = new();
     public List<string> WeaveNames { get; set; } = new();
@@ -69,6 +71,12 @@ public sealed class ModuleGraph
     public void Validate()
     {
         if (Nodes is null || Edges is null || Nodes.Count > 128 || Edges.Count > 256 || Nodes.Any(n => n is null || n.Id == Guid.Empty || !Enum.IsDefined(n.Kind) || !double.IsFinite(n.X) || !double.IsFinite(n.Y) || n.X is < 0 or > 10000 || n.Y is < 0 or > 10000 || n.Label is null || n.Label.Length > 255 || n.Weaves is null || n.Weaves.Count > 256 || n.WeaveNames is null || n.WeaveNames.Count != n.Weaves.Count || n.WeaveNames.Any(x => x is null || x.Length > 100) || n.WeaveAssignments is null || n.WeaveAssignments.Count > 256 || n.Machine is null || n.Simulation is null) || Nodes.Select(n => n.Id).Distinct().Count() != Nodes.Count) throw new InvalidDataException("Invalid graph nodes.");
+        foreach (var n in Nodes) if (n.ColorEdit is { } edit)
+        {
+            var p=edit.Palette;
+            if (n.Kind != ModuleKind.Colors || edit.InputHash is null || edit.InputHash.Length != 64 || p is null || p.Width < 1 || p.Height < 1 || (long)p.Width * p.Height > DesignProcessor.MaxPixels || p.Colors is null || p.Colors.Length is < 1 or > 256 || p.Colors.Distinct().Count() != p.Colors.Length || p.Colors.Any(c=>c is < 0 or > 0xffffff) || p.Indices is null || p.Indices.Length != (long)p.Width*p.Height || p.Counts is null || p.Counts.Length != p.Colors.Length || p.SourceColorCount < p.Colors.Length || p.SourceColorCount > p.Indices.Length || edit.Locks is null || edit.Locks.Length != p.Colors.Length || n.ColorLimit < p.Colors.Length || n.ColorLimit > 256) throw new InvalidDataException("Invalid edited palette.");
+            var counts=new int[p.Colors.Length]; foreach(byte c in p.Indices) { if(c>=counts.Length) throw new InvalidDataException("Invalid edited palette index."); counts[c]++; } if(!counts.SequenceEqual(p.Counts)) throw new InvalidDataException("Invalid edited palette counts.");
+        }
         foreach (var n in Nodes) foreach (var p in n.Weaves) if (p is null || p.Width < 1 || p.Height < 1 || (long)p.Width * p.Height > DesignProcessor.MaxPatternPixels || p.Values is null || p.Values.Length != (long)p.Width * p.Height || p.Values.Any(v => v != 0 && v != 255)) throw new InvalidDataException("Invalid weave.");
         if (Edges.Any(e => e is null || e.Port is null) || Edges.Select(e => (e.To,e.Port)).Distinct().Count() != Edges.Count) throw new InvalidDataException("Invalid graph edges.");
         var check = new ModuleGraph { Nodes = Nodes, Edges = new() }; foreach (var edge in Edges) check.Connect(edge.From, edge.To, edge.Port);
@@ -100,7 +108,9 @@ public static class ModuleExecutor
                     var source = Input("image").Image!; int w = node.Width == 0 ? source.PixelWidth : node.Width, h = node.Height == 0 ? source.PixelHeight : node.Height;
                     result = new(ModuleData.Image, DesignProcessor.Resize(source,w,h)); break;
                 case ModuleKind.Colors:
-                    var image = Input("image").Image!; var palette = DesignProcessor.Prepare(image,image.PixelWidth,image.PixelHeight,node.ColorLimit);
+                    var image = Input("image").Image!; PaletteResult palette;
+                    if (node.ColorEdit is { } edit) { if (edit.Palette.Width != image.PixelWidth || edit.Palette.Height != image.PixelHeight || edit.InputHash != ImageFingerprint(image)) throw new InvalidOperationException("ورودی مدیریت رنگ تغییر کرده است؛ ماژول رنگ را باز و دوباره اعمال کنید."); palette=edit.Palette; }
+                    else palette = DesignProcessor.Prepare(image,image.PixelWidth,image.PixelHeight,node.ColorLimit);
                     result = new(ModuleData.Palette,DesignProcessor.RenderColors(palette),palette); break;
                 case ModuleKind.Weaves:
                     if (node.Weaves.Count == 0) throw new InvalidOperationException("Add at least one weave to the module.");
@@ -141,6 +151,11 @@ public static class ModuleExecutor
             values[id] = result; return result;
         }
         if (!nodes.ContainsKey(target)) throw new ArgumentException("Module not found."); Evaluate(target); return values;
+    }
+    public static string ImageFingerprint(BitmapSource image)
+    {
+        var converted=new FormatConvertedBitmap(image,PixelFormats.Bgra32,null,0); int stride=checked(image.PixelWidth*4); var pixels=new byte[checked(stride*image.PixelHeight)]; converted.CopyPixels(pixels,stride,0);
+        using var hash=System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256); hash.AppendData(BitConverter.GetBytes(image.PixelWidth)); hash.AppendData(BitConverter.GetBytes(image.PixelHeight)); hash.AppendData(pixels); return Convert.ToHexString(hash.GetHashAndReset());
     }
     public static string EmbedImage(BitmapSource image)
     {

@@ -202,6 +202,14 @@ internal static class Program
             var secondWeft = graph.Add(ModuleKind.Weft,1900,0); graph.Connect(graphWeft.Id,secondWeft.Id,"fabric"); Expect<InvalidOperationException>(()=>ModuleExecutor.Run(graph,secondWeft.Id)); graph.Remove(secondWeft.Id);
             var lateSelvedge = graph.Add(ModuleKind.Selvedge,1900,0); graph.Connect(graphWeft.Id,lateSelvedge.Id,"fabric"); Expect<InvalidOperationException>(()=>ModuleExecutor.Run(graph,lateSelvedge.Id)); graph.Remove(lateSelvedge.Id);
             string graphPath=Path.Combine(dir,"workflow.jgw"); ModuleProjectFile.Save(graphPath,graph); var graphRestored=ModuleProjectFile.Load(graphPath); Check(graphRestored.Nodes.Count==graph.Nodes.Count && ModuleExecutor.Run(graphRestored,graphMachine.Id)[graphMachine.Id].Image!.PixelWidth==4, "graph, embedded source, patterns, settings and connections survive round trip");
+            var editedInput=ModuleExecutor.Run(graph,graphResize.Id)[graphResize.Id].Image!;
+            var editing=new WorkflowSession(editedInput); editing.ApplySize(3,2); editing.ApplyColors(2); editing.MergeColors(0,1); editing.SetColorLock(0,true);
+            graphColors.ColorEdit=new ModuleColorEdit(ModuleExecutor.ImageFingerprint(editedInput),editing.Palette!,editing.LockedColors);
+            Check(ModuleExecutor.Run(graph,graphApply.Id)[graphColors.Id].Palette!.Colors.Length==1, "graph propagates edited palette into downstream weave mapping");
+            ModuleProjectFile.Save(graphPath,graph); var editRestored=ModuleProjectFile.Load(graphPath); var savedEdit=editRestored.Nodes.Single(n=>n.Id==graphColors.Id).ColorEdit!;
+            Check(savedEdit.Locks.Single() && savedEdit.Palette.Counts.Single()==6 && ModuleExecutor.Run(editRestored,graphApply.Id)[graphColors.Id].Palette!.Indices.SequenceEqual(editing.Palette!.Indices), "graph palette edits and locks survive project roundtrip");
+            editRestored.Nodes.Single(n=>n.Id==graphResize.Id).Width=2; Expect<InvalidOperationException>(()=>ModuleExecutor.Run(editRestored,graphApply.Id));
+            graphColors.ColorEdit=new ModuleColorEdit(ModuleExecutor.ImageFingerprint(editedInput), editing.Palette! with { Counts=new[]{99} }, editing.LockedColors); Expect<InvalidDataException>(()=>graph.Validate()); graphColors.ColorEdit=null;
             graphRestored.Disconnect(graphApply.Id,"weaves"); Expect<InvalidOperationException>(()=>ModuleExecutor.Run(graphRestored,graphMachine.Id));
             var manual = new WorkflowSession(b.Image); manual.ApplySize(3, 2); manual.ApplyColors(50);
             var firstPattern = new WeavePattern(1, 1, new byte[] {0}); var targetPattern = new WeavePattern(1, 1, new byte[] {255});
@@ -597,15 +605,18 @@ internal static class Program
             var moduleGraph = (ModuleGraph)typeof(ModuleWindow).GetField("graph",moduleFlags)!.GetValue(moduleWindow)!;
             var moduleLibrary = (System.Windows.Controls.StackPanel)moduleWindow.FindName("ModuleLibrary");
             Check(moduleLibrary.Children.Count == 11 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
-            ((System.Windows.Controls.Button)moduleLibrary.Children[1]).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            ((System.Windows.Controls.DockPanel)moduleLibrary.Children[1]).Children.OfType<System.Windows.Controls.Button>().Last().RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             var addedResize = moduleGraph.Nodes.Last(); Check(moduleGraph.Nodes.Count == 11 && addedResize.Kind == ModuleKind.Resize, "adding a second independent module through the library");
             var nodeLayer = (System.Windows.Controls.Canvas)moduleWindow.FindName("NodeLayer");
             System.Windows.Controls.Button Port(int index, string tip) { var card=(System.Windows.Controls.Border)nodeLayer.Children[index]; var inner=(System.Windows.Controls.Grid)card.Child; var ports=(System.Windows.Controls.Grid)inner.Children[1]; return ports.Children.OfType<System.Windows.Controls.Button>().Single(b => ((string?)b.ToolTip)?.Contains(tip)==true); }
             Port(0,"انتخاب خروجی").RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Port(10,"اتصال ورودی").RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Check(moduleGraph.Edges.Any(e => e.From == moduleGraph.Nodes[0].Id && e.To == addedResize.Id && e.Port == "image"), "workspace port clicks create a real compatible branch");
+            var graphEditor=new MainWindow(); graphEditor.ConfigureModuleEditor(ModuleKind.Colors,editing);
+            Check(((System.Windows.Controls.Grid)graphEditor.FindName("Navigation")).Visibility==System.Windows.Visibility.Collapsed && ((System.Windows.Controls.Button)graphEditor.FindName("ModuleApplyButton")).Visibility==System.Windows.Visibility.Visible, "graph color editor opens legacy palette UI with apply and without navigation");
+            graphEditor.Close();
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "026.0.1.0-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "027.0.0.1-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));
