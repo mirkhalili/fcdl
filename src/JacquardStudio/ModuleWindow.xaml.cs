@@ -98,7 +98,7 @@ public partial class ModuleWindow : Window
         WireLayer.Children.Clear(); foreach (var edge in graph.Edges)
         {
             var from=graph.Nodes.Single(n=>n.Id==edge.From); var to=graph.Nodes.Single(n=>n.Id==edge.To); int port=ModuleGraph.Inputs(to.Kind).Keys.ToList().IndexOf(edge.Port);
-            var start=new Point(from.X+201,from.Y+68), end=new Point(to.X+11,to.Y+67+port*27); double bend=Math.Max(60,Math.Abs(end.X-start.X)*.45);
+            var start=new Point(from.X+201,from.Y+68); var end=new Point(to.X+11,to.Y+67+port*27); double bend=Math.Max(60,Math.Abs(end.X-start.X)*.45);
             var figure=new PathFigure { StartPoint=start }; figure.Segments.Add(new BezierSegment(new Point(start.X+bend,start.Y),new Point(end.X-bend,end.Y),end,true));
             var geometry=new PathGeometry(); geometry.Figures.Add(figure); WireLayer.Children.Add(new System.Windows.Shapes.Path { Data=geometry, Stroke=Brush(Spec(from.Kind).color), StrokeThickness=3, Opacity=.82 });
         }
