@@ -214,6 +214,30 @@ internal static class Program
             graph.Connect(designer.Id,graphApply.Id,"weaves"); Check(ModuleExecutor.Run(graph,graphApply.Id)[designer.Id].Weaves!.Count==1, "independent weave designer node feeds a downstream mapping");
             ModuleProjectFile.Save(graphPath,graph); var designerRestored=ModuleProjectFile.Load(graphPath); Check(designerRestored.Nodes.Single(n=>n.Id==designer.Id).Weaves.Single().Values.SequenceEqual(designer.Weaves[0].Values) && ModuleExecutor.Run(designerRestored,graphApply.Id)[graphApply.Id].Image is not null, "designed weave node survives project roundtrip and runs");
             designer.Weaves.Add(PatternLibrary.Presets[0].Pattern); designer.WeaveNames.Add("too many"); Expect<InvalidDataException>(()=>graph.Validate()); designer.Weaves.RemoveAt(1); designer.WeaveNames.RemoveAt(1);
+            var cropNode=graph.Add(ModuleKind.Crop,0,400); graph.Connect(graphResize.Id,cropNode.Id,"image");
+            var inputImage=ModuleExecutor.Run(graph,graphResize.Id)[graphResize.Id].Image!; string inputHash=ModuleExecutor.ImageFingerprint(inputImage);
+            var fullCrop=new GraphCrop(0,0,3,2,inputHash);
+            Check(GraphImageOperations.FindPixel(3,2,59,39,60,40)==(2,1) && GraphImageOperations.FindPixel(3,2,60,0,60,40) is null && GraphImageOperations.FindPixel(3,2,double.NaN,0,60,40) is null, "crop pointer maps correctly with scaling and rejects invalid coordinates");
+            Check(GraphImageOperations.Cut(fullCrop,CropDirection.Left,1,0) == new GraphCrop(1,0,2,2,inputHash) && GraphImageOperations.Cut(fullCrop,CropDirection.Right,1,0).Width==2 && GraphImageOperations.Cut(fullCrop,CropDirection.Top,0,1).Height==1 && GraphImageOperations.Cut(fullCrop,CropDirection.Bottom,0,0).Height==1, "crop discards selected side and retains clicked boundary pixel");
+            cropNode.Crop=GraphImageOperations.Cut(fullCrop,CropDirection.Left,1,0);
+            var cropped=ModuleExecutor.Run(graph,cropNode.Id)[cropNode.Id].Image!; Check(cropped.PixelWidth==2 && cropped.PixelHeight==2, "crop node executes selected rectangle");
+            var repeatNode=graph.Add(ModuleKind.Repeat,250,400); repeatNode.RepeatColumns=2; repeatNode.RepeatRows=2; graph.Connect(cropNode.Id,repeatNode.Id,"image");
+            var repeatSource=BitmapSource.Create(2,2,96,96,PixelFormats.Gray8,null,new byte[]{0,64,128,255},2); repeatSource.Freeze();
+            byte[] Gray(BitmapSource im) { var g=new FormatConvertedBitmap(im,PixelFormats.Gray8,null,0); var data=new byte[im.PixelWidth*im.PixelHeight]; g.CopyPixels(data,im.PixelWidth,0); return data; }
+            Check(Gray(GraphImageOperations.Repeat(repeatSource,2,2,RepeatMode.Straight)).SequenceEqual(new byte[]{0,64,0,64,128,255,128,255,0,64,0,64,128,255,128,255}), "straight repeat preserves pixels");
+            Check(Gray(GraphImageOperations.Repeat(repeatSource,2,2,RepeatMode.HalfWidth)).SequenceEqual(new byte[]{0,64,0,64,128,255,128,255,64,0,64,0,255,128,255,128}), "half-width repeat offsets alternating rows and wraps edges");
+            Check(Gray(GraphImageOperations.Repeat(repeatSource,2,2,RepeatMode.HalfHeight)).SequenceEqual(new byte[]{0,64,128,255,128,255,0,64,0,64,128,255,128,255,0,64}), "half-height repeat offsets alternating columns and wraps edges");
+            Expect<ArgumentException>(()=>GraphImageOperations.Repeat(repeatSource,int.MaxValue,int.MaxValue,RepeatMode.Straight));
+            Check(ModuleExecutor.Run(graph,repeatNode.Id)[repeatNode.Id].Image!.PixelWidth==4, "repeat node processes crop output");
+            var reportNode=graph.Add(ModuleKind.Report,500,400); graph.Connect(graphResize.Id,reportNode.Id,"report"); graph.Connect(graphColors.Id,reportNode.Id,"report"); graph.Connect(designer.Id,reportNode.Id,"report"); graph.Connect(repeatNode.Id,reportNode.Id,"report");
+            graph.Connect(graphResize.Id,reportNode.Id,"report"); var reportValues=ModuleExecutor.Run(graph,reportNode.Id)[reportNode.Id].ReportItems!;
+            Check(reportValues.Count==4 && reportValues.Any(x=>x.Value.Palette is not null) && reportValues.Any(x=>x.Value.Weaves is not null), "report aggregates independent connected module types without duplicate links");
+            var secondReport=graph.Add(ModuleKind.Report,750,400); graph.Connect(reportNode.Id,secondReport.Id,"report"); Expect<ArgumentException>(()=>graph.Connect(secondReport.Id,reportNode.Id,"report")); graph.Remove(secondReport.Id);
+            var capacity=new ModuleGraph(); var capacityReport=capacity.Add(ModuleKind.Report,0,0); for(int i=0;i<16;i++) capacity.Connect(capacity.Add(ModuleKind.Load,0,0).Id,capacityReport.Id,"report"); Expect<ArgumentException>(()=>capacity.Connect(capacity.Add(ModuleKind.Load,0,0).Id,capacityReport.Id,"report")); Check(capacity.Edges.Count==16, "report input is capped without partial connection");
+            var previousWires=graph.Edges.ToArray(); var oldCoords=graph.Nodes.Select(n=>(n.X,n.Y)).ToArray(); Expect<ArgumentException>(()=>graph.Arrange(1,1)); Check(graph.Nodes.Select(n=>(n.X,n.Y)).SequenceEqual(oldCoords), "invalid layout is atomic");
+            graph.Arrange(5,4); Check(graph.Edges.SequenceEqual(previousWires) && graph.Nodes[1].X==330 && graph.Nodes[4].Y==260, "grid layout positions nodes without changing connections");
+            string graphSam=Path.Combine(dir,"graph.sam"); ModuleProjectFile.Save(graphSam,graph); var loadedSam=ModuleProjectFile.Load(graphSam); Check(ModuleProjectFile.IsGraph(graphSam) && loadedSam.Nodes.Single(n=>n.Id==cropNode.Id).Crop==cropNode.Crop && ModuleExecutor.Run(loadedSam,reportNode.Id)[reportNode.Id].ReportItems!.Count==4, "SAM graph persists crop, repeat and multiple report links");
+            loadedSam.Nodes.Single(n=>n.Id==graphResize.Id).Width=2; Expect<InvalidOperationException>(()=>ModuleExecutor.Run(loadedSam,reportNode.Id));
             graphRestored.Disconnect(graphApply.Id,"weaves"); Expect<InvalidOperationException>(()=>ModuleExecutor.Run(graphRestored,graphMachine.Id));
             var manual = new WorkflowSession(b.Image); manual.ApplySize(3, 2); manual.ApplyColors(50);
             var firstPattern = new WeavePattern(1, 1, new byte[] {0}); var targetPattern = new WeavePattern(1, 1, new byte[] {255});
@@ -226,6 +250,7 @@ internal static class Program
             Check(manual.Palette.Colors.Length == 1 && manual.Palette.Counts[0] == 6, "invalid merge preserves state");
             string mergedProject = Path.Combine(dir, "merged.sam");
             ProjectFile.Save(mergedProject, new ProjectState(manual, "sample.bmp", "3", "2", "50", "Colors", false, 1, new string?[] { "target.bmp" }), Array.Empty<string>());
+            Check(!ModuleProjectFile.IsGraph(mergedProject), "legacy SAM is distinguished from graph SAM"); Expect<IOException>(()=>ModuleProjectFile.Save(mergedProject,graph));
             var mergedRestored = ProjectFile.Load(mergedProject);
             Check(mergedRestored.Session.Palette!.Counts.SequenceEqual(new[] {6}) && mergedRestored.Session.Patterns[0]!.Values.SequenceEqual(new byte[] {255}), "SAM persists merged palette and weave");
             var multi = new PaletteResult(5, 1, 3, new[] {0x000000, 0x121212, 0xFFFFFF}, new byte[] {0, 1, 2, 0, 2}, new[] {2, 1, 2});
@@ -605,6 +630,8 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
+            var reportPages=GraphReport.Render(reportValues); Check(reportPages.Count==4 && reportPages.All(p=>p.IsFrozen), "report renders a page for every connected module");
+            string graphReportPath=Path.Combine(dir,"graph-report.pdf"); DesignReport.SavePdf(reportPages,graphReportPath,Array.Empty<string>()); Check(File.ReadAllText(graphReportPath,System.Text.Encoding.Latin1).Contains("/Count 4"), "graph report exports multipage PDF");
             var moduleWindow = new ModuleWindow(); var moduleFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
             var moduleGraph = (ModuleGraph)typeof(ModuleWindow).GetField("graph",moduleFlags)!.GetValue(moduleWindow)!;
             static double Brightness(Brush brush) { var c=((SolidColorBrush)brush).Color; return .2126*c.R+.7152*c.G+.0722*c.B; }
@@ -614,8 +641,8 @@ internal static class Program
             var themedCombo=new System.Windows.Controls.ComboBox { ItemsSource=new[]{"one", "two"}, SelectedIndex=0 }; ((System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector")).Children.Add(themedCombo); themedCombo.ApplyTemplate(); Check(themedCombo.Template.FindName("PART_Popup",themedCombo) is System.Windows.Controls.Primitives.Popup, "themed combo retains dropdown popup");
             ThemeManager.Apply(false,false); Check(Brightness(themedInput.Foreground) > Brightness(themedInput.Background)+100, "existing inputs update on dark theme change");
             var moduleLibrary = (System.Windows.Controls.StackPanel)moduleWindow.FindName("ModuleLibrary");
-            Check(moduleLibrary.Children.Count == 12 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
-            ((System.Windows.Controls.DockPanel)moduleLibrary.Children[1]).Children.OfType<System.Windows.Controls.Button>().Last().RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Check(moduleLibrary.Children.Count == 15 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
+            ((System.Windows.Controls.DockPanel)moduleLibrary.Children[4]).Children.OfType<System.Windows.Controls.Button>().Last().RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             var addedResize = moduleGraph.Nodes.Last(); Check(moduleGraph.Nodes.Count == 11 && addedResize.Kind == ModuleKind.Resize, "adding a second independent module through the library");
             var nodeLayer = (System.Windows.Controls.Canvas)moduleWindow.FindName("NodeLayer");
             System.Windows.Controls.Button Port(int index, string tip) { var card=(System.Windows.Controls.Border)nodeLayer.Children[index]; var inner=(System.Windows.Controls.Grid)card.Child; var ports=(System.Windows.Controls.Grid)inner.Children[1]; return ports.Children.OfType<System.Windows.Controls.Button>().Single(b => ((string?)b.ToolTip)?.Contains(tip)==true); }
@@ -633,7 +660,7 @@ internal static class Program
             Check(weaveEditorWindow.ShowDialog()==true && weaveEditorWindow.ModuleWeaveResult!.Values.SequenceEqual(expectedWeave.Values) && weaveEditorWindow.ModuleWeaveName=="test weave", "full legacy weave designer applies edited pattern to the graph");
 
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "028.0.0.2-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "029.0.1.2-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));

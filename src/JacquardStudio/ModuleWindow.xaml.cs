@@ -23,6 +23,9 @@ public partial class ModuleWindow : Window
     private readonly WeaveBank bank = new();
     private static readonly (ModuleKind kind, string name, string icon, string color, string subtitle)[] Types = {
         (ModuleKind.Load,"بارگذاری فایل","\uE8B7","#47D4B3","IMAGE SOURCE"),
+        (ModuleKind.Crop,"برش طرح","\uE7A8","#E89B73","CROP"),
+        (ModuleKind.Repeat,"راپورت‌بندی","\uE8A5","#61A9F7","REPEAT"),
+        (ModuleKind.Report,"گزارش","\uE9D2","#72C8C5","REPORT"),
         (ModuleKind.Resize,"تغییر اندازه","\uE8A3","#61A9F7","RESIZE"),
         (ModuleKind.Colors,"مدیریت رنگ","\uE790","#E2A766","PALETTE"),
         (ModuleKind.Weaves,"بانک بافت پروژه","\uE8A5","#BA91F4","WEAVE LIBRARY"),
@@ -78,6 +81,9 @@ public partial class ModuleWindow : Window
     {
         string text = kind switch {
             ModuleKind.Load => "تصویر یا صفحه اول PDF را انتخاب می‌کند. خروجی: تصویر. نسخه رستری در پروژه ذخیره می‌شود.",
+            ModuleKind.Crop => "ابتدا جهت حذف را انتخاب کنید؛ با کلیک روی پیکسل مرزی بخش آن سمت حذف می‌شود و پیکسل انتخاب‌شده باقی می‌ماند. ورودی تصویر است.",
+            ModuleKind.Repeat => "طرح با تعداد ستون و ردیف انتخابی تکرار می‌شود. نیم‌عرض ردیف‌ها را و نیم‌طول ستون‌ها را به اندازه نصف طرح جابه‌جا می‌کند.",
+            ModuleKind.Report => "خروجی چند ماژول را به ورودی گزارش وصل کنید. پیش‌نمایش، چاپ و ذخیره PDF هر ماژول را نمایش می‌دهد. حداکثر ۱۶ ورودی.",
             ModuleKind.Resize => "تصویر ورودی را با اندازه انتخابی تغییر می‌دهد. خروجی آن را به مدیریت رنگ متصل کنید.",
             ModuleKind.Colors => "پالت رنگ تصویر را می‌سازد و برای بافت‌ریزی آماده می‌کند.",
             ModuleKind.CreateWeave => "در طراح کامل بافت رسم کنید، از ابزارهای قطر، سرژه، پاناما و ساتین، بازگشت و نمای سه‌بعدی استفاده کنید و اعمال را بزنید. خروجی به ورودی بافت‌ریزی متصل می‌شود.",
@@ -102,7 +108,7 @@ public partial class ModuleWindow : Window
     }
     private void Changed() { dirty = true; results = new Dictionary<Guid,ModuleValue>(); foreach (var child in Inspector.Children.OfType<FrameworkElement>().Where(e => Equals(e.Tag, "module-result")).ToArray()) Inspector.Children.Remove(child); UpdateTitle(); }
     private void UpdateTitle() => Title = $"Jacquard Studio · {(projectPath is null ? "پروژه جدید" : System.IO.Path.GetFileName(projectPath))}{(dirty ? " *" : "")}";
-    private static string PortName(string port) => port switch { "image" => "تصویر", "palette" => "رنگ‌ها", "weaves" => "بافت‌ها", _ => "پارچه" };
+    private static string PortName(string port) => port switch { "image" => "تصویر", "palette" => "رنگ‌ها", "weaves" => "بافت‌ها", "report" => "گزارش", _ => "پارچه" };
     private void RenderGraph()
     {
         NodeLayer.Children.Clear(); cards.Clear();
@@ -110,11 +116,11 @@ public partial class ModuleWindow : Window
         NodeLayer.Width = WireLayer.Width = GraphCanvas.Width; NodeLayer.Height = WireLayer.Height = GraphCanvas.Height;
         foreach (var node in graph.Nodes)
         {
-            var spec = Spec(node.Kind); var card = new Border { Width = 210, Height = 132, Background = ResourceBrush("GraphNode"), BorderBrush = ResourceBrush(node.Id == selected ? "GraphSelection" : "Border"), BorderThickness = new Thickness(node.Id == selected ? 2 : 1), CornerRadius = new CornerRadius(5), Cursor = Cursors.Hand, ToolTip = "انتخاب و جابه‌جایی ماژول" };
+            var spec = Spec(node.Kind); var card = new Border { Width = 210, Height = 132, Background = ResourceBrush("GraphNode"), BorderBrush = ResourceBrush(node.Id == selected ? "GraphSelection" : "Border"), BorderThickness = new Thickness(node.Id == selected ? 2 : 1), CornerRadius = new CornerRadius(12), Cursor = Cursors.Hand, ToolTip = "انتخاب و جابه‌جایی ماژول" };
             var inner = new Grid(); inner.RowDefinitions.Add(new RowDefinition { Height = new GridLength(52) }); inner.RowDefinitions.Add(new RowDefinition());
-            var header = new Grid { Background = ResourceBrush("GraphNodeHeader") }; header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) }); header.ColumnDefinitions.Add(new ColumnDefinition());
+            var header = new Grid(); header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(45) }); header.ColumnDefinitions.Add(new ColumnDefinition());
             header.Children.Add(new TextBlock { Text=spec.icon, FontFamily=new FontFamily("Segoe MDL2 Assets"), Foreground=CategoryBrush(spec.color), FontSize=20, HorizontalAlignment=HorizontalAlignment.Center, VerticalAlignment=VerticalAlignment.Center });
-            var text = new StackPanel { VerticalAlignment=VerticalAlignment.Center, FlowDirection=FlowDirection.RightToLeft, Margin=new Thickness(3,0,13,0) }; text.Children.Add(new TextBlock { Text=string.IsNullOrWhiteSpace(node.Label) ? spec.name : node.Label, FontWeight=FontWeights.Bold, FontSize=12, TextTrimming=TextTrimming.CharacterEllipsis }); text.Children.Add(new TextBlock { Text=spec.subtitle, FontSize=9, Foreground=ResourceBrush("Muted"), FlowDirection=FlowDirection.LeftToRight }); Grid.SetColumn(text,1); header.Children.Add(text); inner.Children.Add(header);
+            var text = new StackPanel { VerticalAlignment=VerticalAlignment.Center, FlowDirection=FlowDirection.RightToLeft, Margin=new Thickness(3,0,13,0) }; text.Children.Add(new TextBlock { Text=string.IsNullOrWhiteSpace(node.Label) ? spec.name : node.Label, FontWeight=FontWeights.Bold, FontSize=12, TextTrimming=TextTrimming.CharacterEllipsis }); text.Children.Add(new TextBlock { Text=spec.subtitle, FontSize=9, Foreground=ResourceBrush("Muted"), FlowDirection=FlowDirection.LeftToRight }); Grid.SetColumn(text,1); header.Children.Add(text); inner.Children.Add(new Border { CornerRadius=new CornerRadius(10,10,0,0), Background=ResourceBrush("GraphNodeHeader"), Child=header });
             var portGrid = new Grid(); Grid.SetRow(portGrid,1); inner.Children.Add(portGrid);
             var thumb = new Border { Width=62, Height=54, Background=ResourceBrush("GraphPreview"), BorderBrush=ResourceBrush("Border"), BorderThickness=new Thickness(1), CornerRadius=new CornerRadius(5), HorizontalAlignment=HorizontalAlignment.Center, VerticalAlignment=VerticalAlignment.Center, IsHitTestVisible=false };
             if (results.TryGetValue(node.Id,out var nodeResult) && nodeResult.Image is { } outputImage) { var preview=new Image { Source=outputImage,Stretch=Stretch.Uniform,Margin=new Thickness(3) }; RenderOptions.SetBitmapScalingMode(preview,BitmapScalingMode.NearestNeighbor); thumb.Child=preview; } else thumb.Child=new TextBlock { Text="—",Foreground=ResourceBrush("Muted"),HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center }; portGrid.Children.Add(thumb); var inputs = ModuleGraph.Inputs(node.Kind).Keys.ToArray();
@@ -141,7 +147,7 @@ public partial class ModuleWindow : Window
     private static string SocketColor(ModuleData type) => (type,ThemeManager.IsLight) switch
     {
         (ModuleData.Image,true)=>"#8A6414", (ModuleData.Palette,true)=>"#8E6132", (ModuleData.Weaves,true)=>"#7651A5", (ModuleData.Fabric,true)=>"#426D8C", (ModuleData.Preview,true)=>"#467A54",
-        (ModuleData.Image,false)=>"#D7B25B", (ModuleData.Palette,false)=>"#D4A477", (ModuleData.Weaves,false)=>"#BC9BE4", (ModuleData.Fabric,false)=>"#83B0CD", _=>"#91C9A0"
+        (ModuleData.Image,false)=>"#D7B25B", (ModuleData.Palette,false)=>"#D4A477", (ModuleData.Weaves,false)=>"#BC9BE4", (ModuleData.Fabric,false)=>"#83B0CD", (ModuleData.Any,true)=>"#555555", (ModuleData.Report,true)=>"#555555", (ModuleData.Any,false)=>"#DDDDDD", (ModuleData.Report,false)=>"#DDDDDD", _=>"#91C9A0"
     };
     private static Button PortButton(string color,string tooltip) => new() { Width=18,Height=18,Padding=new Thickness(0),Margin=new Thickness(0), Background=Brush(color), BorderBrush=ResourceBrush("PrimaryText"), BorderThickness=new Thickness(1), ToolTip=tooltip };
     private void RenderSelection() { foreach (var pair in cards) { pair.Value.BorderBrush=ResourceBrush(pair.Key==selected ? "GraphSelection" : "Border"); pair.Value.BorderThickness=new Thickness(pair.Key==selected ? 2 : 1); } }
@@ -156,6 +162,24 @@ public partial class ModuleWindow : Window
         }
     }
     private void RemoveNode(Guid id) { if (busy) return; graph.Remove(id); if (selected==id) selected=null; if (connecting==id) connecting=null; Changed(); RenderGraph(); Inspect(); }
+    private void Arrange_Click(object sender,RoutedEventArgs e)
+    {
+        if(busy || graph.Nodes.Count==0) return;
+        var dialog=new Window { Title="چیدمان ماژول‌ها", Width=360,Height=240,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,FlowDirection=FlowDirection.RightToLeft }; dialog.SetResourceReference(Window.BackgroundProperty,"Surface");
+        var root=new StackPanel { Margin=new Thickness(20) }; root.Children.Add(new TextBlock { Text=$"تعداد ماژول‌ها: {graph.Nodes.Count}" });
+        var row=new TextBox { Text=Math.Ceiling(graph.Nodes.Count/4d).ToString(),Margin=new Thickness(0,5,0,5) }; var col=new TextBox { Text="4",Margin=new Thickness(0,5,0,5) }; root.Children.Add(new TextBlock { Text="ردیف" }); root.Children.Add(row); root.Children.Add(new TextBlock { Text="ستون" }); root.Children.Add(col);
+        var apply=new Button { Content="چیدمان",Margin=new Thickness(0,8,0,0) }; root.Children.Add(apply); apply.Click+=(_,_)=>{ try { graph.Arrange(Parse(row.Text,0),Parse(col.Text,0)); Changed(); RenderGraph(); dialog.DialogResult=true; } catch(ArgumentException ex) { MessageBox.Show(dialog,ex.Message); } }; dialog.Content=root; dialog.ShowDialog();
+    }
+    private void ClearAll_Click(object sender,RoutedEventArgs e)
+    {
+        if(busy || graph.Nodes.Count==0 || MessageBox.Show(this,"همه ماژول‌ها و اتصال‌ها از پروژه حذف شوند؟","حذف همه",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
+        graph=new ModuleGraph(); selected=connecting=null; Changed(); RenderGraph(); Inspect(); Status.Text="همه ماژول‌ها حذف شدند.";
+    }
+    private void Preset_Click(object sender,RoutedEventArgs e)
+    {
+        if(busy || graph.Nodes.Count>0 && MessageBox.Show(this,"زنجیره عمومی جایگزین تمام ماژول‌های فعلی شود؟","زنجیره عمومی",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
+        var savedPath=projectPath; CreateDefaultGraph(); projectPath=savedPath; Changed(); RenderGraph(); Inspect(); Status.Text="زنجیره عمومی ساخته شد.";
+    }
     private void Delete_Click(object sender,RoutedEventArgs e) { if (selected is Guid id) RemoveNode(id); }
     private void ZoomIn_Click(object sender,RoutedEventArgs e) => SetZoom(zoom*1.25);
     private void ZoomOut_Click(object sender,RoutedEventArgs e) => SetZoom(zoom/1.25);
@@ -199,6 +223,14 @@ public partial class ModuleWindow : Window
             case ModuleKind.Load:
                 Inspector.Children.Add(Note(node.ImagePng is null ? "تصویری انتخاب نشده است." : "تصویر در پروژه ذخیره می‌شود."));
                 Button("انتخاب تصویر / PDF", async () => await ChooseImage(node)); break;
+            case ModuleKind.Repeat:
+                Inspector.Children.Add(Note("خروجی مستطیلی و پیوسته است؛ بخش‌های بیرون قاب از سمت مقابل تکرار می‌شوند. ابعاد فرد با نصفِ رو به پایین جابه‌جا می‌شوند."));
+                Field("تعداد ستون",node.RepeatColumns.ToString(),s=>{ int n=Parse(s,1); if(n<1) throw new ArgumentException("تعداد ستون باید مثبت باشد."); node.RepeatColumns=n; });
+                Field("تعداد ردیف",node.RepeatRows.ToString(),s=>{ int n=Parse(s,1); if(n<1) throw new ArgumentException("تعداد ردیف باید مثبت باشد."); node.RepeatRows=n; });
+                var repeat=new ComboBox { ItemsSource=new[]{"مستقیم", "۱/۲ عرضی (ردیف‌های متناوب)", "۱/۲ طولی (ستون‌های متناوب)"}, SelectedIndex=(int)node.RepeatMode, Margin=new Thickness(0,8,0,0) }; repeat.SelectionChanged+=(_,_)=>{if(repeat.SelectedIndex>=0) { node.RepeatMode=(RepeatMode)repeat.SelectedIndex; Changed(); }}; Inspector.Children.Add(repeat); break;
+            case ModuleKind.Report:
+                Inspector.Children.Add(Note($"{graph.Edges.Count(e=>e.To==node.Id && e.Port=="report")} ماژول به گزارش متصل است. هر خروجی را جداگانه به همین ورودی متصل کنید."));
+                Button("نمایش و ذخیره گزارش PDF",async ()=> { if(await ExecuteAsync(node) && results.TryGetValue(node.Id,out var report) && report.ReportItems is { } items) { try { var pages=GraphReport.Render(items); new ReportWindow(pages,"graph",new[]{projectPath}.OfType<string>(),false) { Owner=Window.GetWindow(Inspector) ?? this }.ShowDialog(); } catch(Exception ex) when(ex is ArgumentException or InvalidOperationException or IOException) { MessageBox.Show(this,ex.Message); } } }); break;
             case ModuleKind.Resize:
                 Field("عرض (۰ = عرض ورودی)",node.Width.ToString(),s => node.Width=Parse(s,0)); Field("ارتفاع (۰ = ارتفاع ورودی)",node.Height.ToString(),s => node.Height=Parse(s,0)); break;
             case ModuleKind.Colors:
@@ -302,19 +334,20 @@ public partial class ModuleWindow : Window
     {
         if(busy) return false;
         try { busy=true; ModuleLibrary.IsEnabled=false; GraphScroll.IsEnabled=false; Inspector.IsEnabled=false; Status.Text="در حال اجرای مسیر متصل…"; var evaluated=await Task.Run(()=>ModuleExecutor.Run(graph,node.Id)); results=results.Concat(evaluated).GroupBy(p=>p.Key).ToDictionary(g=>g.Key,g=>g.Last().Value); Status.Text="اجرای مسیر انتخاب‌شده کامل شد."; RenderGraph(); Inspect(); return true; }
-        catch(Exception ex) when(ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException or UnauthorizedAccessException) { Status.Text="اجرای ماژول ناموفق بود."; MessageBox.Show(this,ex.Message,"خطای ماژول",MessageBoxButton.OK,MessageBoxImage.Warning); return false; }
+        catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException or UnauthorizedAccessException) { Status.Text="اجرای ماژول ناموفق بود."; MessageBox.Show(this,ex.Message,"خطای ماژول",MessageBoxButton.OK,MessageBoxImage.Warning); return false; }
         finally { busy=false; ModuleLibrary.IsEnabled=true; GraphScroll.IsEnabled=true; Inspector.IsEnabled=true; }
     }
     private async void Run_Click(object sender,RoutedEventArgs e) { if(Current is { } node) await ExecuteAsync(node); }
     private async Task EditModuleAsync(ModuleNode node)
     {
         if(busy) return;
+        if (node.Kind == ModuleKind.Crop) { await EditCropAsync(node); return; }
         if (node.Kind == ModuleKind.CreateWeave) { await EditWeaveDesignerAsync(node); return; }
         if (node.Kind is ModuleKind.Resize or ModuleKind.Colors) { await EditLegacyModuleAsync(node); return; }
         int index=graph.Nodes.FindIndex(n=>n.Id==node.Id); var backup=System.Text.Json.JsonSerializer.Deserialize<ModuleNode>(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(node))!;
         var assignments=graph.Nodes.ToDictionary(n=>n.Id,n=>new Dictionary<int,int>(n.WeaveAssignments)); var oldResults=results; bool wasDirty=dirty;
         // Prime connected inputs so weave mappings and current output are visible in the dialog.
-        try { if (ModuleGraph.Inputs(node.Kind).Count > 0 && ModuleGraph.Inputs(node.Kind).Keys.All(port=>graph.Edges.Any(e=>e.To==node.Id && e.Port==port))) results=await Task.Run(()=>ModuleExecutor.Run(graph,node.Id)); } catch(Exception ex) when(ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) { Status.Text=ex.Message; }
+        try { if (ModuleGraph.Inputs(node.Kind).Count > 0 && ModuleGraph.Inputs(node.Kind).Keys.All(port=>graph.Edges.Any(e=>e.To==node.Id && e.Port==port))) results=await Task.Run(()=>ModuleExecutor.Run(graph,node.Id)); } catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) { Status.Text=ex.Message; }
         InspectorHost.Content=null; Inspect(); var dialog=new Window { Title=Spec(node.Kind).name, Width=720,Height=760,MinWidth=500,MinHeight=450,Owner=Window.GetWindow(Inspector) ?? this,WindowStartupLocation=WindowStartupLocation.CenterOwner,FlowDirection=FlowDirection.RightToLeft,Background=ResourceBrush("Surface"),Foreground=ResourceBrush("PrimaryText") };
         var root=new DockPanel { Margin=new Thickness(24) }; var bottom=new StackPanel { Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,12,0,0) }; DockPanel.SetDock(bottom,Dock.Bottom); root.Children.Add(bottom);
         var apply=new Button { Content="اعمال تنظیمات و بستن",Background=Brush("#0E806C"),Foreground=Brush("#FFFFFF"),Margin=new Thickness(4),Padding=new Thickness(14,9,14,9) }; var cancel=new Button { Content="انصراف",Margin=new Thickness(4),Padding=new Thickness(14,9,14,9) }; var run=new Button { Content="به‌روزرسانی پیش‌نمایش",Margin=new Thickness(4),Padding=new Thickness(14,9,14,9) }; bottom.Children.Add(apply); bottom.Children.Add(cancel); bottom.Children.Add(run);
@@ -325,6 +358,18 @@ public partial class ModuleWindow : Window
         if (!accepted) { graph.Nodes[index]=backup; foreach(var n in graph.Nodes) if(assignments.TryGetValue(n.Id,out var saved)) n.WeaveAssignments=saved; results=oldResults; dirty=wasDirty; UpdateTitle(); }
         else { dirty=true; UpdateTitle(); }
         RenderGraph(); Inspect();
+    }
+    private async Task EditCropAsync(ModuleNode node)
+    {
+        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="image"); if(edge is null) { MessageBox.Show(this,"ابتدا ورودی تصویر را متصل کنید."); return; }
+        BitmapSource image; string hash; IReadOnlyDictionary<Guid,ModuleValue> input;
+        try { busy=true; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=false; input=await Task.Run(()=>ModuleExecutor.Run(graph,edge.From)); image=input[edge.From].Image ?? throw new InvalidOperationException("تصویر ورودی آماده نیست."); hash=await Task.Run(()=>ModuleExecutor.ImageFingerprint(image)); }
+        catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) { MessageBox.Show(this,ex.Message); return; }
+        finally { busy=false; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=true; }
+        if(node.Crop is { } prior && prior.InputHash!=hash && MessageBox.Show(this,"تصویر ورودی عوض شده است؛ برش قبلی بازنشانی شود؟","برش",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
+        var dialog=new GraphCropWindow(image,node.Crop?.InputHash==hash ? node.Crop : null,hash) { Owner=this };
+        if(dialog.ShowDialog()!=true || dialog.Result is not { } crop) return;
+        node.Crop=crop; Changed(); results=input; await ExecuteAsync(node); RenderGraph();
     }
     private async Task EditLegacyModuleAsync(ModuleNode node)
     {
@@ -341,7 +386,7 @@ public partial class ModuleWindow : Window
                 return WorkflowSession.Restore(source,source,palette,node.ColorLimit,new WeavePattern?[palette.Colors.Length],lockedColors:edit is not null && edit.InputHash==hash ? edit.Locks : null);
             });
         }
-        catch(Exception ex) when(ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) { MessageBox.Show(this,ex.Message,"خطای ورودی ماژول",MessageBoxButton.OK,MessageBoxImage.Warning); return; }
+        catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) { MessageBox.Show(this,ex.Message,"خطای ورودی ماژول",MessageBoxButton.OK,MessageBoxImage.Warning); return; }
         finally { busy=false; ModuleLibrary.IsEnabled=true; GraphScroll.IsEnabled=true; }
         var dialog=new MainWindow { Owner=this }; dialog.ConfigureModuleEditor(node.Kind,prepared);
         if(dialog.ShowDialog()!=true || dialog.ModuleEditorResult is not { } output) return;
@@ -361,14 +406,14 @@ public partial class ModuleWindow : Window
     private void New_Click(object sender,RoutedEventArgs e) { if(busy || !ConfirmDiscard())return; CreateDefaultGraph(); dirty=false; UpdateTitle(); RenderGraph(); Inspect(); }
     private void Open_Click(object sender,RoutedEventArgs e)
     {
-        if(busy)return; var dialog=new OpenFileDialog { Filter="Graph project (*.jgw)|*.jgw|Legacy SAM project (*.sam)|*.sam" }; if(dialog.ShowDialog(this)!=true || !ConfirmDiscard())return;
-        try { if(dialog.FileName.EndsWith(".sam",StringComparison.OrdinalIgnoreCase)) { var legacy=new MainWindow(); legacy.Show(); legacy.OpenLegacyProject(dialog.FileName); Status.Text="پروژه SAM در محیط سازگار باز شد."; return; } var loaded=ModuleProjectFile.Load(dialog.FileName); graph=loaded; projectPath=dialog.FileName; selected=graph.Nodes.FirstOrDefault()?.Id; connecting=null; results=new Dictionary<Guid,ModuleValue>(); dirty=false; UpdateTitle(); RenderGraph(); Inspect(); }
+        if(busy)return; var dialog=new OpenFileDialog { Filter="SAM projects (*.sam)|*.sam|Graph project (*.jgw)|*.jgw" }; if(dialog.ShowDialog(this)!=true || !ConfirmDiscard())return;
+        try { if(!ModuleProjectFile.IsGraph(dialog.FileName)) { if(!dialog.FileName.EndsWith(".sam",StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("پروژه گراف معتبر نیست."); var legacy=new MainWindow(); legacy.Show(); legacy.OpenLegacyProject(dialog.FileName); Status.Text="پروژه SAM قدیمی در محیط سازگار باز شد."; return; } var loaded=ModuleProjectFile.Load(dialog.FileName); graph=loaded; projectPath=dialog.FileName; selected=graph.Nodes.FirstOrDefault()?.Id; connecting=null; results=new Dictionary<Guid,ModuleValue>(); dirty=false; UpdateTitle(); RenderGraph(); Inspect(); }
         catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or System.Text.Json.JsonException or NotSupportedException) { MessageBox.Show(this,ex.Message,"بازکردن پروژه"); }
     }
     private bool SaveGraph(bool saveAs)
     {
-        string? target=projectPath; if(saveAs || target is null) { var dialog=new SaveFileDialog { Filter="Graph project (*.jgw)|*.jgw",FileName="project.jgw",AddExtension=true }; if(dialog.ShowDialog(this)!=true)return false; target=dialog.FileName; }
-        try { ModuleProjectFile.Save(target,graph); projectPath=target; dirty=false; UpdateTitle(); Status.Text="پروژه ماژولی ذخیره شد."; return true; } catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException) { MessageBox.Show(this,ex.Message); return false; }
+        string? target=projectPath; if(saveAs || target is null || !target.EndsWith(".sam",StringComparison.OrdinalIgnoreCase)) { var dialog=new SaveFileDialog { Filter="SAM graph project (*.sam)|*.sam",FileName=target is null ? "project.sam" : System.IO.Path.GetFileNameWithoutExtension(target)+".sam",AddExtension=true,DefaultExt=".sam" }; if(dialog.ShowDialog(this)!=true)return false; target=dialog.FileName; }
+        try { ModuleProjectFile.Save(target,graph); projectPath=target; dirty=false; UpdateTitle(); Status.Text="پروژه ماژولی ذخیره شد."; return true; } catch(Exception ex) when(ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException) { MessageBox.Show(this,ex.Message); return false; }
     }
     private void Save_Click(object sender,RoutedEventArgs e) { if(!busy) SaveGraph(false); }
     private void SaveAs_Click(object sender,RoutedEventArgs e) { if(!busy) SaveGraph(true); }
