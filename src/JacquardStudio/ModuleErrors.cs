@@ -14,6 +14,7 @@ public static class ModuleErrors
         if(m.StartsWith("Connect input '")) {var match=Regex.Match(m,"Connect input '([^']+)'"); string port=match.Groups[1].Value switch {"image"=>"تصویر","fabric"=>"پارچه","palette"=>"پالت رنگ","weaves"=>"بافت‌ها","machine"=>"ماشین",_=>"ورودی موردنیاز"}; return $"ورودی «{port}» متصل نیست. خروجی سازگار ماژول قبلی را به آن وصل کنید و دوباره تلاش کنید.";}
         if(m.Contains("cycle",StringComparison.OrdinalIgnoreCase))return "این اتصال یک چرخه ایجاد می‌کند. اتصال را به شاخه‌ای بدون بازگشت به همین ماژول وصل کنید.";
         if(m.Contains("Incompatible ports"))return "نوع خروجی و ورودی با هم سازگار نیست. برای نمونه تصویر را به ورودی تصویر و پالت را به ورودی پالت وصل کنید.";
+        if(m.Contains("pure binary",StringComparison.OrdinalIgnoreCase) || m.Contains("Hook map must",StringComparison.OrdinalIgnoreCase))return "نقشه باید مات و فقط شامل پیکسل‌های سیاه و سفید خالص باشد. تصویر را اصلاح یا ماژول تبدیل سیاه‌وسفید را استفاده کنید.";
         if(m.Contains("missing weave") || m.Contains("at least one weave"))return "بافت انتخاب‌شده موجود نیست. مجموعه بافت را باز کنید و برای رنگ‌های باقی‌مانده بافت معتبر انتخاب کنید.";
         if(m.Contains("Choose an input image"))return "تصویر منبع انتخاب نشده است. ماژول طرح را باز کنید و تصویر و صفحه موردنظر را انتخاب کنید.";
         if(m.Contains("overlap",StringComparison.OrdinalIgnoreCase))return "ستون‌های پود با طرح یا کناره هم‌پوشانی دارند. موقعیت شروع طرح و پود و عرض کناره را بررسی کنید.";

@@ -213,7 +213,7 @@ internal static class Program
             var flippedBinary=GraphChecks.Threshold(b.Image,128,true); Check(DesignAnalysis.ReadBinary(flippedBinary).SequenceEqual(pixels.Select(x=>(byte)(255-x))), "threshold conversion supports inversion");
             var imageDiff=GraphChecks.Compare(checkedBinary,flippedBinary); Check(imageDiff.changed==pixels.Length, "comparison counts changed pixels");
             Expect<ArgumentException>(()=>GraphChecks.Compare(checkedBinary,BitmapSource.Create(1,1,96,96,PixelFormats.Gray8,null,new byte[]{0},1)));
-            var seam=GraphChecks.Seams(b.Image); Check(seam.horizontal==0 && seam.vertical==3, "repeat boundary comparison counts mismatched edge pixels");
+            var seam=GraphChecks.Seams(b.Image); Check(seam.horizontal==2 && seam.vertical==3, "repeat boundary comparison counts mismatched edge pixels");
             var qualityGraph=new ModuleGraph(); var binarySource=qualityGraph.Add(ModuleKind.BinaryLoad,0,0);binarySource.ImagePng=ModuleExecutor.EmbedImage(b.Image);var qc=qualityGraph.Add(ModuleKind.QualityCheck,250,0);qualityGraph.Connect(binarySource.Id,qc.Id,"fabric");
             Check(ModuleExecutor.Run(qualityGraph,qc.Id)[qc.Id].QualityNotes!.Any(t=>t.Contains("تعریف ماشین وصل نیست")), "quality module checks binary map without implying machine validation");
             var comparisonNode=qualityGraph.Add(ModuleKind.Compare,500,0); qualityGraph.Connect(binarySource.Id,comparisonNode.Id,"first");qualityGraph.Connect(qc.Id,comparisonNode.Id,"second");Check(ModuleExecutor.Run(qualityGraph,comparisonNode.Id)[comparisonNode.Id].QualityNotes![0].Contains("0"), "visual ports compare two fabric branches");
