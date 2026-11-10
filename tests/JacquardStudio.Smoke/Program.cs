@@ -486,6 +486,11 @@ internal static class Program
             Check(!thick.SequenceEqual(thin), "warp yarn count changes rendered width");
             Check(!thick.SequenceEqual(View(structure with { Wefts = new[]{new SimulatedYarn("1",0,"#00AA00","5")} })), "weft yarn count changes rendered width");
             Check(!thick.SequenceEqual(View(structure with { MaterialDensity="2" })), "effective density changes rendered diameter");
+            var normalOne=FabricSimulation.Render(oneCross,structure);var repeatedOne=FabricSimulation.Render(oneCross,structure with {RepeatX=2,RepeatY=3});
+            Check(repeatedOne.PixelWidth==normalOne.PixelWidth*2 && repeatedOne.PixelHeight==normalOne.PixelHeight*3,"2D simulation uses bounded direct repeat without modifying source");
+            var rearPixels=View(structure with {ReverseSide=true});var frontPixels=View(structure);Check(!frontPixels.SequenceEqual(rearPixels),"front and reverse preview use different over-under crossings");
+            Expect<ArgumentException>(()=>FabricSimulation.Validate(structure with {RepeatX=17}));
+            var defaultSim=System.Text.Json.JsonSerializer.Deserialize<SimulationSettings>("{}");Check(defaultSim!.RepeatX==1 && defaultSim.RepeatY==1 && !defaultSim.ReverseSide,"older simulation settings get compatible defaults");
             var differentSpacing = FabricSimulation.Render(image, structure with { WarpDensity="20", WeftDensity="40" });
             Check(differentSpacing.PixelWidth == 96 && differentSpacing.PixelHeight == 32, "fabric aspect ratio follows physical warp and weft spacing");
             var noGap = View(structure with { WarpDensity="50", WeftDensity="50" }); var moreGap = View(structure with { WarpDensity="20", WeftDensity="20" });
@@ -701,6 +706,11 @@ internal static class Program
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
             Check(GraphGuideWindow.Search("راپورت").Any(t=>t.Title.Contains("فلوت")) && GraphGuideWindow.Search("no-such-topic-01923").Count==0, "offline graph guide searches titles and body");
+            Check(GuideDiagrams.Create("راهنمای تصویری شبیه‌سازی") is System.Windows.Controls.StackPanel, "graph guide supplies original illustration");
+            var simulationEditor=new SimulationEditorWindow(b.Image,Array.Empty<string>(),new SimulationSettings(Mode:0));var simRoot=(System.Windows.Controls.DockPanel)simulationEditor.Content;var simColumns=(System.Windows.Controls.Grid)simRoot.Children[1];Check(simColumns.ColumnDefinitions.Count==2,"simulation editor has preview and settings columns");
+            var simFooter=(System.Windows.Controls.StackPanel)simRoot.Children[0];var simApply=simFooter.Children.OfType<System.Windows.Controls.Button>().Single(button=>Equals(button.Content,"اعمال و بستن"));var simTicks=0;var simTimer=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromMilliseconds(20)};
+            simTimer.Tick+=(_,_)=>{if(++simTicks>500){simTimer.Stop();simulationEditor.Close();}else if(simApply.IsEnabled && simTicks>1){simTimer.Stop();simApply.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));}};simTimer.Start();
+            Check(simulationEditor.ShowDialog()==true && simulationEditor.Result is {RepeatX:1,RepeatY:1,Mode:0},"simulation editor renders and commits draft through apply");
             var graphGuide=new GraphGuideWindow();Check(graphGuide.Title.Contains("راهنما"),"offline graph guide creates successfully");graphGuide.Close();
             var reportPages=GraphReport.Render(reportValues); Check(reportPages.Count>=2 && reportPages.All(p=>p.IsFrozen), "portfolio combines connected results and paginated palette");
             string graphReportPath=Path.Combine(dir,"graph-report.pdf"); DesignReport.SavePdf(reportPages,graphReportPath,Array.Empty<string>()); Check(File.ReadAllText(graphReportPath,System.Text.Encoding.Latin1).Contains("/Count " + reportPages.Count), "graph report exports multipage PDF");
@@ -718,6 +728,8 @@ internal static class Program
             Check(moduleLibrary.Children.Count == 28 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
             ((System.Windows.Controls.DockPanel)moduleLibrary.Children[14]).Children.OfType<System.Windows.Controls.Button>().Last().RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             var addedResize = moduleGraph.Nodes.Last(); Check(moduleGraph.Nodes.Count == 11 && addedResize.Kind == ModuleKind.Resize, "adding a second independent module through the library");
+            var firstLibraryGroup=(System.Windows.Controls.DockPanel)moduleLibrary.Children[0];var aiLibraryGroup=(System.Windows.Controls.DockPanel)moduleLibrary.Children[10];
+            Check(System.Windows.Controls.DockPanel.GetDock(firstLibraryGroup.Children[0])==System.Windows.Controls.Dock.Left && firstLibraryGroup.Children[1] is System.Windows.Controls.Border && System.Windows.Controls.DockPanel.GetDock(aiLibraryGroup.Children[1])==System.Windows.Controls.Dock.Left && aiLibraryGroup.Children[1] is System.Windows.Controls.Button,"library help and AI settings use reserved left slots so right icons align");
             var nodeLayer = (System.Windows.Controls.Canvas)moduleWindow.FindName("NodeLayer");
             System.Windows.Controls.Button Port(int index, string tip) { var card=(System.Windows.Controls.Border)nodeLayer.Children[index]; var inner=(System.Windows.Controls.Grid)card.Child; var ports=(System.Windows.Controls.Grid)inner.Children[1]; return ports.Children.OfType<System.Windows.Controls.Button>().Single(b => ((string?)b.ToolTip)?.Contains(tip)==true); }
             Port(0,"انتخاب خروجی").RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
@@ -757,7 +769,7 @@ internal static class Program
             editButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); cropTimer.Stop();
             Check(cropOpened && cropLoaded, "crop card button opens dialog and loads its connected input");
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "033.0.4.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "034.0.4.1-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));

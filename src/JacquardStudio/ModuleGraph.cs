@@ -290,7 +290,12 @@ public static class ModuleExecutor
         if(node.Kind==ModuleKind.Selvedge) lines.Add($"کناره چپ: {node.Machine.LeftWidth} ({node.Machine.LeftName}) · راست: {node.Machine.RightWidth} ({node.Machine.RightName})");
         if(node.Kind==ModuleKind.Floats) lines.Add("اصلاح خودکار: " + (node.AutoCorrect ? "فعال" : "غیرفعال"));
         if(node.Kind==ModuleKind.Weft && value.Machine is { } used) lines.Add($"تعداد پود: {used.WeftCount} · توالی: {used.Sequence} · شروع طرح: {PositionNumbers.ToDisplay(used.DesignStart)} · شروع پود: {PositionNumbers.ToDisplay(used.WeftStart)}");
-        if(node.Kind==ModuleKind.Simulation) lines.Add($"حالت: {node.Simulation.Mode} · نمره تار: {node.Simulation.WarpCount} · تراکم تار/پود: {node.Simulation.WarpDensity} / {node.Simulation.WeftDensity} · رنگ تار/پود: {node.Simulation.WarpColor} / {node.Simulation.WeftColor} (نمایش تقریبی)");
+        if(node.Kind==ModuleKind.Simulation) {
+            var sim=node.Simulation;lines.Add($"شبیه‌سازی تقریبی · حالت: {(sim.Mode==0 ? "معمولی" : "پرزدار")} · {(sim.ReverseSide ? "پشت" : "رو")} · تکرار مستقیم: {sim.RepeatX} × {sim.RepeatY} · شدت سایه: {sim.Shadow}");
+            lines.Add($"تار: {sim.WarpColor} · نمره {sim.WarpCount} · واحد {YarnGeometry.Units[sim.WarpUnit]} · تراکم تار/پود: {sim.WarpDensity} / {sim.WeftDensity} در سانتی‌متر · چگالی مؤثر {sim.MaterialDensity}");
+            foreach(var yarn in (sim.Wefts ?? Array.Empty<SimulatedYarn>()).Take(20))lines.Add($"پود {yarn.Id}: {yarn.Color} · نمره {yarn.Count} {YarnGeometry.Units[yarn.Unit]}");
+            if((sim.Wefts?.Length ?? 0)>20)lines.Add("بقیه پودها در تنظیمات شبیه‌سازی موجودند.");
+        }
         if(node.Kind==ModuleKind.Machine) lines.Add($"قالب: {node.MachineFormat} · خروجی ماشین آزمایشی؛ نگاشت و قطبیت باید مستقل بررسی شود.");
         if(value.QualityNotes is { } qualityNotes) lines.AddRange(qualityNotes);
         if(value.DesignFields is { } fields) foreach(var field in fields) lines.Add(field.Title + ": " + field.Text);

@@ -100,8 +100,9 @@ public partial class ModuleWindow : Window
             var icon = new TextBlock { Text = type.icon, FontFamily = new FontFamily("Segoe MDL2 Assets"), Foreground = CategoryBrush(type.color), FontSize = 18, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center }; Grid.SetColumn(icon,1); row.Children.Add(icon);
             var labels = new StackPanel(); labels.Children.Add(new TextBlock { Text = type.name, FontSize = 12, Foreground = ResourceBrush("PrimaryText") }); labels.Children.Add(new TextBlock { Text = type.subtitle, FontSize = 9, Foreground = ResourceBrush("Muted"), FlowDirection = FlowDirection.LeftToRight }); labels.FlowDirection=FlowDirection.RightToLeft; labels.HorizontalAlignment=HorizontalAlignment.Stretch; foreach(var label in labels.Children.OfType<TextBlock>()) label.TextAlignment=TextAlignment.Right; row.Children.Add(labels);
             var kind = type.kind; bool wasDragged=false; var group = new DockPanel { FlowDirection = FlowDirection.LeftToRight, Margin = new Thickness(0,2,0,2) };
-            var help = new Button { Content = "?", ToolTip = "راهنمای " + type.name, Width = 28, Padding = new Thickness(0), Margin = new Thickness(3,0,0,0), Background = ResourceBrush("ButtonBackground"), Foreground = ResourceBrush("PrimaryText") }; DockPanel.SetDock(help,Dock.Right); group.Children.Add(help); help.Click += (_,_) => ShowModuleHelp(kind);
-            if(kind==ModuleKind.AiEdit) { var config=new Button { Content="⚙",ToolTip="تنظیم اتصال هوش مصنوعی",Width=30,Padding=new Thickness(0),Margin=new Thickness(3,0,0,0) }; DockPanel.SetDock(config,Dock.Right); group.Children.Add(config); config.Click+=(_,_)=>ConfigureAi(); }
+            var help = new Button { Content = "?", ToolTip = "راهنمای " + type.name, Width = 28, Padding = new Thickness(0), Margin = new Thickness(3,0,0,0), Background = ResourceBrush("ButtonBackground"), Foreground = ResourceBrush("PrimaryText") }; DockPanel.SetDock(help,Dock.Left); group.Children.Add(help); help.Click += (_,_) => ShowModuleHelp(kind);
+            if(kind==ModuleKind.AiEdit) { var config=new Button { Content="⚙",ToolTip="تنظیم اتصال هوش مصنوعی",Width=30,Padding=new Thickness(0),Margin=new Thickness(3,0,0,0) }; DockPanel.SetDock(config,Dock.Left); group.Children.Add(config); config.Click+=(_,_)=>ConfigureAi(); }
+            else { var spacer=new Border {Width=30,Margin=new Thickness(3,0,0,0)};DockPanel.SetDock(spacer,Dock.Left);group.Children.Add(spacer); }
             var button = new Button { Content = row, Background = ResourceBrush("GraphNode"), BorderBrush = ResourceBrush("Border"), Padding = new Thickness(6), HorizontalContentAlignment = HorizontalAlignment.Stretch, FlowDirection = FlowDirection.LeftToRight, ToolTip = "کلیک یا کشیدن: افزودن " + type.name };
             button.Click += (_,_) => { if (wasDragged) return; if (!busy) AddModule(kind, 60 + (graph.Nodes.Count % 6) * 250, 80 + (graph.Nodes.Count / 6) * 160); };
             button.PreviewMouseLeftButtonDown += (_,e) => { wasDragged=false; libraryDragStart = e.GetPosition(button); };
@@ -496,6 +497,7 @@ public partial class ModuleWindow : Window
     private async Task EditModuleAsync(ModuleNode node)
     {
         if(busy) return;
+        if (node.Kind == ModuleKind.Simulation) { await EditSimulationAsync(node); return; }
         if (node.Kind is ModuleKind.Floats or ModuleKind.Tension) { await EditFabricAsync(node); return; }
         if (node.Kind == ModuleKind.ApplyWeaves) { await EditWeaveMappingAsync(node); return; }
         if (node.Kind == ModuleKind.AutoWeaves) { await EditAutoWeavesAsync(node); return; }
@@ -516,6 +518,16 @@ public partial class ModuleWindow : Window
         if (!accepted) { graph.Nodes[index]=backup; foreach(var n in graph.Nodes) if(assignments.TryGetValue(n.Id,out var saved)) { n.WeaveAssignments=saved.Item1; n.DefaultWeaveIndex=saved.Item2; n.Configured=saved.Item3; } results=oldResults; dirty=wasDirty; UpdateTitle(); }
         else { dirty=true; UpdateTitle(); }
         RenderGraph(); Inspect();
+    }
+    private async Task EditSimulationAsync(ModuleNode node)
+    {
+        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="fabric");if(edge is null){MessageBox.Show(this,"ابتدا ورودی پارچه را وصل کنید.");return;}
+        IReadOnlyDictionary<Guid,ModuleValue> inputs;BitmapSource fabric; string[] rows;
+        try {busy=true;GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=false;inputs=await Task.Run(()=>ModuleExecutor.Run(graph,edge.From));var input=inputs[edge.From];fabric=input.Composition is null ? input.Image! : CompositionView.Fabric(input.Composition);rows=input.Composition?.RowWefts ?? Array.Empty<string>();}
+        catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException){ModuleErrors.Show(this,ex,"خطای ورودی شبیه‌سازی");return;}
+        finally {busy=false;GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=true;}
+        try {var editor=new SimulationEditorWindow(fabric,rows,node.Simulation,projectPath) {Owner=this};if(editor.ShowDialog()!=true || editor.Result is not { } settings)return;node.Simulation=settings;Changed(node.Id);MergeResults(inputs);await ExecuteAsync(node);}
+        catch(Exception ex) when(ex is ArgumentException or InvalidDataException or InvalidOperationException){ModuleErrors.Show(this,ex,"خطای شبیه‌سازی");}
     }
     private async Task EditFabricAsync(ModuleNode node)
     {

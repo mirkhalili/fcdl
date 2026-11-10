@@ -17,6 +17,10 @@ public static class ModuleErrors
         if(m.Contains("pure binary",StringComparison.OrdinalIgnoreCase) || m.Contains("Hook map must",StringComparison.OrdinalIgnoreCase))return "نقشه باید مات و فقط شامل پیکسل‌های سیاه و سفید خالص باشد. تصویر را اصلاح یا ماژول تبدیل سیاه‌وسفید را استفاده کنید.";
         if(m.Contains("missing weave") || m.Contains("at least one weave"))return "بافت انتخاب‌شده موجود نیست. مجموعه بافت را باز کنید و برای رنگ‌های باقی‌مانده بافت معتبر انتخاب کنید.";
         if(m.Contains("Choose an input image"))return "تصویر منبع انتخاب نشده است. ماژول طرح را باز کنید و تصویر و صفحه موردنظر را انتخاب کنید.";
+        if(m.Contains("Yarn count must",StringComparison.OrdinalIgnoreCase) || m.Contains("Yarn count is outside",StringComparison.OrdinalIgnoreCase))return "نمره نخ معتبر نیست؛ مقدار مثبت و واحد مناسب وارد کنید. محدوده تبدیل‌شده بین ۰٫۰۵ تا ۲۰۰۰۰ تِکس است.";
+        if(m.Contains("Effective yarn density",StringComparison.OrdinalIgnoreCase))return "چگالی مؤثر نخ باید از ۰٫۰۵ تا ۵ گرم بر سانتی‌متر مکعب باشد.";
+        if(m.Contains("Thread density",StringComparison.OrdinalIgnoreCase))return "تراکم تار و پود باید بین ۰٫۱ تا ۵۰۰ نخ یا رج در سانتی‌متر باشد.";
+        if(m.Contains("Invalid simulation settings",StringComparison.OrdinalIgnoreCase))return "تنظیمات شبیه‌سازی معتبر نیست. نوع نخ، حالت، سایه و تکرارهای ۱ تا ۱۶ را بررسی کنید.";
         if(m.Contains("overlap",StringComparison.OrdinalIgnoreCase))return "ستون‌های پود با طرح یا کناره هم‌پوشانی دارند. موقعیت شروع طرح و پود و عرض کناره را بررسی کنید.";
         if(m.Contains("Total hooks",StringComparison.OrdinalIgnoreCase))return "تعداد کل زه برای طرح و کناره‌ها کافی نیست یا از محدودیت اندازه بیشتر است. تعریف ماشین و عرض طرح را بررسی کنید.";
         if(m.Contains("pixel",StringComparison.OrdinalIgnoreCase) || m.Contains("too large",StringComparison.OrdinalIgnoreCase))return "اندازه یا حجم ورودی بیش از حد مجاز است. اندازه تصویر و محدودیت چهار میلیون پیکسلِ خروجی را بررسی کنید.";

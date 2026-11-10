@@ -6,7 +6,7 @@ namespace JacquardStudio;
 
 public sealed record SimulatedYarn(string Id, int Yarn, string Color, string Count = "30", int Unit = 0);
 // Legacy single-weft fields remain as defaults when opening SAM v6.
-public sealed record SimulationSettings(int WarpYarn = 0, int WeftYarn = 1, string WarpColor = "#DABFA0", string WeftColor = "#537481", int Weave = 0, int Shadow = 60, SimulatedYarn[]? Wefts = null, int Mode = 1, string WarpCount = "30", int WarpUnit = 0, string WarpDensity = "40", string WeftDensity = "40", string MaterialDensity = "1.0");
+public sealed record SimulationSettings(int WarpYarn = 0, int WeftYarn = 1, string WarpColor = "#DABFA0", string WeftColor = "#537481", int Weave = 0, int Shadow = 60, SimulatedYarn[]? Wefts = null, int Mode = 1, string WarpCount = "30", int WarpUnit = 0, string WarpDensity = "40", string WeftDensity = "40", string MaterialDensity = "1.0", bool ReverseSide = false, int RepeatX = 1, int RepeatY = 1);
 
 public static class FabricSimulation
 {
@@ -41,7 +41,7 @@ public static class FabricSimulation
     public static double WeftDiameter(SimulationSettings s, SimulatedYarn yarn) => YarnGeometry.DiameterMm(YarnGeometry.ToTex(Number(yarn.Count), yarn.Unit), Number(s.MaterialDensity));
     public static void Validate(SimulationSettings s)
     {
-        if ((uint)s.WarpYarn >= YarnNames.Length || (uint)s.WeftYarn >= YarnNames.Length || s.Weave is < 0 or > 2 || s.Shadow is < 0 or > 100 || s.Mode is < 0 or > 2)
+        if ((uint)s.WarpYarn >= YarnNames.Length || (uint)s.WeftYarn >= YarnNames.Length || s.Weave is < 0 or > 2 || s.Shadow is < 0 or > 100 || s.Mode is < 0 or > 2 || s.RepeatX is < 1 or > 16 || s.RepeatY is < 1 or > 16)
             throw new ArgumentException("Invalid simulation settings.");
         ParseColor(s.WarpColor); ParseColor(s.WeftColor); _ = WarpDiameter(s); _ = YarnGeometry.SpacingMm(Number(s.WarpDensity)); _ = YarnGeometry.SpacingMm(Number(s.WeftDensity));
         if (s.Wefts is { } list)
@@ -66,15 +66,21 @@ public static class FabricSimulation
             if (!cache.TryGetValue(id, out var properties)) { var yarn = YarnFor(s, id); properties = (ParseColor(yarn.Color), yarn.Yarn, Math.Min(.98, WeftDiameter(s, yarn) / dy)); cache[id] = properties; }
             (rowColors[y], rowYarns[y], rowRatios[y]) = properties;
         }
-        double factor = Math.Min(16.0 / Math.Min(dx, dy), 2400.0 / Math.Max(w * dx, h * dy));
-        int outW = Math.Max(1, (int)Math.Round(w * dx * factor)), outH = Math.Max(1, (int)Math.Round(h * dy * factor));
+        int totalW=checked(w*s.RepeatX), totalH=checked(h*s.RepeatY);
+        double factor = Math.Min(16.0 / Math.Min(dx, dy), 2400.0 / Math.Max(totalW * dx, totalH * dy));
+        int outW = Math.Max(1, (int)Math.Round(totalW * dx * factor)), outH = Math.Max(1, (int)Math.Round(totalH * dy * factor));
+        bool TopAt(int gridX,int gridY)
+        {
+            int localX=gridX%w, localY=gridY%h; if(s.ReverseSide)localX=w-1-localX;
+            bool top=WarpOnTop(map,w,localX,localY,s.Weave); return s.ReverseSide ? !top : top;
+        }
         var pixels = new byte[checked(outW * outH * 4)]; double shade = s.Shadow / 100.0;
         for (int py = 0; py < outH; py++)
         for (int px = 0; px < outW; px++)
         {
-            double fx = (px + .5) * w / outW, fy = (py + .5) * h / outH;
-            int x = Math.Min(w - 1, (int)fx), y = Math.Min(h - 1, (int)fy); double u = fx - x, v = fy - y;
-            bool warpTop = WarpOnTop(map, w, x, y, s.Weave);
+            double fx = (px + .5) * totalW / outW, fy = (py + .5) * totalH / outH;
+            int gx=Math.Min(totalW-1,(int)fx),gy=Math.Min(totalH-1,(int)fy); int x=gx%w,y=gy%h; double u=fx-gx,v=fy-gy;
+            bool warpTop = TopAt(gx,gy);
             // Model actual projected widths, white openings, and the over/under structure.
             double warpCross = Math.Abs(u - .5), weftCross = Math.Abs(v - .5);
             double wr = warpRatio / 2, fr = rowRatios[y] / 2;
@@ -107,8 +113,8 @@ public static class FabricSimulation
                 if (warpTop) crossingShade = Math.Exp(-Math.Max(0, warpCross - wr) * 18) * .20 * shade;
                 else
                 {
-                    if (x > 0 && WarpOnTop(map, w, x - 1, y, s.Weave)) crossingShade = Math.Max(crossingShade, Math.Exp(-Math.Max(0, u + .5 - wr) * 12) * .20 * shade);
-                    if (x + 1 < w && WarpOnTop(map, w, x + 1, y, s.Weave)) crossingShade = Math.Max(crossingShade, Math.Exp(-Math.Max(0, 1.5 - wr - u) * 12) * .20 * shade);
+                    if (gx > 0 && TopAt(gx-1,gy)) crossingShade = Math.Max(crossingShade, Math.Exp(-Math.Max(0, u + .5 - wr) * 12) * .20 * shade);
+                    if (gx + 1 < totalW && TopAt(gx+1,gy)) crossingShade = Math.Max(crossingShade, Math.Exp(-Math.Max(0, 1.5 - wr - u) * 12) * .20 * shade);
                 }
             }
             double lightLevel = Math.Clamp(1 - edgeShade - crossingShade, .55, 1.0);
