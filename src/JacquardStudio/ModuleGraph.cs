@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck }
+public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData }
 public enum ModuleData { Image, Palette, Weaves, Fabric, Preview, Report, Any, MachineConfig, Metadata, Visual }
 public sealed record DesignField(string Title, string Text);
 public sealed record ModuleColorEdit(string InputHash, PaletteResult Palette, bool[] Locks);
@@ -57,7 +57,7 @@ public sealed class ModuleGraph
     public List<ModuleEdge> Edges { get; set; } = new();
     public static ModuleData Output(ModuleKind kind) => kind switch
     {
-        ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.SeamCheck or ModuleKind.Compare => ModuleData.Image,
+        ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.SeamCheck or ModuleKind.Compare or ModuleKind.ExportData => ModuleData.Image,
         ModuleKind.Colors => ModuleData.Palette,
         ModuleKind.Weaves or ModuleKind.CreateWeave => ModuleData.Weaves,
         ModuleKind.Simulation => ModuleData.Preview,
@@ -68,7 +68,9 @@ public sealed class ModuleGraph
     };
     public static IReadOnlyDictionary<string, ModuleData> Inputs(ModuleKind kind) => kind switch
     {
-        ModuleKind.Resize or ModuleKind.Colors or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.BinaryConvert or ModuleKind.SeamCheck => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image },
+        ModuleKind.Resize or ModuleKind.Colors or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.BinaryConvert => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image },
+        ModuleKind.SeamCheck => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Visual },
+        ModuleKind.ExportData => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Visual, ["palette"] = ModuleData.Palette },
         ModuleKind.Compare => new Dictionary<string, ModuleData> { ["first"] = ModuleData.Visual, ["second"] = ModuleData.Visual },
         ModuleKind.QualityCheck => new Dictionary<string, ModuleData> { ["fabric"] = ModuleData.Fabric, ["machine"] = ModuleData.MachineConfig },
         ModuleKind.Weft => new Dictionary<string, ModuleData> { ["fabric"] = ModuleData.Fabric, ["machine"] = ModuleData.MachineConfig },
@@ -151,6 +153,9 @@ public static class ModuleExecutor
                     if (string.IsNullOrEmpty(node.ImagePng)) throw new InvalidOperationException("Choose an input image.");
                     byte[] bytes = Convert.FromBase64String(node.ImagePng); if (bytes.Length > ImageLoader.MaxFileBytes) throw new InvalidDataException("Embedded image is too large.");
                     using (var stream = new MemoryStream(bytes)) { var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad); var bitmap = decoder.Frames[0]; bitmap.Freeze(); VectorDocument? vector=null; if(node.Kind==ModuleKind.VectorLoad && !string.IsNullOrEmpty(node.VectorPdfBase64)) { var pdf=Convert.FromBase64String(node.VectorPdfBase64); if(pdf.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("Vector source is too large."); vector=new VectorDocument(pdf,node.SourcePage); } result = new(ModuleData.Image, bitmap, Vector:vector); } break;
+                case ModuleKind.ExportData:
+                    var exportImage=Input("image"); var exportPaletteEdge=graph.Edges.SingleOrDefault(e=>e.To==id && e.Port=="palette"); var exportPalette=exportPaletteEdge is null ? null : Evaluate(exportPaletteEdge.From).Palette;
+                    result=new(ModuleData.Image,exportImage.Image ?? throw new InvalidOperationException("ورودی تصویر آماده نیست."), Palette:exportPalette, QualityNotes:new[]{exportPalette is null ? "پالت وصل نیست؛ خروجی جدول در دسترس نیست." : "پالت متصل برای خروجی جدول آماده است."}); break;
                 case ModuleKind.BinaryLoad:
                     if(string.IsNullOrEmpty(node.ImagePng))throw new InvalidOperationException("ابتدا نقشهٔ سیاه‌وسفید آماده را انتخاب کنید.");
                     var binaryBytes=Convert.FromBase64String(node.ImagePng); if(binaryBytes.Length>ImageLoader.MaxFileBytes)throw new InvalidDataException("فایل نقشه بیش از حد بزرگ است.");

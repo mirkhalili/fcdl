@@ -29,6 +29,7 @@ public partial class ModuleWindow : Window
     private string? acceptedDrag;
     private readonly WeaveBank bank = new();
     private static readonly (ModuleKind kind, string name, string icon, string color, string subtitle)[] Types = {
+        (ModuleKind.ExportData,"خروجی تصویر و جدول","\uE74E","#8DBAF0","IMAGE & TABLE EXPORT"),
         (ModuleKind.BinaryLoad,"نقشه بافت آماده","\uE8B7","#47D4B3","BINARY MAP"),
         (ModuleKind.BinaryConvert,"تبدیل سیاه‌وسفید","\uE790","#E2A766","BINARY CONVERSION"),
         (ModuleKind.SeamCheck,"بررسی درز راپورت","\uE9D9","#72C8C5","SEAM CHECK"),
@@ -118,6 +119,7 @@ public partial class ModuleWindow : Window
     private void ShowModuleHelp(ModuleKind kind)
     {
         string text = kind switch {
+            ModuleKind.ExportData => "تصویر یا نقشه را متصل و به PNG، BMP یا TIFF صادر کنید؛ برای جدول CSV پالت را نیز وصل کنید.",
             ModuleKind.BinaryLoad => "تصویر مات سیاه‌وسفید یا JC5 پشتیبانی‌شده را بارگذاری و خروجی نقشه را به فلوت یا پودگذاری وصل کنید.",
             ModuleKind.BinaryConvert => "آستانه و وارونگی را تعیین و تصویر مات را به نقشه سیاه‌وسفید تبدیل کنید.",
             ModuleKind.SeamCheck => "لبه‌های مقابل تصویر را مقایسه می‌کند؛ اختلاف صفر تضمین زیبایی راپورت نیست.",
@@ -304,6 +306,9 @@ public partial class ModuleWindow : Window
             case ModuleKind.BinaryLoad:
                 Inspector.Children.Add(Note(node.ImagePng is null ? "تصویری انتخاب نشده است." : "تصویر در پروژه ذخیره می‌شود."));
                 Button("انتخاب طرح و صفحه", async () => await ChooseImage(node)); break;
+            case ModuleKind.ExportData:
+                Inspector.Children.Add(Note("تصویر یا نقشه را وصل و اجرا کنید. برای جدول، خروجی مدیریت رنگ را نیز به پالت وصل کنید."));
+                Button("ذخیره تصویر",()=>ExportGraphImage(node)); Button("ذخیره جدول پالت CSV",()=>ExportGraphPalette(node)); break;
             case ModuleKind.BinaryConvert:
                 Field("آستانه روشنایی (۰ تا ۲۵۵)",node.Threshold.ToString(),s=>{int n=Parse(s,0);if(n is < 0 or > 255)throw new ArgumentException("آستانه باید بین صفر و ۲۵۵ باشد.");node.Threshold=n;}); var invert=new CheckBox {Content="معکوس کردن سیاه و سفید",IsChecked=node.InvertBinary,Margin=new Thickness(0,8,0,0)};invert.Click+=(_,_)=>{node.InvertBinary=invert.IsChecked==true;Changed(node.Id);};Inspector.Children.Add(invert);break;
             case ModuleKind.SeamCheck: Inspector.Children.Add(Note("لبه‌های مقابل مقایسه می‌شوند؛ اختلاف صفر تضمین کیفیت بصری نیست."));break;
@@ -489,7 +494,7 @@ public partial class ModuleWindow : Window
         int index=graph.Nodes.FindIndex(n=>n.Id==node.Id); var backup=System.Text.Json.JsonSerializer.Deserialize<ModuleNode>(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(node))!;
         var assignments=graph.Nodes.ToDictionary(n=>n.Id,n=>(new Dictionary<int,int>(n.WeaveAssignments), n.DefaultWeaveIndex, n.Configured)); var oldResults=results; bool wasDirty=dirty;
         // Prime connected inputs so weave mappings and current output are visible in the dialog.
-        try { busy=true; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=false; if (ModuleGraph.Inputs(node.Kind).Count > 0 && ModuleGraph.Inputs(node.Kind).Keys.Where(port=>port!="machine").All(port=>graph.Edges.Any(e=>e.To==node.Id && e.Port==port))) MergeResults(await Task.Run(()=>ModuleExecutor.Run(graph,node.Id))); } catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) { Status.Text=ModuleErrors.Explain(ex); } finally { busy=false; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=true; }
+        try { busy=true; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=false; if (ModuleGraph.Inputs(node.Kind).Count > 0 && ModuleGraph.Inputs(node.Kind).Keys.Where(port=>port!="machine" && !(node.Kind==ModuleKind.ExportData && port=="palette")).All(port=>graph.Edges.Any(e=>e.To==node.Id && e.Port==port))) MergeResults(await Task.Run(()=>ModuleExecutor.Run(graph,node.Id))); } catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) { Status.Text=ModuleErrors.Explain(ex); } finally { busy=false; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=true; }
         InspectorHost.Content=null; Inspect(); var dialog=new Window { Title=Spec(node.Kind).name, Width=720,Height=760,MinWidth=500,MinHeight=450,Owner=Window.GetWindow(Inspector) ?? this,WindowStartupLocation=WindowStartupLocation.CenterOwner,FlowDirection=FlowDirection.RightToLeft,Background=ResourceBrush("Surface"),Foreground=ResourceBrush("PrimaryText") };
         var root=new DockPanel { Margin=new Thickness(24) }; var bottom=new StackPanel { Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,12,0,0) }; DockPanel.SetDock(bottom,Dock.Top); root.Children.Add(bottom);
         var apply=new Button { Content="اعمال تنظیمات و بستن",Margin=new Thickness(4),Padding=new Thickness(14,9,14,9) }; var cancel=new Button { Content="انصراف",Margin=new Thickness(4),Padding=new Thickness(14,9,14,9) }; var run=new Button { Content="به‌روزرسانی پیش‌نمایش",Margin=new Thickness(4),Padding=new Thickness(14,9,14,9) }; apply.SetResourceReference(Control.BackgroundProperty,"ActionBackground"); bottom.Children.Add(apply); bottom.Children.Add(cancel); bottom.Children.Add(run);
@@ -605,6 +610,18 @@ public partial class ModuleWindow : Window
         if(node.Kind==ModuleKind.Resize) { node.Width=output.Resized!.PixelWidth; node.Height=output.Resized.PixelHeight; }
         else { node.ColorLimit=output.AppliedColorLimit!.Value; node.ColorEdit=new ModuleColorEdit(hash,output.Palette!, (bool[])output.LockedColors.Clone()); }
         Changed(); MergeResults(inputs); await ExecuteAsync(node); RenderGraph();
+    }
+    private void ExportGraphImage(ModuleNode node)
+    {
+        var owner=Window.GetWindow(Inspector) ?? this; if(!results.TryGetValue(node.Id,out var result) || result.Image is null) {MessageBox.Show(owner,"ابتدا ماژول خروجی را اجرا کنید.");return;}
+        var dialog=new SaveFileDialog {Filter="PNG (*.png)|*.png|BMP (*.bmp)|*.bmp|TIFF (*.tif)|*.tif",AddExtension=true,FileName="export.png"}; if(dialog.ShowDialog(owner)!=true)return;
+        try {GraphExports.SaveImage(result.Image,dialog.FileName,new[]{projectPath}.OfType<string>());Status.Text="تصویر ذخیره شد.";} catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException) {ModuleErrors.Show(owner,ex,"خطای خروجی تصویر");}
+    }
+    private void ExportGraphPalette(ModuleNode node)
+    {
+        var owner=Window.GetWindow(Inspector) ?? this; if(!results.TryGetValue(node.Id,out var result) || result.Palette is null) {MessageBox.Show(owner,"پالت را وصل و ماژول خروجی را اجرا کنید.");return;}
+        var dialog=new SaveFileDialog {Filter="CSV (*.csv)|*.csv",AddExtension=true,FileName="palette.csv"};if(dialog.ShowDialog(owner)!=true)return;
+        try {GraphExports.SavePalette(result.Palette,dialog.FileName,new[]{projectPath}.OfType<string>());Status.Text="جدول پالت ذخیره شد.";} catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or InvalidDataException) {ModuleErrors.Show(owner,ex,"خطای خروجی جدول");}
     }
     private void ExportMachine(ModuleNode node)
     {
