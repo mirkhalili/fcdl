@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData, PeriodicFloats }
+public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData, PeriodicFloats, MatchPalette }
 public enum ModuleData { Image, Palette, Weaves, Fabric, Preview, Report, Any, MachineConfig, Metadata, Visual }
 public sealed record DesignField(string Title, string Text);
 public sealed record ModuleColorEdit(string InputHash, PaletteResult Palette, bool[] Locks);
@@ -58,7 +58,7 @@ public sealed class ModuleGraph
     public static ModuleData Output(ModuleKind kind) => kind switch
     {
         ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.SeamCheck or ModuleKind.Compare or ModuleKind.ExportData => ModuleData.Image,
-        ModuleKind.Colors => ModuleData.Palette,
+        ModuleKind.Colors or ModuleKind.MatchPalette => ModuleData.Palette,
         ModuleKind.Weaves or ModuleKind.CreateWeave => ModuleData.Weaves,
         ModuleKind.Simulation => ModuleData.Preview,
         ModuleKind.Report => ModuleData.Report,
@@ -69,6 +69,7 @@ public sealed class ModuleGraph
     public static IReadOnlyDictionary<string, ModuleData> Inputs(ModuleKind kind) => kind switch
     {
         ModuleKind.Resize or ModuleKind.Colors or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.BinaryConvert => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image },
+        ModuleKind.MatchPalette => new Dictionary<string, ModuleData> { ["palette"] = ModuleData.Palette, ["reference"] = ModuleData.Palette },
         ModuleKind.SeamCheck => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Visual },
         ModuleKind.ExportData => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Visual, ["palette"] = ModuleData.Palette },
         ModuleKind.Compare => new Dictionary<string, ModuleData> { ["first"] = ModuleData.Visual, ["second"] = ModuleData.Visual },
@@ -204,6 +205,9 @@ public static class ModuleExecutor
                     if (node.ColorEdit is { } edit) { if (edit.Palette.Width != image.PixelWidth || edit.Palette.Height != image.PixelHeight || edit.InputHash != ImageFingerprint(image)) throw new InvalidOperationException("ورودی مدیریت رنگ تغییر کرده است؛ ماژول رنگ را باز و دوباره اعمال کنید."); palette=edit.Palette; }
                     else palette = DesignProcessor.Prepare(image,image.PixelWidth,image.PixelHeight,node.ColorLimit);
                     result = new(ModuleData.Palette,DesignProcessor.RenderColors(palette),palette); break;
+                case ModuleKind.MatchPalette:
+                    var matched=PaletteReferenceMatcher.Match(Input("palette").Palette!,Input("reference").Palette!);
+                    result=new(ModuleData.Palette,DesignProcessor.RenderColors(matched),Palette:matched,QualityNotes:new[]{"هر رنگ ورودی به نزدیک‌ترین RGB پالت مرجع تبدیل شد؛ رنگ‌های هم‌مقصد ادغام شدند.","فاصله هندسی RGB است، نه سنجش آزمایشگاهی رنگ. رنگ‌های مرجع بلااستفاده حذف شده‌اند."});break;
                 case ModuleKind.Weaves:
                 case ModuleKind.CreateWeave:
                     if (node.Weaves.Count == 0) throw new InvalidOperationException("Add at least one weave to the module.");

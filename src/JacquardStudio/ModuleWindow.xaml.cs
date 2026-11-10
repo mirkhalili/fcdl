@@ -55,7 +55,8 @@ public partial class ModuleWindow : Window
         (ModuleKind.Weft,"پودگذاری","\uE8FD","#E2AD69","BOX MOTION"),
         (ModuleKind.Simulation,"شبیه‌سازی پارچه","\uE7F4","#8DBAF0","SIMULATION"),
         (ModuleKind.Machine,"خروجی ماشین","\uE950","#F19F7A","MACHINE OUTPUT"),
-        (ModuleKind.PeriodicFloats,"فلوت در راپورت مستقیم","\uE7C3","#E89B73","PERIODIC FLOAT CHECK")
+        (ModuleKind.PeriodicFloats,"فلوت در راپورت مستقیم","\uE7C3","#E89B73","PERIODIC FLOAT CHECK"),
+        (ModuleKind.MatchPalette,"تطبیق پالت مرجع","\uE790","#E2A766","PALETTE MATCH")
     };
     private static (ModuleKind kind, string name, string icon, string color, string subtitle) Spec(ModuleKind kind) => Types.Single(t => t.kind == kind);
     private static Brush Brush(string hex) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
@@ -142,6 +143,7 @@ public partial class ModuleWindow : Window
             ModuleKind.Weaves => "چند بافت از بانک انتخاب کنید یا در شبکه بافت بسازید. این مجموعه همراه پروژه است.",
             ModuleKind.ApplyWeaves => "ورودی پالت و مجموعه بافت را متصل و برای هر رنگ یک بافت انتخاب کنید. خروجی نقشه سیاه‌وسفید است.",
             ModuleKind.Selvedge => "کناره و بافت چپ و راست را پیش از پودگذاری به نقشه اضافه می‌کند.",
+            ModuleKind.MatchPalette => "پالت طرح و پالت مرجع را وصل کنید. نزدیک‌ترین رنگ با فاصله RGB انتخاب و رنگ‌های هم‌مقصد ادغام می‌شوند؛ تطبیق آزمایشگاهی نیست.",
             ModuleKind.PeriodicFloats => "در تکرار مستقیم، فلوت‌های دو سوی مرز یک فلوت شمرده می‌شوند. خطوط یک‌رنگ نامحدود گزارش می‌شوند. نتیجه نقشه را تغییر نمی‌دهد.",
             ModuleKind.Floats => "فلوت‌های تار یا پود را با حداقل طول مشخص بررسی و در صورت انتخاب اصلاح می‌کند.",
             ModuleKind.Tension => "شاخص نسبی اختلاف تارها را تحلیل می‌کند؛ اندازه‌گیری فیزیکی کشش نیست.",
@@ -169,7 +171,7 @@ public partial class ModuleWindow : Window
     }
     private void MergeResults(IReadOnlyDictionary<Guid,ModuleValue> incoming) => results=results.Concat(incoming).GroupBy(x=>x.Key).ToDictionary(g=>g.Key,g=>g.Last().Value);
     private void UpdateTitle() => Title = $"Jacquard Studio · {(projectPath is null ? "پروژه جدید" : System.IO.Path.GetFileName(projectPath))}{(dirty ? " *" : "")}";
-    private static string PortName(string port) => port switch { "image" => "تصویر", "palette" => "رنگ‌ها", "weaves" => "بافت‌ها", "report" => "گزارش", "machine" => "ماشین", "first" => "اول", "second" => "دوم", _ => "پارچه" };
+    private static string PortName(string port) => port switch { "image" => "تصویر", "palette" => "رنگ‌ها", "weaves" => "بافت‌ها", "report" => "گزارش", "machine" => "ماشین", "first" => "اول", "second" => "دوم", "reference" => "مرجع", _ => "پارچه" };
     private void RenderGraph()
     {
         NodeLayer.Children.Clear(); cards.Clear();
@@ -364,6 +366,8 @@ public partial class ModuleWindow : Window
             case ModuleKind.Selvedge:
                 Field("عرض کناره چپ",node.Machine.LeftWidth,s=>node.Machine=node.Machine with { LeftWidth=s, LeftPattern=node.Machine.LeftPattern ?? PatternLibrary.Presets[0].Pattern });
                 Field("عرض کناره راست",node.Machine.RightWidth,s=>node.Machine=node.Machine with { RightWidth=s, RightPattern=node.Machine.RightPattern ?? PatternLibrary.Presets[0].Pattern }); Button("انتخاب بافت کناره چپ",()=>ChooseSelvedge(node,true)); Button("انتخاب بافت کناره راست",()=>ChooseSelvedge(node,false)); break;
+            case ModuleKind.MatchPalette:
+                Inspector.Children.Add(Note("پالت طرح و پالت مرجع را وصل کنید. هر رنگ با نزدیک‌ترین رنگ مرجع جایگزین و رنگ‌های هم‌مقصد ادغام می‌شوند. فاصله RGB است و تطبیق آزمایشگاهی نیست. در فاصله برابر، رنگ زودتر در پالت مرجع انتخاب می‌شود."));break;
             case ModuleKind.PeriodicFloats:
                 Inspector.Children.Add(Note("تشخیص در راپورت مستقیم؛ بدون اصلاح نقشه. برای بررسی تار و پود از دو ماژول استفاده کنید."));
                 Field("حداقل طول فلوت (شامل خود مقدار)",node.FloatMinimum.ToString(),s=>{int n=Parse(s,0);if(n<1)throw new ArgumentException("حداقل طول باید مثبت باشد.");node.FloatMinimum=n;});
