@@ -29,6 +29,11 @@ public partial class ModuleWindow : Window
     private string? acceptedDrag;
     private readonly WeaveBank bank = new();
     private static readonly (ModuleKind kind, string name, string icon, string color, string subtitle)[] Types = {
+        (ModuleKind.BinaryLoad,"نقشه بافت آماده","\uE8B7","#47D4B3","BINARY MAP"),
+        (ModuleKind.BinaryConvert,"تبدیل سیاه‌وسفید","\uE790","#E2A766","BINARY CONVERSION"),
+        (ModuleKind.SeamCheck,"بررسی درز راپورت","\uE9D9","#72C8C5","SEAM CHECK"),
+        (ModuleKind.Compare,"مقایسه دو طرح","\uE8A5","#61A9F7","COMPARISON"),
+        (ModuleKind.QualityCheck,"کنترل کیفیت نقشه","\uE73E","#AFA5D1","QUALITY CHECK"),
         (ModuleKind.Load,"طرح نقشه‌بیتی","\uE8B7","#47D4B3","IMAGE SOURCE"),
         (ModuleKind.VectorLoad,"طرح برداری","\uE8B7","#80B8DC","VECTOR SOURCE"),
         (ModuleKind.MachineDefinition,"تعریف ماشین","\uE90F","#AFA5D1","MACHINE PROFILE"),
@@ -113,6 +118,11 @@ public partial class ModuleWindow : Window
     private void ShowModuleHelp(ModuleKind kind)
     {
         string text = kind switch {
+            ModuleKind.BinaryLoad => "تصویر مات سیاه‌وسفید یا JC5 پشتیبانی‌شده را بارگذاری و خروجی نقشه را به فلوت یا پودگذاری وصل کنید.",
+            ModuleKind.BinaryConvert => "آستانه و وارونگی را تعیین و تصویر مات را به نقشه سیاه‌وسفید تبدیل کنید.",
+            ModuleKind.SeamCheck => "لبه‌های مقابل تصویر را مقایسه می‌کند؛ اختلاف صفر تضمین زیبایی راپورت نیست.",
+            ModuleKind.Compare => "دو تصویر یا دو نقشه هم‌اندازه را مقایسه و نقاط متفاوت را قرمز نمایش می‌دهد.",
+            ModuleKind.QualityCheck => "دودویی بودن نقشه و در صورت اتصال، عرض ماشین را بررسی می‌کند؛ تأیید صنعتی نیست.",
             ModuleKind.Load => "تصویر نقشه‌بیتی از جمله TIFF و GIF را انتخاب کنید و در فایل چندصفحه‌ای صفحه مورد نظر را برگزینید.",
             ModuleKind.VectorLoad => "PDF یا AI سازگار با PDF و صفحه دلخواه را انتخاب کنید. منبع برای تغییر اندازه برداری در پروژه ذخیره می‌شود.",
             ModuleKind.MachineDefinition => "تعداد زه و شروع طرح و پود را تعیین و خروجی را به ورودی ماشین پودگذاری وصل کنید. برند به تنهایی قالب و قطبیت دستگاه را مشخص نمی‌کند.",
@@ -154,7 +164,7 @@ public partial class ModuleWindow : Window
     }
     private void MergeResults(IReadOnlyDictionary<Guid,ModuleValue> incoming) => results=results.Concat(incoming).GroupBy(x=>x.Key).ToDictionary(g=>g.Key,g=>g.Last().Value);
     private void UpdateTitle() => Title = $"Jacquard Studio · {(projectPath is null ? "پروژه جدید" : System.IO.Path.GetFileName(projectPath))}{(dirty ? " *" : "")}";
-    private static string PortName(string port) => port switch { "image" => "تصویر", "palette" => "رنگ‌ها", "weaves" => "بافت‌ها", "report" => "گزارش", "machine" => "ماشین", _ => "پارچه" };
+    private static string PortName(string port) => port switch { "image" => "تصویر", "palette" => "رنگ‌ها", "weaves" => "بافت‌ها", "report" => "گزارش", "machine" => "ماشین", "first" => "اول", "second" => "دوم", _ => "پارچه" };
     private void RenderGraph()
     {
         NodeLayer.Children.Clear(); cards.Clear();
@@ -291,8 +301,14 @@ public partial class ModuleWindow : Window
         {
             case ModuleKind.Load:
             case ModuleKind.VectorLoad:
+            case ModuleKind.BinaryLoad:
                 Inspector.Children.Add(Note(node.ImagePng is null ? "تصویری انتخاب نشده است." : "تصویر در پروژه ذخیره می‌شود."));
                 Button("انتخاب طرح و صفحه", async () => await ChooseImage(node)); break;
+            case ModuleKind.BinaryConvert:
+                Field("آستانه روشنایی (۰ تا ۲۵۵)",node.Threshold.ToString(),s=>{int n=Parse(s,0);if(n is < 0 or > 255)throw new ArgumentException("آستانه باید بین صفر و ۲۵۵ باشد.");node.Threshold=n;}); var invert=new CheckBox {Content="معکوس کردن سیاه و سفید",IsChecked=node.InvertBinary,Margin=new Thickness(0,8,0,0)};invert.Click+=(_,_)=>{node.InvertBinary=invert.IsChecked==true;Changed(node.Id);};Inspector.Children.Add(invert);break;
+            case ModuleKind.SeamCheck: Inspector.Children.Add(Note("لبه‌های مقابل مقایسه می‌شوند؛ اختلاف صفر تضمین کیفیت بصری نیست."));break;
+            case ModuleKind.Compare: Inspector.Children.Add(Note("دو تصویر یا دو نقشهٔ پارچه با ابعاد یکسان وصل کنید؛ تفاوت‌ها قرمز می‌شوند."));break;
+            case ModuleKind.QualityCheck: Inspector.Children.Add(Note("دودویی بودن و عرض بررسی می‌شوند. ورودی ماشین اختیاری است؛ این کنترل تأیید دستگاه واقعی نیست."));break;
             case ModuleKind.MachineDefinition:
                 Inspector.Children.Add(Note("شماره زه‌ها در این پنجره از ۱ آغاز می‌شود. نوع سازنده صرفاً مشخصات پروژه است و قالب یا قطبیت خروجی را تأیید نمی‌کند."));
                 Field("تعداد کل زه",node.Machine.TotalHooks,s=>node.Machine=node.Machine with { AbsoluteLayout=true, TotalHooks=s });
@@ -365,6 +381,7 @@ public partial class ModuleWindow : Window
             var resultPanel = new StackPanel { Tag = "module-result" }; Inspector.Children.Add(resultPanel);
             resultPanel.Children.Add(new TextBlock { Text="پیش‌نمایش خروجی",FontSize=13,FontWeight=FontWeights.Bold,Margin=new Thickness(0,18,0,6) });
             if (value.Image is not null) { var image=new Image { Source=value.Image,MaxHeight=220,Stretch=Stretch.Uniform }; RenderOptions.SetBitmapScalingMode(image,BitmapScalingMode.NearestNeighbor); resultPanel.Children.Add(new Border { Background=ResourceBrush("GraphPreview"),Padding=new Thickness(8),CornerRadius=new CornerRadius(8),Child=image }); }
+            if(value.QualityNotes is { } notes) foreach(var note in notes) resultPanel.Children.Add(Note(note));
             if (value.Palette is not null) resultPanel.Children.Add(Note($"{value.Palette.Width} × {value.Palette.Height} · {value.Palette.Colors.Length} رنگ"));
             if (node.Kind==ModuleKind.Floats) resultPanel.Children.Add(Note($"تعداد فلوت‌های یافته‌شده: {value.FloatCount}"));
             if (node.Kind==ModuleKind.Tension && value.Analysis is { } analysis) resultPanel.Children.Add(Note($"میانگین: {analysis.Mean:0.##} · دامنه انحراف: {analysis.DeviationPercent.Min():0.#}% تا {analysis.DeviationPercent.Max():0.#}%"));
@@ -374,14 +391,14 @@ public partial class ModuleWindow : Window
     private static int Parse(string text,int fallback) => NumberInput.TryInt(text,out int n) ? n : throw new ArgumentException("عدد واردشده معتبر نیست.");
     private async Task ChooseImage(ModuleNode node)
     {
-        bool vector=node.Kind==ModuleKind.VectorLoad;
-        var picker=new OpenFileDialog { Filter=vector ? "PDF / AI سازگار با PDF|*.pdf;*.ai" : "طرح نقشه‌بیتی|*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr", CheckFileExists=true };
+        bool vector=node.Kind==ModuleKind.VectorLoad, binary=node.Kind==ModuleKind.BinaryLoad;
+        var picker=new OpenFileDialog { Filter=vector ? "PDF / AI سازگار با PDF|*.pdf;*.ai" : binary ? "نقشه سیاه‌وسفید یا JC5|*.bmp;*.tif;*.tiff;*.png;*.jc5" : "طرح نقشه‌بیتی|*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr", CheckFileExists=true };
         var owner=Window.GetWindow(Inspector) ?? this; if(picker.ShowDialog(owner)!=true) return;
-        string ext=System.IO.Path.GetExtension(picker.FileName).ToLowerInvariant(); if(vector ? ext is not (".pdf" or ".ai") : ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".ico" or ".wdp" or ".jxr")) { MessageBox.Show(owner,"پسوند فایل با نوع ماژول سازگار نیست."); return; }
+        string ext=System.IO.Path.GetExtension(picker.FileName).ToLowerInvariant(); if(vector ? ext is not (".pdf" or ".ai") : binary ? ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jc5") : ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".ico" or ".wdp" or ".jxr")) { MessageBox.Show(owner,"پسوند فایل با نوع ماژول سازگار نیست."); return; }
         try
         {
-            busy=true; Status.Text="در حال بارگذاری طرح…"; var first=await Task.Run(()=>ImageLoader.Load(picker.FileName,0)); busy=false;
-            var pages=new SourcePageWindow(picker.FileName,first) { Owner=owner }; if(pages.ShowDialog()!=true || pages.Result is not { } chosen) return;
+            busy=true; Status.Text="در حال بارگذاری طرح…"; var first=await Task.Run(()=>ext==".jc5" ? new ImageResult(Jc5Codec.Load(picker.FileName),1,0,"JC5") : ImageLoader.Load(picker.FileName,0)); busy=false;
+            ImageResult chosen=first; if(ext!=".jc5") { var pages=new SourcePageWindow(picker.FileName,first) { Owner=owner }; if(pages.ShowDialog()!=true || pages.Result is not { } selectedPage) return; chosen=selectedPage; } if(binary) await Task.Run(()=>DesignAnalysis.ReadBinary(chosen.Image));
             busy=true; var png=await Task.Run(()=>ModuleExecutor.EmbedImage(chosen.Image)); node.ImagePng=png; node.VectorPdfBase64=chosen.Vector is null ? null : Convert.ToBase64String(chosen.Vector.PdfBytes); node.SourcePage=chosen.PageIndex; node.Label=System.IO.Path.GetFileName(picker.FileName); Changed(); RenderGraph(); Inspect(); Status.Text=$"صفحه {chosen.PageIndex+1} از {chosen.PageCount} انتخاب شد.";
         }
         catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or UnauthorizedAccessException) { ModuleErrors.Show(owner,ex); }
@@ -608,7 +625,7 @@ public partial class ModuleWindow : Window
             bool encrypted=ModuleProjectFile.IsEncrypted(dialog.FileName); string? password=null; ModuleGraph loaded;
             if(encrypted) {var prompt=new PasswordPrompt("بازکردن پروژه","رمز پروژه را وارد کنید.") {Owner=this}; if(prompt.ShowDialog()!=true)return; password=prompt.Password; loaded=ModuleProjectFile.LoadEncrypted(dialog.FileName,password);}
             else loaded=ModuleProjectFile.Load(dialog.FileName);
-            graph=loaded; projectPath=dialog.FileName; projectPassword=password; openedWithRecovery=password is not null && EncryptedProject.IsRecoveryPassword(password); selected=graph.Nodes.FirstOrDefault()?.Id; selectedWire=connecting=null; results=new Dictionary<Guid,ModuleValue>(); dirty=false; UpdateTitle(); RenderGraph(); Inspect();
+            graph=loaded; projectPath=dialog.FileName; projectPassword=password; openedWithRecovery=password is not null && EncryptedProject.IsRecoveryPassword(password); selected=graph.Nodes.FirstOrDefault()?.Id; selectedWire=null; connecting=null; results=new Dictionary<Guid,ModuleValue>(); dirty=false; UpdateTitle(); RenderGraph(); Inspect();
         }
         catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or System.Text.Json.JsonException or NotSupportedException) { ModuleErrors.Show(this,ex,"خطای بازکردن پروژه"); }
     }

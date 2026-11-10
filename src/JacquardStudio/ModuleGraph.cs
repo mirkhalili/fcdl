@@ -6,8 +6,8 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves }
-public enum ModuleData { Image, Palette, Weaves, Fabric, Preview, Report, Any, MachineConfig, Metadata }
+public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck }
+public enum ModuleData { Image, Palette, Weaves, Fabric, Preview, Report, Any, MachineConfig, Metadata, Visual }
 public sealed record DesignField(string Title, string Text);
 public sealed record ModuleColorEdit(string InputHash, PaletteResult Palette, bool[] Locks);
 public sealed class ModuleNode
@@ -25,6 +25,8 @@ public sealed class ModuleNode
     public string? AiResultPng { get; set; }
     public string? AiInputHash { get; set; }
     public string? AiPromptHash { get; set; }
+    public int Threshold { get; set; } = 128;
+    public bool InvertBinary { get; set; }
     public int Width { get; set; } public int Height { get; set; }
     public int ColorLimit { get; set; } = 256;
     public ModuleColorEdit? ColorEdit { get; set; }
@@ -55,7 +57,7 @@ public sealed class ModuleGraph
     public List<ModuleEdge> Edges { get; set; } = new();
     public static ModuleData Output(ModuleKind kind) => kind switch
     {
-        ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit => ModuleData.Image,
+        ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.SeamCheck or ModuleKind.Compare => ModuleData.Image,
         ModuleKind.Colors => ModuleData.Palette,
         ModuleKind.Weaves or ModuleKind.CreateWeave => ModuleData.Weaves,
         ModuleKind.Simulation => ModuleData.Preview,
@@ -66,7 +68,9 @@ public sealed class ModuleGraph
     };
     public static IReadOnlyDictionary<string, ModuleData> Inputs(ModuleKind kind) => kind switch
     {
-        ModuleKind.Resize or ModuleKind.Colors or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image },
+        ModuleKind.Resize or ModuleKind.Colors or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.BinaryConvert or ModuleKind.SeamCheck => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image },
+        ModuleKind.Compare => new Dictionary<string, ModuleData> { ["first"] = ModuleData.Visual, ["second"] = ModuleData.Visual },
+        ModuleKind.QualityCheck => new Dictionary<string, ModuleData> { ["fabric"] = ModuleData.Fabric, ["machine"] = ModuleData.MachineConfig },
         ModuleKind.Weft => new Dictionary<string, ModuleData> { ["fabric"] = ModuleData.Fabric, ["machine"] = ModuleData.MachineConfig },
         ModuleKind.Report => new Dictionary<string, ModuleData> { ["report"] = ModuleData.Any },
         ModuleKind.ApplyWeaves or ModuleKind.AutoWeaves => new Dictionary<string, ModuleData> { ["palette"] = ModuleData.Palette, ["weaves"] = ModuleData.Weaves },
@@ -92,7 +96,7 @@ public sealed class ModuleGraph
     {
         var source = Nodes.SingleOrDefault(n => n.Id == from) ?? throw new ArgumentException("Source module not found.");
         var target = Nodes.SingleOrDefault(n => n.Id == to) ?? throw new ArgumentException("Target module not found.");
-        if (!Inputs(target.Kind).TryGetValue(port, out var type) || type != ModuleData.Any && Output(source.Kind) != type || from == to) throw new ArgumentException("Incompatible ports.");
+        if (!Inputs(target.Kind).TryGetValue(port, out var type) || type != ModuleData.Any && !(type == ModuleData.Visual && Output(source.Kind) is ModuleData.Image or ModuleData.Fabric) && Output(source.Kind) != type || from == to) throw new ArgumentException("Incompatible ports.");
         // Replacing one incoming wire must be atomic, including on a cycle error.
         var edges = type == ModuleData.Any ? Edges.ToList() : Edges.Where(e => !(e.To == to && e.Port == port)).ToList();
         if (type == ModuleData.Any && edges.Any(e => e.To == to && e.Port == port && e.From == from)) return;
@@ -124,7 +128,7 @@ public sealed class ModuleGraph
     }
 }
 public sealed record GraphReportItem(Guid NodeId, ModuleKind Kind, string Label, ModuleValue Value, string Details);
-public sealed record ModuleValue(ModuleData Type, BitmapSource? Image = null, PaletteResult? Palette = null, IReadOnlyList<WeavePattern>? Weaves = null, MachineComposition? Composition = null, WarpAnalysis? Analysis = null, int FloatCount = 0, IReadOnlyList<GraphReportItem>? ReportItems = null, VectorDocument? Vector = null, MachineSetup? Machine = null, IReadOnlyList<DesignField>? DesignFields = null);
+public sealed record ModuleValue(ModuleData Type, BitmapSource? Image = null, PaletteResult? Palette = null, IReadOnlyList<WeavePattern>? Weaves = null, MachineComposition? Composition = null, WarpAnalysis? Analysis = null, int FloatCount = 0, IReadOnlyList<GraphReportItem>? ReportItems = null, VectorDocument? Vector = null, MachineSetup? Machine = null, IReadOnlyList<DesignField>? DesignFields = null, IReadOnlyList<string>? QualityNotes = null);
 
 /// <summary>Demand-driven DAG execution. Each run has its own cache; independent branches never share mutable results.</summary>
 public static class ModuleExecutor
@@ -147,6 +151,23 @@ public static class ModuleExecutor
                     if (string.IsNullOrEmpty(node.ImagePng)) throw new InvalidOperationException("Choose an input image.");
                     byte[] bytes = Convert.FromBase64String(node.ImagePng); if (bytes.Length > ImageLoader.MaxFileBytes) throw new InvalidDataException("Embedded image is too large.");
                     using (var stream = new MemoryStream(bytes)) { var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad); var bitmap = decoder.Frames[0]; bitmap.Freeze(); VectorDocument? vector=null; if(node.Kind==ModuleKind.VectorLoad && !string.IsNullOrEmpty(node.VectorPdfBase64)) { var pdf=Convert.FromBase64String(node.VectorPdfBase64); if(pdf.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("Vector source is too large."); vector=new VectorDocument(pdf,node.SourcePage); } result = new(ModuleData.Image, bitmap, Vector:vector); } break;
+                case ModuleKind.BinaryLoad:
+                    if(string.IsNullOrEmpty(node.ImagePng))throw new InvalidOperationException("ابتدا نقشهٔ سیاه‌وسفید آماده را انتخاب کنید.");
+                    var binaryBytes=Convert.FromBase64String(node.ImagePng); if(binaryBytes.Length>ImageLoader.MaxFileBytes)throw new InvalidDataException("فایل نقشه بیش از حد بزرگ است.");
+                    using(var binaryStream=new MemoryStream(binaryBytes)) {var binary=BitmapDecoder.Create(binaryStream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad).Frames[0];binary.Freeze();_=DesignAnalysis.ReadBinary(binary);result=new(ModuleData.Fabric,binary);} break;
+                case ModuleKind.BinaryConvert:
+                    result=new(ModuleData.Fabric,GraphChecks.Threshold(Input("image").Image!,node.Threshold,node.InvertBinary)); break;
+                case ModuleKind.SeamCheck:
+                    var seamImage=Input("image").Image!; var seams=GraphChecks.Seams(seamImage); result=new(ModuleData.Image,seamImage,QualityNotes:new[]{$"اختلاف لبهٔ چپ و راست: {seams.horizontal} پیکسل",$"اختلاف لبهٔ بالا و پایین: {seams.vertical} پیکسل","یکسان‌بودن لبه‌ها تضمین زیبایی یا تکرار بدون درز نیست."}); break;
+                case ModuleKind.Compare:
+                    var first=Input("first"); var second=Input("second"); if(first.Type!=second.Type || first.Image is null || second.Image is null)throw new ArgumentException("دو ورودی باید هر دو تصویر یا هر دو نقشهٔ پارچه باشند.");
+                    var comparison=GraphChecks.Compare(first.Image,second.Image);result=new(ModuleData.Image,comparison.image,QualityNotes:new[]{$"تعداد پیکسل متفاوت: {comparison.changed}","قرمز: متفاوت؛ سفید: یکسان."});break;
+                case ModuleKind.QualityCheck:
+                    var quality=Input("fabric"); var qualityImage=quality.Image!; _=DesignAnalysis.ReadBinary(qualityImage); var notes=new List<string> {$"ابعاد نقشه: {qualityImage.PixelWidth} × {qualityImage.PixelHeight}","نقشه از نظر دودویی‌بودن بررسی شد."};
+                    var machineLink=graph.Edges.SingleOrDefault(e=>e.To==id && e.Port=="machine");
+                    if(machineLink is not null) {var machine=Evaluate(machineLink.From).Machine!; MachineProfile.Validate(machine,"machine"); if(NumberInput.TryInt(machine.TotalHooks,out int total) && qualityImage.PixelWidth>total)notes.Add("هشدار: عرض نقشه از تعداد کل زه بیشتر است.");else notes.Add("عرض نقشه از تعداد کل زه فراتر نیست.");}
+                    else notes.Add("تعریف ماشین وصل نیست؛ عرض ماشین بررسی نشد.");
+                    notes.Add("قطبیت، نگاشت فیزیکی و سازگاری واقعی ماشین با این بررسی تأیید نمی‌شوند."); result=quality with {QualityNotes=notes};break;
                 case ModuleKind.Resize:
                     var sourceValue = Input("image"); var source = sourceValue.Image!; int w = node.Width == 0 ? source.PixelWidth : node.Width, h = node.Height == 0 ? source.PixelHeight : node.Height;
                     if(w<1 || h<1 || (long)w*h>DesignProcessor.MaxPixels) throw new ArgumentOutOfRangeException(nameof(node.Width),"Resize exceeds the 4 million pixel limit.");
@@ -257,6 +278,7 @@ public static class ModuleExecutor
         if(node.Kind==ModuleKind.Weft && value.Machine is { } used) lines.Add($"تعداد پود: {used.WeftCount} · توالی: {used.Sequence} · شروع طرح: {PositionNumbers.ToDisplay(used.DesignStart)} · شروع پود: {PositionNumbers.ToDisplay(used.WeftStart)}");
         if(node.Kind==ModuleKind.Simulation) lines.Add($"حالت: {node.Simulation.Mode} · نمره تار: {node.Simulation.WarpCount} · تراکم تار/پود: {node.Simulation.WarpDensity} / {node.Simulation.WeftDensity} · رنگ تار/پود: {node.Simulation.WarpColor} / {node.Simulation.WeftColor} (نمایش تقریبی)");
         if(node.Kind==ModuleKind.Machine) lines.Add($"قالب: {node.MachineFormat} · خروجی ماشین آزمایشی؛ نگاشت و قطبیت باید مستقل بررسی شود.");
+        if(value.QualityNotes is { } qualityNotes) lines.AddRange(qualityNotes);
         if(value.DesignFields is { } fields) foreach(var field in fields) lines.Add(field.Title + ": " + field.Text);
         if(node.Kind==ModuleKind.MachineDefinition) lines.Add($"سازنده: {node.Manufacturer} · کل زه: {node.Machine.TotalHooks} · شروع طرح: {PositionNumbers.ToDisplay(node.Machine.DesignStart)} · شروع پود: {PositionNumbers.ToDisplay(node.Machine.WeftStart)}");
         if(value.ReportItems is { } nested) lines.Add($"تعداد ورودی گزارش: {nested.Count}");
