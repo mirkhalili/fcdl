@@ -6,8 +6,8 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData, PeriodicFloats, MatchPalette }
-public enum ModuleData { Image, Palette, Weaves, Fabric, Preview, Report, Any, MachineConfig, Metadata, Visual }
+public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData, PeriodicFloats, MatchPalette, RectangleMask, ApplyMask }
+public enum ModuleData { Image, Palette, Weaves, Fabric, Preview, Report, Any, MachineConfig, Metadata, Visual, Mask }
 public sealed record DesignField(string Title, string Text);
 public sealed record ModuleColorEdit(string InputHash, PaletteResult Palette, bool[] Locks);
 public sealed class ModuleNode
@@ -25,6 +25,8 @@ public sealed class ModuleNode
     public string? AiResultPng { get; set; }
     public string? AiInputHash { get; set; }
     public string? AiPromptHash { get; set; }
+    public int MaskX { get; set; } public int MaskY { get; set; } public int MaskWidth { get; set; } public int MaskHeight { get; set; }
+    public bool MaskInvert { get; set; } public string MaskFill { get; set; } = "#FFFFFF";
     public int Threshold { get; set; } = 128;
     public bool InvertBinary { get; set; }
     public int Width { get; set; } public int Height { get; set; }
@@ -57,7 +59,8 @@ public sealed class ModuleGraph
     public List<ModuleEdge> Edges { get; set; } = new();
     public static ModuleData Output(ModuleKind kind) => kind switch
     {
-        ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.SeamCheck or ModuleKind.Compare or ModuleKind.ExportData => ModuleData.Image,
+        ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.SeamCheck or ModuleKind.Compare or ModuleKind.ExportData or ModuleKind.ApplyMask => ModuleData.Image,
+        ModuleKind.RectangleMask => ModuleData.Mask,
         ModuleKind.Colors or ModuleKind.MatchPalette => ModuleData.Palette,
         ModuleKind.Weaves or ModuleKind.CreateWeave => ModuleData.Weaves,
         ModuleKind.Simulation => ModuleData.Preview,
@@ -69,6 +72,8 @@ public sealed class ModuleGraph
     public static IReadOnlyDictionary<string, ModuleData> Inputs(ModuleKind kind) => kind switch
     {
         ModuleKind.Resize or ModuleKind.Colors or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.BinaryConvert => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image },
+        ModuleKind.RectangleMask => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image },
+        ModuleKind.ApplyMask => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image, ["mask"] = ModuleData.Mask },
         ModuleKind.MatchPalette => new Dictionary<string, ModuleData> { ["palette"] = ModuleData.Palette, ["reference"] = ModuleData.Palette },
         ModuleKind.SeamCheck => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Visual },
         ModuleKind.ExportData => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Visual, ["palette"] = ModuleData.Palette },
@@ -115,6 +120,8 @@ public sealed class ModuleGraph
         if (Nodes.Any(n => n.Kind == ModuleKind.CreateWeave && (n.Weaves.Count > 1 || n.Weaves.Any(p => p is null || p.Width > WeaveEditor.MaxSide || p.Height > WeaveEditor.MaxSide)))) throw new InvalidDataException("A weave designer node holds at most one weave.");
         foreach (var n in Nodes) {
             if(n.DesignFields is null || n.DesignFields.Count>50 || n.DesignFields.Any(f=>f is null || string.IsNullOrWhiteSpace(f.Title) || f.Title.Length>100 || f.Text is null || f.Text.Length>2000) || n.Manufacturer is null || n.Manufacturer.Length>100 || n.AiPrompt is null || n.AiPrompt.Length>4000 || n.SourcePage<0 || n.SourcePage>=ImageLoader.MaxFrames) throw new InvalidDataException("Invalid module metadata.");
+            if (n.Kind == ModuleKind.RectangleMask && (n.MaskX < 0 || n.MaskY < 0 || n.MaskWidth < 0 || n.MaskHeight < 0)) throw new InvalidDataException("Invalid mask coordinates.");
+            if (n.Kind == ModuleKind.ApplyMask && (n.MaskFill is null || n.MaskFill.Length > 32)) throw new InvalidDataException("Invalid mask background.");
             if (n.Kind == ModuleKind.Repeat && (n.RepeatColumns < 1 || n.RepeatRows < 1 || !Enum.IsDefined(n.RepeatMode))) throw new InvalidDataException("Invalid repeat settings.");
             if (n.Crop is { } crop && (n.Kind != ModuleKind.Crop || crop.X < 0 || crop.Y < 0 || crop.Width < 1 || crop.Height < 1 || (long)crop.Width*crop.Height > DesignProcessor.MaxPixels || crop.InputHash is null || crop.InputHash.Length != 64)) throw new InvalidDataException("Invalid crop settings.");
         }
@@ -154,6 +161,11 @@ public static class ModuleExecutor
                     if (string.IsNullOrEmpty(node.ImagePng)) throw new InvalidOperationException("Choose an input image.");
                     byte[] bytes = Convert.FromBase64String(node.ImagePng); if (bytes.Length > ImageLoader.MaxFileBytes) throw new InvalidDataException("Embedded image is too large.");
                     using (var stream = new MemoryStream(bytes)) { var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad); var bitmap = decoder.Frames[0]; bitmap.Freeze(); VectorDocument? vector=null; if(node.Kind==ModuleKind.VectorLoad && !string.IsNullOrEmpty(node.VectorPdfBase64)) { var pdf=Convert.FromBase64String(node.VectorPdfBase64); if(pdf.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("Vector source is too large."); vector=new VectorDocument(pdf,node.SourcePage); } result = new(ModuleData.Image, bitmap, Vector:vector); } break;
+                case ModuleKind.RectangleMask:
+                    var maskSource=Input("image").Image!; var rectangle=GraphMasks.Rectangle(maskSource,node.MaskX,node.MaskY,node.MaskWidth,node.MaskHeight);
+                    result=new(ModuleData.Mask,rectangle,QualityNotes:new[]{$"ناحیه: X={node.MaskX}, Y={node.MaskY} · عرض={node.MaskWidth} · ارتفاع={node.MaskHeight}","سفید: انتخاب؛ سیاه: خارج انتخاب. اندازه صفر تا انتهای تصویر است."});break;
+                case ModuleKind.ApplyMask:
+                    result=new(ModuleData.Image,GraphMasks.Apply(Input("image").Image!,Input("mask").Image!,node.MaskInvert,node.MaskFill),QualityNotes:new[] {"تصویر ورودی دست‌نخورده است؛ خروجی پیکسل‌های خارج انتخاب را با رنگ تعیین‌شده جایگزین می‌کند."});break;
                 case ModuleKind.ExportData:
                     var exportImage=Input("image"); var exportPaletteEdge=graph.Edges.SingleOrDefault(e=>e.To==id && e.Port=="palette"); var exportPalette=exportPaletteEdge is null ? null : Evaluate(exportPaletteEdge.From).Palette;
                     result=new(ModuleData.Image,exportImage.Image ?? throw new InvalidOperationException("ورودی تصویر آماده نیست."), Palette:exportPalette, QualityNotes:new[]{exportPalette is null ? "پالت وصل نیست؛ خروجی جدول در دسترس نیست." : "پالت متصل برای خروجی جدول آماده است."}); break;

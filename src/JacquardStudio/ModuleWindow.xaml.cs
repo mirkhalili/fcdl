@@ -56,7 +56,9 @@ public partial class ModuleWindow : Window
         (ModuleKind.Simulation,"شبیه‌سازی پارچه","\uE7F4","#8DBAF0","SIMULATION"),
         (ModuleKind.Machine,"خروجی ماشین","\uE950","#F19F7A","MACHINE OUTPUT"),
         (ModuleKind.PeriodicFloats,"فلوت در راپورت مستقیم","\uE7C3","#E89B73","PERIODIC FLOAT CHECK"),
-        (ModuleKind.MatchPalette,"تطبیق پالت مرجع","\uE790","#E2A766","PALETTE MATCH")
+        (ModuleKind.MatchPalette,"تطبیق پالت مرجع","\uE790","#E2A766","PALETTE MATCH"),
+        (ModuleKind.RectangleMask,"ماسک مستطیلی","\uE7A8","#7CAAE3","RECTANGLE MASK"),
+        (ModuleKind.ApplyMask,"اعمال ماسک","\uE74E","#72C8C5","APPLY MASK")
     };
     private static (ModuleKind kind, string name, string icon, string color, string subtitle) Spec(ModuleKind kind) => Types.Single(t => t.kind == kind);
     private static Brush Brush(string hex) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
@@ -144,6 +146,8 @@ public partial class ModuleWindow : Window
             ModuleKind.Weaves => "چند بافت از بانک انتخاب کنید یا در شبکه بافت بسازید. این مجموعه همراه پروژه است.",
             ModuleKind.ApplyWeaves => "ورودی پالت و مجموعه بافت را متصل و برای هر رنگ یک بافت انتخاب کنید. خروجی نقشه سیاه‌وسفید است.",
             ModuleKind.Selvedge => "کناره و بافت چپ و راست را پیش از پودگذاری به نقشه اضافه می‌کند.",
+            ModuleKind.RectangleMask => "مستطیل با مختصات صفرمبنا تعریف و ماسک سفید/سیاه به خروجی می‌دهد. عرض یا ارتفاع صفر یعنی تا انتهای تصویر.",
+            ModuleKind.ApplyMask => "تصویر و ماسک هم‌اندازه را وصل کنید؛ خارج انتخاب با رنگ تعیین‌شده جایگزین می‌شود. منبع تغییر نمی‌کند.",
             ModuleKind.MatchPalette => "پالت طرح و پالت مرجع را وصل کنید. نزدیک‌ترین رنگ با فاصله RGB انتخاب و رنگ‌های هم‌مقصد ادغام می‌شوند؛ تطبیق آزمایشگاهی نیست.",
             ModuleKind.PeriodicFloats => "در تکرار مستقیم، فلوت‌های دو سوی مرز یک فلوت شمرده می‌شوند. خطوط یک‌رنگ نامحدود گزارش می‌شوند. نتیجه نقشه را تغییر نمی‌دهد.",
             ModuleKind.Floats => "فلوت‌های تار یا پود را با حداقل طول مشخص بررسی و در صورت انتخاب اصلاح می‌کند.",
@@ -172,7 +176,7 @@ public partial class ModuleWindow : Window
     }
     private void MergeResults(IReadOnlyDictionary<Guid,ModuleValue> incoming) => results=results.Concat(incoming).GroupBy(x=>x.Key).ToDictionary(g=>g.Key,g=>g.Last().Value);
     private void UpdateTitle() => Title = $"Jacquard Studio · {(projectPath is null ? "پروژه جدید" : System.IO.Path.GetFileName(projectPath))}{(dirty ? " *" : "")}";
-    private static string PortName(string port) => port switch { "image" => "تصویر", "palette" => "رنگ‌ها", "weaves" => "بافت‌ها", "report" => "گزارش", "machine" => "ماشین", "first" => "اول", "second" => "دوم", "reference" => "مرجع", _ => "پارچه" };
+    private static string PortName(string port) => port switch { "image" => "تصویر", "palette" => "رنگ‌ها", "weaves" => "بافت‌ها", "report" => "گزارش", "machine" => "ماشین", "first" => "اول", "second" => "دوم", "reference" => "مرجع", "mask" => "ماسک", _ => "پارچه" };
     private void RenderGraph()
     {
         NodeLayer.Children.Clear(); cards.Clear();
@@ -230,7 +234,7 @@ public partial class ModuleWindow : Window
     private static bool FindButton(DependencyObject? item) { while (item is not null) { if (item is Button || item is TextBox) return true; item = VisualTreeHelper.GetParent(item); } return false; }
     private static string SocketColor(ModuleData type) => (type,ThemeManager.IsLight) switch
     {
-        (ModuleData.Image,true)=>"#8A6414", (ModuleData.Palette,true)=>"#8E6132", (ModuleData.Weaves,true)=>"#7651A5", (ModuleData.Fabric,true)=>"#426D8C", (ModuleData.Preview,true)=>"#467A54",
+        (ModuleData.Mask,true)=>"#6A5078", (ModuleData.Mask,false)=>"#D7A9E6", (ModuleData.Image,true)=>"#8A6414", (ModuleData.Palette,true)=>"#8E6132", (ModuleData.Weaves,true)=>"#7651A5", (ModuleData.Fabric,true)=>"#426D8C", (ModuleData.Preview,true)=>"#467A54",
         (ModuleData.Image,false)=>"#D7B25B", (ModuleData.Palette,false)=>"#D4A477", (ModuleData.Weaves,false)=>"#BC9BE4", (ModuleData.Fabric,false)=>"#83B0CD", (ModuleData.Any,true)=>"#555555", (ModuleData.Report,true)=>"#555555", (ModuleData.Any,false)=>"#DDDDDD", (ModuleData.Report,false)=>"#DDDDDD", _=>"#91C9A0"
     };
     private static Button PortButton(string color,string tooltip) => new() { Width=18,Height=18,Padding=new Thickness(0),Margin=new Thickness(0), Background=Brush(color), BorderBrush=ResourceBrush("PrimaryText"), BorderThickness=new Thickness(1), ToolTip=tooltip };
@@ -367,6 +371,12 @@ public partial class ModuleWindow : Window
             case ModuleKind.Selvedge:
                 Field("عرض کناره چپ",node.Machine.LeftWidth,s=>node.Machine=node.Machine with { LeftWidth=s, LeftPattern=node.Machine.LeftPattern ?? PatternLibrary.Presets[0].Pattern });
                 Field("عرض کناره راست",node.Machine.RightWidth,s=>node.Machine=node.Machine with { RightWidth=s, RightPattern=node.Machine.RightPattern ?? PatternLibrary.Presets[0].Pattern }); Button("انتخاب بافت کناره چپ",()=>ChooseSelvedge(node,true)); Button("انتخاب بافت کناره راست",()=>ChooseSelvedge(node,false)); break;
+            case ModuleKind.RectangleMask:
+                Inspector.Children.Add(Note("مختصات از گوشه بالا-چپ و صفرمبنا هستند. صفر برای عرض یا ارتفاع یعنی تا انتهای تصویر. سفید انتخاب است."));
+                Field("X شروع",node.MaskX.ToString(),s=>node.MaskX=Parse(s,0));Field("Y شروع",node.MaskY.ToString(),s=>node.MaskY=Parse(s,0));Field("عرض ناحیه",node.MaskWidth.ToString(),s=>node.MaskWidth=Parse(s,0));Field("ارتفاع ناحیه",node.MaskHeight.ToString(),s=>node.MaskHeight=Parse(s,0));break;
+            case ModuleKind.ApplyMask:
+                Inspector.Children.Add(Note("تصویر و ماسک باید هم‌اندازه باشند. فقط خروجی تغییر می‌کند. بیرون انتخاب با رنگ مات جایگزین می‌شود."));
+                Field("رنگ بیرون انتخاب #RRGGBB",node.MaskFill,s=>{_=FabricSimulation.ParseColor(s);node.MaskFill=s;});var inverse=new CheckBox {Content="انتخاب معکوس (سیاه حفظ شود)",IsChecked=node.MaskInvert,Margin=new Thickness(0,8,0,0)};inverse.Click+=(_,_)=>{node.MaskInvert=inverse.IsChecked==true;Changed(node.Id);};Inspector.Children.Add(inverse);break;
             case ModuleKind.MatchPalette:
                 Inspector.Children.Add(Note("پالت طرح و پالت مرجع را وصل کنید. هر رنگ با نزدیک‌ترین رنگ مرجع جایگزین و رنگ‌های هم‌مقصد ادغام می‌شوند. فاصله RGB است و تطبیق آزمایشگاهی نیست. در فاصله برابر، رنگ زودتر در پالت مرجع انتخاب می‌شود."));break;
             case ModuleKind.PeriodicFloats:
