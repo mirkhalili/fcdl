@@ -1,0 +1,40 @@
+using System.Windows;
+using System.Windows.Controls;
+
+namespace JacquardStudio;
+/// <summary>Original, offline guide to the features actually implemented in the graph workspace.</summary>
+public sealed class GraphGuideWindow : Window
+{
+    public sealed record Topic(string Title,string Body) { public override string ToString()=>Title; }
+    public static readonly IReadOnlyList<Topic> Topics=new[]
+    {
+        new Topic("شروع و اتصال ماژول‌ها", "از کتابخانه سمت راست روی یک ماژول کلیک کنید یا آن را به صفحه بکشید. ابتدا خروجی یک گره و سپس ورودی سازگار را انتخاب کنید؛ رنگ‌ها و راهنمای هر ماژول نوع ورودی را مشخص می‌کنند. هر ورودی معمولاً یک اتصال دارد؛ گزارش تا ۱۶ اتصال می‌پذیرد. گراف چرخه را نمی‌پذیرد. دوبار کلیک روی گره پنجره تنظیمات را باز می‌کند. اجرای یک گره فقط مسیرهای لازم آن را اجرا می‌کند.\n\nبا چرخ ماوس همراه Ctrl بزرگ‌نمایی و با دکمه وسط ماوس صفحه را جابه‌جا کنید. دکمه «همه در پنجره» محدوده گره‌ها را در قاب قرار می‌دهد. با انتخاب اتصال یا گره و Delete آن را حذف کنید. دکمه ☰ کتابخانه را باز و بسته می‌کند."),
+        new Topic("تصویر، اندازه و رنگ", "ماژول طرح نقشه‌بیتی یا برداری را اضافه کنید و فایل و صفحه را انتخاب کنید. اندازه خروجی پردازش به چهار میلیون پیکسل محدود است. اندازه تصویر را تنظیم کنید؛ سپس تصویر را به مدیریت رنگ وصل کنید. پالت تطبیقی حداکثر ۲۵۶ رنگ دارد و در تصاویر پررنگ تقریبی است. قفل، ادغام، حذف و ویرایش رنگ در ویرایشگر رنگ انجام می‌شوند. اگر ورودی تغییر کند ممکن است لازم باشد تنظیمات پالت را دوباره اعمال کنید."),
+        new Topic("نقشه آماده و سیاه‌وسفید", "برای واردکردن نقشه، ماژول «نقشه بافت آماده» فایل تصویری مات و سیاه‌وسفید خالص را می‌پذیرد. پشتیبانی JC5 محدود و آزمایشی است. خروجی آن به ورودی پارچه متصل می‌شود. «تبدیل سیاه‌وسفید» تصویر مات را با آستانه ۰ تا ۲۵۵ تبدیل می‌کند؛ مقدار مساوی آستانه روشن است و می‌توان نتیجه را وارونه کرد. مفهوم سیاه و سفید برای دستگاه خود را مستقل بررسی کنید."),
+        new Topic("بافت، کناره و پودگذاری", "بانک یا طراح بافت را به ورودی بافت و مدیریت رنگ را به ورودی پالتِ بافت‌ریزی وصل کنید. برای رنگ‌ها بافت تعیین کنید؛ بافت‌ریزی خودکار فعلی جفت‌سازی انتخاب‌هاست، نه طراحی هوشمند ساختار چندلایه. کناره را قبل از پودگذاری قرار دهید. پودگذاری شامل توالی پود و موقعیت ستون‌هاست؛ اتصال تعریف ماشین اختیاری است. شماره‌ها و نگاشت زه‌ها را با مستندات دستگاه تطبیق دهید."),
+        new Topic("راپورت و مرزها", "ماژول راپورت تصویر را مستقیم، نیم‌عرض یا نیم‌طول تکرار می‌کند. برای تعداد و جهت تکرار به تنظیمات ماژول مراجعه کنید؛ جابه‌جایی نیمه برای ابعاد فرد رو به پایین گرد می‌شود. «بررسی درز راپورت» اختلاف پیکسل لبه‌های مقابل را می‌شمارد. حتی وقتی لبه‌ها یکسان باشند، ادامه تصویری و کیفیت بافت لزوماً بدون اشکال نیست. تغییر جهت هر تکرار و افست آزاد هنوز پیاده‌سازی نشده‌اند."),
+        new Topic("فلوت و راپورت مستقیم", "فلوت‌گیری معمولی قطعات متوالی سیاه و سفید را در محدوده تصویر بررسی می‌کند. ماژول جداگانه «فلوت در راپورت مستقیم» فرض می‌کند نقشه در جهت انتخابی بدون تغییر جهت تکرار می‌شود: قسمت‌های هم‌رنگ در دو طرف مرز، یک فلوت محسوب می‌شوند. حداقل طول شامل خود عدد است. برای تار و پود دو ماژول مستقل به یک نقشه وصل کنید.\n\nیک خط کاملاً یک‌رنگ در تکرار مستقیم، نامحدود گزارش می‌شود. شمارش سیاه و سفید به معنی تعیین روی پارچه یا قطبیت ماشین نیست. کناره‌ها در تصویر پارچه بررسی می‌شوند و ستون‌های سیگنال ماشین حذف می‌شوند. این ماژول صرفاً تحلیل است و نقشه را اصلاح نمی‌کند؛ نتایج را می‌توانید به گزارش وصل کنید."),
+        new Topic("مقایسه و کنترل کیفیت", "مقایسه دو طرح به دو ورودی هم‌نوع و هم‌اندازه نیاز دارد. نقاط متفاوت قرمز و نقاط یکسان سفید نمایش داده می‌شوند؛ مقایسه در سطح RGBA است. کنترل کیفیت، دودویی‌بودن و ابعاد را بررسی می‌کند و در صورت اتصال تعریف ماشین، عرض را با تعداد کل زه مقایسه می‌کند. برای ثبت نتیجه، خروجی را به گزارش وصل کنید. این بررسی جانشین کنترل کامل فلوت، نگاشت زه، قطبیت، فرمت دستگاه یا آزمون تولید نیست."),
+        new Topic("شبیه‌سازی و گزارش", "شبیه‌سازی از نقشه و تنظیمات نخ تصویر تقریبی می‌سازد؛ نتیجه پیش‌بینی تضمین‌شده رفتار مکانیکی یا رنگ پارچه نیست. گزارش می‌تواند خروجی‌های متصل را در PDF تصویری یا چاپ ارائه کند؛ تنها اطلاعات همان شاخه‌های متصل گزارش می‌شوند. برای تصویر و جدول، ماژول خروجی را اجرا کنید؛ PNG، BMP و TIFF برای تصویر و CSV برای پالت متصل در دسترس‌اند. پروژه و خروجی‌ها را در مسیرهای جدا ذخیره کنید."),
+        new Topic("پروژه و رمز", "پروژه گراف هنگام ذخیره در SAM رمزگذاری می‌شود و برای بازکردن رمز می‌خواهد. پروژه‌های گراف قدیمی بدون رمز خوانده می‌شوند؛ پروژه قدیمیِ محیط تکمیلی در همان محیط باز می‌شود. قبل از تبدیل یا بازنویسی از فایل اصلی پشتیبان بگیرید و نسخه ذخیره‌شده را دوباره باز کنید.\n\nرمز بازیابی مشترک در همه نسخه‌ها قابل استخراج است؛ هرکس آن را بداند به محتوای پروژه دسترسی دارد. رمز ورود برنامه جداست و فقط قفل محلی رابط است، نه محافظت از فایل‌ها. فایل‌های محیط قدیمی با این قابلیت رمزگذاری نمی‌شوند."),
+        new Topic("ماشین و محدودیت‌های صنعتی", "خروجی ماشین در این نسخه آزمایشی است. نام برند، انتخاب پسوند یا موفقیت ذخیره ثابت نمی‌کند فایل برای ماشین شما صحیح است. نگاشت زه، قطبیت، کناره، پودگذاری، جهت ردیف‌ها و دستورهای اختصاصی را با مستندات، نمونه معتبر و متخصص دستگاه بررسی کنید؛ ابتدا بدون تولید روی کنترلر آزمون شود. تحلیل کشش صرفاً شاخص نسبی است، نه اندازه‌گیری فیزیکی."),
+        new Topic("تنظیمات و هوش مصنوعی", "در تنظیمات می‌توانید تم و ماژول‌های قابل نمایش در کتابخانه را انتخاب کنید و رمز ورود محلی بگذارید. پنهان‌کردن ماژول نمونه‌های موجود پروژه را متوقف یا حذف نمی‌کند. ثبت برنامه فعلاً صرفاً آماده‌سازی است.\n\nچرخ‌دنده کنار AI نشانی HTTPS، مدل و کلید را فقط برای همان اجرا تنظیم می‌کند. تصویر، پرامپت و کلید پس از تأیید به سرویس انتخاب‌شده ارسال می‌شوند؛ فقط به سرویس مورد اعتماد ارسال کنید. نبود کلید در پنجره به معنی استفاده از متغیر محیطی OPENAI_API_KEY است. سازگاری همه سرویس‌ها تضمین نمی‌شود.")
+    };
+    public static IReadOnlyList<Topic> Search(string query)
+    {
+        query=query.Trim();return Topics.Where(t=>query.Length==0 || t.Title.Contains(query,StringComparison.OrdinalIgnoreCase) || t.Body.Contains(query,StringComparison.OrdinalIgnoreCase)).ToArray();
+    }
+    public GraphGuideWindow()
+    {
+        Title="راهنمای محیط ماژولی";Width=980;Height=700;MinWidth=620;MinHeight=430;WindowStartupLocation=WindowStartupLocation.CenterOwner;FlowDirection=FlowDirection.RightToLeft;SetResourceReference(BackgroundProperty,"Surface");SetResourceReference(ForegroundProperty,"PrimaryText");
+        var root=new DockPanel {Margin=new Thickness(18)};var header=new StackPanel {Margin=new Thickness(0,0,0,12)};DockPanel.SetDock(header,Dock.Top);root.Children.Add(header);
+        header.Children.Add(new TextBlock {Text="راهنمای کاربردی محیط ماژولی",FontSize=22,FontWeight=FontWeights.Bold});header.Children.Add(new TextBlock {Text="راهنمای آفلاین امکانات همین نسخه؛ برای فیلتر موضوع‌ها جست‌وجو کنید.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,5,0,8)});
+        var search=new TextBox {Padding=new Thickness(8),ToolTip="جست‌وجو در عنوان و متن راهنما"}; header.Children.Add(search);
+        var grid=new Grid();grid.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(235)});grid.ColumnDefinitions.Add(new ColumnDefinition());root.Children.Add(grid);
+        var list=new ListBox {Margin=new Thickness(0,0,10,0),DisplayMemberPath="Title"};list.SetResourceReference(Control.BackgroundProperty,"ListBackground");list.SetResourceReference(Control.ForegroundProperty,"PrimaryText");grid.Children.Add(list);
+        var body=new TextBlock {TextWrapping=TextWrapping.Wrap,FontSize=14,LineHeight=26,Margin=new Thickness(14,4,4,10)};var scroll=new ScrollViewer {Content=body,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};Grid.SetColumn(scroll,1);grid.Children.Add(scroll);
+        list.SelectionChanged+=(_,_)=>{body.Text=(list.SelectedItem as Topic)?.Body ?? "موضوعی پیدا نشد.";scroll.ScrollToTop();};
+        void Refresh(){list.ItemsSource=Search(search.Text);list.SelectedIndex=list.Items.Count>0?0:-1;if(list.Items.Count==0)body.Text="موضوعی پیدا نشد.";}
+        search.TextChanged+=(_,_)=>Refresh();Refresh();Content=root;
+    }
+}

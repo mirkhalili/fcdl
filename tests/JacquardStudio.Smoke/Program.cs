@@ -214,10 +214,34 @@ internal static class Program
             var imageDiff=GraphChecks.Compare(checkedBinary,flippedBinary); Check(imageDiff.changed==pixels.Length, "comparison counts changed pixels");
             Expect<ArgumentException>(()=>GraphChecks.Compare(checkedBinary,BitmapSource.Create(1,1,96,96,PixelFormats.Gray8,null,new byte[]{0},1)));
             var seam=GraphChecks.Seams(b.Image); Check(seam.horizontal==2 && seam.vertical==3, "repeat boundary comparison counts mismatched edge pixels");
+            var cyclic=PeriodicFloatAnalysis.Analyze(new byte[]{0,0,255,255,0},5,1,2,FloatDirection.Weft);
+            Check(cyclic.BlackRuns==1 && cyclic.WhiteRuns==1 && cyclic.CrossingRuns==1 && cyclic.LongestFinite==3 && cyclic.UnboundedBlack==0,"direct repeat joins boundary float once");
+            var verticalCyclic=PeriodicFloatAnalysis.Analyze(new byte[]{0,0,255,255,0},1,5,4,FloatDirection.Warp);
+            Check(verticalCyclic.BlackRuns==0 && verticalCyclic.WhiteRuns==0 && verticalCyclic.LongestFinite==3,"periodic threshold is inclusive and independent of direction");
+            var infinite=PeriodicFloatAnalysis.Analyze(new byte[]{0,0,0,255,255,255},3,2,100,FloatDirection.Weft);
+            Check(infinite.UnboundedBlack==1 && infinite.UnboundedWhite==1 && infinite.LongestFinite==0,"solid repeated lines are unbounded even above one period");
+            Expect<ArgumentException>(()=>PeriodicFloatAnalysis.Analyze(new byte[]{0,1},2,1,1,FloatDirection.Weft));
+            // Compare the cyclic analysis with an independently merged linear-run oracle for every short binary line.
+            for(int len=1;len<=8;len++) for(int bits=0;bits<(1<<len);bits++) for(int minimum=1;minimum<=len+1;minimum++)
+            {
+                var line=Enumerable.Range(0,len).Select(j=>(bits & (1<<j))==0?(byte)0:(byte)255).ToArray();
+                var referenceRuns=DesignAnalysis.FindFloats(line,len,1,1,FloatDirection.Weft); bool uniform=referenceRuns.Count==1;
+                int ub=uniform && line[0]==0?1:0, uw=uniform && line[0]==255?1:0; var segments=new List<(int size,bool black,bool crossing)>();
+                if(!uniform)
+                {
+                    bool joins=line[0]==line[^1]; if(joins)segments.Add((referenceRuns[0].Length+referenceRuns[^1].Length,line[0]==0,true));
+                    for(int k=joins?1:0;k<referenceRuns.Count-(joins?1:0);k++)segments.Add((referenceRuns[k].Length,referenceRuns[k].Black,false));
+                }
+                var actual=PeriodicFloatAnalysis.Analyze(line,len,1,minimum,FloatDirection.Weft);
+                Check(actual.BlackRuns==segments.Count(t=>t.black && t.size>=minimum) && actual.WhiteRuns==segments.Count(t=>!t.black && t.size>=minimum) && actual.CrossingRuns==segments.Count(t=>t.crossing && t.size>=minimum) && actual.UnboundedBlack==ub && actual.UnboundedWhite==uw && actual.LongestFinite==segments.Select(t=>t.size).DefaultIfEmpty(0).Max(),"periodic float exhaustive oracle");
+            }
             var qualityGraph=new ModuleGraph(); var binarySource=qualityGraph.Add(ModuleKind.BinaryLoad,0,0);binarySource.ImagePng=ModuleExecutor.EmbedImage(b.Image);var qc=qualityGraph.Add(ModuleKind.QualityCheck,250,0);qualityGraph.Connect(binarySource.Id,qc.Id,"fabric");
             Check(ModuleExecutor.Run(qualityGraph,qc.Id)[qc.Id].QualityNotes!.Any(t=>t.Contains("تعریف ماشین وصل نیست")), "quality module checks binary map without implying machine validation");
             var comparisonNode=qualityGraph.Add(ModuleKind.Compare,500,0); qualityGraph.Connect(binarySource.Id,comparisonNode.Id,"first");qualityGraph.Connect(qc.Id,comparisonNode.Id,"second");Check(ModuleExecutor.Run(qualityGraph,comparisonNode.Id)[comparisonNode.Id].QualityNotes![0].Contains("0"), "visual ports compare two fabric branches");
             var seamNode=qualityGraph.Add(ModuleKind.SeamCheck,750,0);qualityGraph.Connect(binarySource.Id,seamNode.Id,"image");Check(ModuleExecutor.Run(qualityGraph,seamNode.Id)[seamNode.Id].QualityNotes!.Count==3,"seam check accepts a binary map");
+            var periodicNode=qualityGraph.Add(ModuleKind.PeriodicFloats,850,0);periodicNode.FloatWarp=false;periodicNode.FloatMinimum=2;qualityGraph.Connect(binarySource.Id,periodicNode.Id,"fabric");var periodicOutput=ModuleExecutor.Run(qualityGraph,periodicNode.Id)[periodicNode.Id];Check(DesignAnalysis.ReadBinary(periodicOutput.Image!).SequenceEqual(pixels) && periodicOutput.QualityNotes!.Count==6,"periodic float module reports without mutating map");
+            var periodicReport=qualityGraph.Add(ModuleKind.Report,900,100);qualityGraph.Connect(periodicNode.Id,periodicReport.Id,"report");Check(ModuleExecutor.Run(qualityGraph,periodicReport.Id)[periodicReport.Id].ReportItems!.Single().Details.Contains("نامحدود"),"periodic findings appear in connected report");
+            string periodicPath=Path.Combine(dir,"periodic.sam");ModuleProjectFile.SaveEncrypted(periodicPath,qualityGraph,"user pass 123");var periodicReload=ModuleProjectFile.LoadEncrypted(periodicPath,"user pass 123");Check(ModuleExecutor.Run(periodicReload,periodicNode.Id)[periodicNode.Id].QualityNotes!.SequenceEqual(periodicOutput.QualityNotes!),"periodic module configuration survives encrypted project roundtrip");
             var exportNode=qualityGraph.Add(ModuleKind.ExportData,1000,0);qualityGraph.Connect(binarySource.Id,exportNode.Id,"image");var exportValue=ModuleExecutor.Run(qualityGraph,exportNode.Id)[exportNode.Id];
             string exportPng=Path.Combine(dir,"graph-export.png");GraphExports.SaveImage(exportValue.Image!,exportPng,Array.Empty<string>());Check(ImageLoader.Load(exportPng,0).Image.PixelWidth==3,"graph image export writes PNG");
             string csv=Path.Combine(dir,"graph-palette.csv");GraphExports.SavePalette(pipeline.Palette!,csv,Array.Empty<string>());Check(File.ReadAllLines(csv).Length==3 && File.ReadAllText(csv).Contains("#000000"),"palette table CSV has header and color rows");Expect<IOException>(()=>GraphExports.SavePalette(pipeline.Palette!,csv,new[]{csv}));
@@ -668,6 +692,8 @@ internal static class Program
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
             var app = new App { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
+            Check(GraphGuideWindow.Search("راپورت").Any(t=>t.Title.Contains("فلوت")) && GraphGuideWindow.Search("no-such-topic-01923").Count==0, "offline graph guide searches titles and body");
+            var graphGuide=new GraphGuideWindow();Check(graphGuide.Title.Contains("راهنما"),"offline graph guide creates successfully");graphGuide.Close();
             var reportPages=GraphReport.Render(reportValues); Check(reportPages.Count>=2 && reportPages.All(p=>p.IsFrozen), "portfolio combines connected results and paginated palette");
             string graphReportPath=Path.Combine(dir,"graph-report.pdf"); DesignReport.SavePdf(reportPages,graphReportPath,Array.Empty<string>()); Check(File.ReadAllText(graphReportPath,System.Text.Encoding.Latin1).Contains("/Count " + reportPages.Count), "graph report exports multipage PDF");
             var moduleWindow = new ModuleWindow(); var moduleFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
@@ -681,7 +707,7 @@ internal static class Program
             var themedCombo=new System.Windows.Controls.ComboBox { ItemsSource=new[]{"one", "two"}, SelectedIndex=0 }; ((System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector")).Children.Add(themedCombo); themedCombo.ApplyTemplate(); Check(themedCombo.Template.FindName("PART_Popup",themedCombo) is System.Windows.Controls.Primitives.Popup, "themed combo retains dropdown popup");
             ThemeManager.Apply(false,false); Check(Brightness(themedInput.Foreground) > Brightness(themedInput.Background)+100, "existing inputs update on dark theme change");
             var moduleLibrary = (System.Windows.Controls.StackPanel)moduleWindow.FindName("ModuleLibrary");
-            Check(moduleLibrary.Children.Count == 26 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
+            Check(moduleLibrary.Children.Count == 27 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
             ((System.Windows.Controls.DockPanel)moduleLibrary.Children[14]).Children.OfType<System.Windows.Controls.Button>().Last().RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             var addedResize = moduleGraph.Nodes.Last(); Check(moduleGraph.Nodes.Count == 11 && addedResize.Kind == ModuleKind.Resize, "adding a second independent module through the library");
             var nodeLayer = (System.Windows.Controls.Canvas)moduleWindow.FindName("NodeLayer");
@@ -723,7 +749,7 @@ internal static class Program
             editButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); cropTimer.Stop();
             Check(cropOpened && cropLoaded, "crop card button opens dialog and loads its connected input");
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "032.0.4.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "033.0.4.1-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));

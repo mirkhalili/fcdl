@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData }
+public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData, PeriodicFloats }
 public enum ModuleData { Image, Palette, Weaves, Fabric, Preview, Report, Any, MachineConfig, Metadata, Visual }
 public sealed record DesignField(string Title, string Text);
 public sealed record ModuleColorEdit(string InputHash, PaletteResult Palette, bool[] Locks);
@@ -76,7 +76,7 @@ public sealed class ModuleGraph
         ModuleKind.Weft => new Dictionary<string, ModuleData> { ["fabric"] = ModuleData.Fabric, ["machine"] = ModuleData.MachineConfig },
         ModuleKind.Report => new Dictionary<string, ModuleData> { ["report"] = ModuleData.Any },
         ModuleKind.ApplyWeaves or ModuleKind.AutoWeaves => new Dictionary<string, ModuleData> { ["palette"] = ModuleData.Palette, ["weaves"] = ModuleData.Weaves },
-        ModuleKind.Selvedge or ModuleKind.Floats or ModuleKind.Tension or ModuleKind.Simulation or ModuleKind.Machine => new Dictionary<string, ModuleData> { ["fabric"] = ModuleData.Fabric },
+        ModuleKind.Selvedge or ModuleKind.Floats or ModuleKind.PeriodicFloats or ModuleKind.Tension or ModuleKind.Simulation or ModuleKind.Machine => new Dictionary<string, ModuleData> { ["fabric"] = ModuleData.Fabric },
         _ => new Dictionary<string, ModuleData>()
     };
     public ModuleNode Add(ModuleKind kind, double x, double y)
@@ -231,6 +231,11 @@ public static class ModuleExecutor
                         var corrected = BitmapSource.Create(input.Image!.PixelWidth,input.Image.PixelHeight,96,96,PixelFormats.Gray8,null,all,input.Image.PixelWidth); corrected.Freeze();
                         result = input with { Image = corrected, Composition = input.Composition is null ? null : input.Composition with { Image = corrected }, FloatCount = runs.Count };
                     } break;
+                case ModuleKind.PeriodicFloats:
+                    var periodicInput=Input("fabric"); var periodicView=periodicInput.Composition is null ? periodicInput.Image! : CompositionView.Fabric(periodicInput.Composition);
+                    var periodic=PeriodicFloatAnalysis.Analyze(DesignAnalysis.ReadBinary(periodicView),periodicView.PixelWidth,periodicView.PixelHeight,node.FloatMinimum,node.FloatWarp ? FloatDirection.Warp : FloatDirection.Weft);
+                    var periodicNotes=new List<string> {$"جهت: {(node.FloatWarp ? "تار / عمودی" : "پود / افقی")} · حداقل طول شامل خود عدد: {node.FloatMinimum}", $"فلوت‌های متناهی سیاه: {periodic.BlackRuns} · سفید: {periodic.WhiteRuns}", $"فلوت‌های متناهی عبوری از مرز: {periodic.CrossingRuns} · بلندترین طول متناهی: {periodic.LongestFinite}", $"خطوط تماماً یک‌رنگ و نامحدود در تکرار: سیاه {periodic.UnboundedBlack} · سفید {periodic.UnboundedWhite}", "فرض: تکرار مستقیم بدون تغییر جهت. این بررسی رنگ و نقشه را اصلاح نمی‌کند و قطبیت یا روی پارچه را تعیین نمی‌کند.", "برای هر دو جهت، دو ماژول مستقل استفاده کنید. کناره‌های همراه نقشه بررسی می‌شوند، ستون‌های سیگنال ماشین بررسی نمی‌شوند."};
+                    result=periodicInput with {QualityNotes=periodicNotes};break;
                 case ModuleKind.Tension:
                     var original = Input("fabric"); var woven = original.Composition is null ? original.Image! : CompositionView.Fabric(original.Composition);
                     result = original with { Analysis = DesignAnalysis.Analyze(DesignAnalysis.ReadBinary(woven),woven.PixelWidth,woven.PixelHeight) }; break;

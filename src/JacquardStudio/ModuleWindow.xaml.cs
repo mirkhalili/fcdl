@@ -54,7 +54,8 @@ public partial class ModuleWindow : Window
         (ModuleKind.Tension,"تحلیل کشش","\uE9D9","#72C8C5","TENSION"),
         (ModuleKind.Weft,"پودگذاری","\uE8FD","#E2AD69","BOX MOTION"),
         (ModuleKind.Simulation,"شبیه‌سازی پارچه","\uE7F4","#8DBAF0","SIMULATION"),
-        (ModuleKind.Machine,"خروجی ماشین","\uE950","#F19F7A","MACHINE OUTPUT")
+        (ModuleKind.Machine,"خروجی ماشین","\uE950","#F19F7A","MACHINE OUTPUT"),
+        (ModuleKind.PeriodicFloats,"فلوت در راپورت مستقیم","\uE7C3","#E89B73","PERIODIC FLOAT CHECK")
     };
     private static (ModuleKind kind, string name, string icon, string color, string subtitle) Spec(ModuleKind kind) => Types.Single(t => t.kind == kind);
     private static Brush Brush(string hex) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
@@ -69,6 +70,7 @@ public partial class ModuleWindow : Window
     }
     private void Theme_Click(object sender, RoutedEventArgs e) { if (!busy) { preferences.Theme=ThemeManager.IsLight ? "dark" : "light"; ThemeManager.Apply(preferences.Theme,true); try { preferences.Save(); } catch(IOException) { Status.Text="ذخیره تم ممکن نشد."; } } }
     private void Settings_Click(object sender,RoutedEventArgs e) { if(busy)return; var window=new SettingsWindow(preferences,Types.Select(t=>(t.kind,t.name))) {Owner=this}; if(window.ShowDialog()==true) {preferences=window.Result;ThemeManager.Apply(preferences.Theme,true);BuildLibrary();} }
+    private void Guide_Click(object sender,RoutedEventArgs e) { if(!busy) new GraphGuideWindow {Owner=this}.ShowDialog(); }
     private void About_Click(object sender,RoutedEventArgs e) => new AboutWindow(false) {Owner=this}.ShowDialog();
     private void LibraryToggle_Click(object sender,RoutedEventArgs e) { bool open=LibraryPanel.Visibility==Visibility.Visible; LibraryPanel.Visibility=open ? Visibility.Collapsed : Visibility.Visible; LibraryColumn.Width=new GridLength(open ? 0 : 270); }
     private void FitAll_Click(object sender,RoutedEventArgs e)
@@ -140,6 +142,7 @@ public partial class ModuleWindow : Window
             ModuleKind.Weaves => "چند بافت از بانک انتخاب کنید یا در شبکه بافت بسازید. این مجموعه همراه پروژه است.",
             ModuleKind.ApplyWeaves => "ورودی پالت و مجموعه بافت را متصل و برای هر رنگ یک بافت انتخاب کنید. خروجی نقشه سیاه‌وسفید است.",
             ModuleKind.Selvedge => "کناره و بافت چپ و راست را پیش از پودگذاری به نقشه اضافه می‌کند.",
+            ModuleKind.PeriodicFloats => "در تکرار مستقیم، فلوت‌های دو سوی مرز یک فلوت شمرده می‌شوند. خطوط یک‌رنگ نامحدود گزارش می‌شوند. نتیجه نقشه را تغییر نمی‌دهد.",
             ModuleKind.Floats => "فلوت‌های تار یا پود را با حداقل طول مشخص بررسی و در صورت انتخاب اصلاح می‌کند.",
             ModuleKind.Tension => "شاخص نسبی اختلاف تارها را تحلیل می‌کند؛ اندازه‌گیری فیزیکی کشش نیست.",
             ModuleKind.Weft => "توالی و ستون‌های فرمان پود را به پارچه اضافه می‌کند؛ محل و قطبیت را روی دستگاه بررسی کنید.",
@@ -261,7 +264,7 @@ public partial class ModuleWindow : Window
     }
     private void Delete_Click(object sender,RoutedEventArgs e) => DeleteSelection();
     private void DeleteSelection() { if(busy)return; if(selectedWire is { } edge) { graph.Disconnect(edge.From,edge.To,edge.Port); selectedWire=null; Changed(edge.To); RenderGraph(); Inspect(); Status.Text="اتصال حذف شد."; } else if(selected is Guid id) RemoveNode(id); }
-    private void Workspace_KeyDown(object sender,KeyEventArgs e) { if(e.Key==Key.Delete && e.OriginalSource is not TextBox && e.OriginalSource is not PasswordBox) { DeleteSelection(); e.Handled=true; } }
+    private void Workspace_KeyDown(object sender,KeyEventArgs e) { if(e.Key==Key.F1 && !busy) { Guide_Click(sender,e); e.Handled=true; return; } if(e.Key==Key.Delete && e.OriginalSource is not TextBox && e.OriginalSource is not PasswordBox) { DeleteSelection(); e.Handled=true; } }
     private void ZoomIn_Click(object sender,RoutedEventArgs e) => SetZoom(zoom*1.25);
     private void ZoomOut_Click(object sender,RoutedEventArgs e) => SetZoom(zoom/1.25);
     private void SetZoom(double value) { zoom=Math.Clamp(value,.01,2); GraphCanvas.LayoutTransform=new ScaleTransform(zoom,zoom); ZoomLabel.Text=$"{zoom*100:0}%"; }
@@ -361,6 +364,10 @@ public partial class ModuleWindow : Window
             case ModuleKind.Selvedge:
                 Field("عرض کناره چپ",node.Machine.LeftWidth,s=>node.Machine=node.Machine with { LeftWidth=s, LeftPattern=node.Machine.LeftPattern ?? PatternLibrary.Presets[0].Pattern });
                 Field("عرض کناره راست",node.Machine.RightWidth,s=>node.Machine=node.Machine with { RightWidth=s, RightPattern=node.Machine.RightPattern ?? PatternLibrary.Presets[0].Pattern }); Button("انتخاب بافت کناره چپ",()=>ChooseSelvedge(node,true)); Button("انتخاب بافت کناره راست",()=>ChooseSelvedge(node,false)); break;
+            case ModuleKind.PeriodicFloats:
+                Inspector.Children.Add(Note("تشخیص در راپورت مستقیم؛ بدون اصلاح نقشه. برای بررسی تار و پود از دو ماژول استفاده کنید."));
+                Field("حداقل طول فلوت (شامل خود مقدار)",node.FloatMinimum.ToString(),s=>{int n=Parse(s,0);if(n<1)throw new ArgumentException("حداقل طول باید مثبت باشد.");node.FloatMinimum=n;});
+                var periodicDir=new ComboBox {ItemsSource=new[]{"تار / عمودی","پود / افقی"},SelectedIndex=node.FloatWarp?0:1,Margin=new Thickness(0,8,0,0)};periodicDir.SelectionChanged+=(_,_)=>{node.FloatWarp=periodicDir.SelectedIndex==0;Changed(node.Id);};Inspector.Children.Add(periodicDir);break;
             case ModuleKind.Floats:
                 Field("حداقل طول فلوت",node.FloatMinimum.ToString(),s=>node.FloatMinimum=Parse(s,0));
                 var dir=new ComboBox { ItemsSource=new[]{"تار / Warp","پود / Weft"},SelectedIndex=node.FloatWarp?0:1, Margin=new Thickness(0,8,0,0) }; dir.SelectionChanged+=(_,_)=>{node.FloatWarp=dir.SelectedIndex==0;Changed();}; Inspector.Children.Add(dir);
