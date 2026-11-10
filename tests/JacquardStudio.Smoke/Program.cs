@@ -204,7 +204,13 @@ internal static class Program
             var autoPair=AutoWeaveAssignments.Pair(new[]{11,22,33},3,new[]{2,0,1},new[]{2,0},new Dictionary<int,int>());
             Check(autoPair.Count==2 && autoPair[11]==0 && autoPair[22]==2 && !autoPair.ContainsKey(33), "automatic weaves pair selected items in visual order and leave remaining colors unassigned");
             Expect<ArgumentOutOfRangeException>(()=>AutoWeaveAssignments.Pair(new[]{1},1,new[]{2},new[]{0},new Dictionary<int,int>()));
+            var encryptedData=EncryptedProject.Encrypt(System.Text.Encoding.UTF8.GetBytes("private sample"),"user pass 123");
+            Check(System.Text.Encoding.UTF8.GetString(EncryptedProject.Decrypt(encryptedData,"user pass 123"))=="private sample", "encrypted project password roundtrip");
+            Check(System.Text.Encoding.UTF8.GetString(EncryptedProject.Decrypt(encryptedData,"Mir@1354@sam"))=="private sample", "explicitly requested shared recovery password roundtrip");
+            Expect<InvalidDataException>(()=>EncryptedProject.Decrypt(encryptedData,"incorrect")); var tampered=(byte[])encryptedData.Clone(); tampered[^1]^=1; Expect<InvalidDataException>(()=>EncryptedProject.Decrypt(tampered,"user pass 123"));
+            var localPrefs=new UserPreferences(); localPrefs.SetPassword("local pass 123"); Check(localPrefs.Verify("local pass 123") && !localPrefs.Verify("wrong"), "local startup password uses a salted verifier");
             var graph = new ModuleGraph(); var graphLoad = graph.Add(ModuleKind.Load, 0, 0); graphLoad.ImagePng = ModuleExecutor.EmbedImage(b.Image);
+            string secretGraph=Path.Combine(dir,"encrypted.sam"); ModuleProjectFile.SaveEncrypted(secretGraph,graph,"user pass 123"); Check(ModuleProjectFile.IsGraph(secretGraph) && ModuleProjectFile.IsEncrypted(secretGraph) && ModuleProjectFile.LoadEncrypted(secretGraph,"user pass 123").Nodes.Count==1, "encrypted SAM graph roundtrip"); Expect<IOException>(()=>ModuleProjectFile.Save(secretGraph,graph));
             var graphResize = graph.Add(ModuleKind.Resize, 250, 0); graphResize.Width=3; graphResize.Height=2; graph.Connect(graphLoad.Id, graphResize.Id, "image");
             var graphOtherResize = graph.Add(ModuleKind.Resize, 250, 180); graphOtherResize.Width=6; graphOtherResize.Height=4; graph.Connect(graphLoad.Id,graphOtherResize.Id,"image");
             var graphColors = graph.Add(ModuleKind.Colors, 500, 0); graphColors.ColorLimit=2; graph.Connect(graphResize.Id,graphColors.Id,"image");
@@ -703,7 +709,7 @@ internal static class Program
             editButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); cropTimer.Stop();
             Check(cropOpened && cropLoaded, "crop card button opens dialog and loads its connected input");
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "031.0.3.1-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "032.0.4.1-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));

@@ -1,7 +1,7 @@
 <Application x:Class="JacquardStudio.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             StartupUri="ModuleWindow.xaml">
+>
     <Application.Resources>
         <SolidColorBrush x:Key="AppBackground" Color="#0C1420"/>
         <SolidColorBrush x:Key="HeaderBackground" Color="#111B29"/>

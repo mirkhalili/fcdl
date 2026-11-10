@@ -13,8 +13,11 @@ public static class AiImageEdit
 {
     private static readonly Uri Endpoint=new("https://api.openai.com/v1/images/edits");
     public static string PromptHash(string prompt) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(prompt)));
-    public static async Task<string> GenerateAsync(BitmapSource input,string prompt,string apiKey,HttpClient? client=null,CancellationToken cancellationToken=default)
+    public static async Task<string> GenerateAsync(BitmapSource input,string prompt,string apiKey,HttpClient? client=null,CancellationToken cancellationToken=default,Uri? endpoint=null,string model="gpt-image-1")
     {
+        endpoint ??= Endpoint;
+        if(endpoint.Scheme!=Uri.UriSchemeHttps || !string.IsNullOrEmpty(endpoint.UserInfo) || !string.IsNullOrEmpty(endpoint.Fragment)) throw new ArgumentException("نشانی سرویس باید HTTPS و بدون اطلاعات ورود باشد.");
+        if(string.IsNullOrWhiteSpace(model) || model.Length>100) throw new ArgumentException("نام مدل معتبر نیست.");
         if(string.IsNullOrWhiteSpace(prompt) || prompt.Length>4000) throw new ArgumentException("پرامپت باید ۱ تا ۴۰۰۰ نویسه باشد.");
         if(string.IsNullOrWhiteSpace(apiKey)) throw new InvalidOperationException("متغیر محیطی OPENAI_API_KEY تنظیم نشده است.");
         var encoder=new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(input)); using var encoded=new MemoryStream(); encoder.Save(encoded);
@@ -22,9 +25,9 @@ public static class AiImageEdit
         bool owned=client is null; client ??=new HttpClient { Timeout=TimeSpan.FromMinutes(3) };
         try
         {
-            using var multipart=new MultipartFormDataContent(); multipart.Add(new StringContent("gpt-image-1"),"model"); multipart.Add(new StringContent(prompt,Encoding.UTF8),"prompt");
+            using var multipart=new MultipartFormDataContent(); multipart.Add(new StringContent(model),"model"); multipart.Add(new StringContent(prompt,Encoding.UTF8),"prompt");
             var picture=new ByteArrayContent(encoded.ToArray()); picture.Headers.ContentType=new MediaTypeHeaderValue("image/png"); multipart.Add(picture,"image","design.png");
-            using var request=new HttpRequestMessage(HttpMethod.Post,Endpoint) { Content=multipart }; request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",apiKey);
+            using var request=new HttpRequestMessage(HttpMethod.Post,endpoint) { Content=multipart }; request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",apiKey);
             using var response=await client.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,cancellationToken).ConfigureAwait(false);
             if(!response.IsSuccessStatusCode) throw new InvalidOperationException($"پاسخ سرویس هوش مصنوعی ناموفق بود (HTTP {(int)response.StatusCode}). تنظیمات دسترسی و سهمیه را بررسی کنید.");
             if(response.Content.Headers.ContentLength is long n && n>32*1024*1024) throw new InvalidDataException("AI response is too large.");

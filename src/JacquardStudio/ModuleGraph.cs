@@ -280,21 +280,44 @@ public static class ModuleProjectFile
     public static void Save(string path, ModuleGraph graph)
     {
         if (!path.EndsWith(".sam",StringComparison.OrdinalIgnoreCase) && !path.EndsWith(".jgw",StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("Graph project must use .sam or .jgw.");
-        if (File.Exists(path) && !IsGraph(path)) throw new IOException("Cannot overwrite a legacy or unrecognized project with a graph."); graph.Validate();
+        if (File.Exists(path) && (!IsGraph(path) || IsEncrypted(path))) throw new IOException("Cannot overwrite a legacy, encrypted or unrecognized project with a plain graph."); graph.Validate();
         var json = JsonSerializer.SerializeToUtf8Bytes(new Envelope { Graph = graph }); if (json.Length > MaxBytes) throw new InvalidDataException("Graph project is too large.");
         string target = Path.GetFullPath(path), tmp = Path.Combine(Path.GetDirectoryName(target)!, ".jgw-"+Guid.NewGuid().ToString("N")+".tmp");
         try { using (var file = File.Create(tmp)) using (var zip = new ZipArchive(file,ZipArchiveMode.Create)) { var entry = zip.CreateEntry("graph.json",CompressionLevel.Optimal); using var stream = entry.Open(); stream.Write(json); } File.Move(tmp,target,true); } finally { if (File.Exists(tmp)) File.Delete(tmp); }
     }
+    public static bool IsEncrypted(string path)
+    {
+        using var file=File.OpenRead(path); Span<byte> header=stackalloc byte[8]; return file.Read(header)==8 && EncryptedProject.IsEncrypted(header);
+    }
     public static bool IsGraph(string path)
     {
-        using var file=File.OpenRead(path); if(file.Length>MaxBytes) throw new InvalidDataException("Project is too large.");
+        using var file=File.OpenRead(path); if(file.Length>MaxBytes+1024) throw new InvalidDataException("Project is too large.");
+        Span<byte> header=stackalloc byte[8]; if(file.Read(header)==8 && EncryptedProject.IsEncrypted(header)) return true; file.Position=0;
         using var zip=new ZipArchive(file,ZipArchiveMode.Read); return zip.Entries.Count==1 && zip.Entries[0].FullName=="graph.json";
     }
-    public static ModuleGraph Load(string path)
+    private static ModuleGraph ReadArchive(Stream file)
     {
-        using var file = File.OpenRead(path); if (file.Length > MaxBytes) throw new InvalidDataException("Graph project is too large."); using var zip = new ZipArchive(file,ZipArchiveMode.Read);
+        using var zip = new ZipArchive(file,ZipArchiveMode.Read);
         if (zip.Entries.Count != 1 || zip.Entries[0].FullName != "graph.json" || zip.Entries[0].Length > MaxBytes) throw new InvalidDataException("Invalid graph project archive.");
         using var stream = zip.Entries[0].Open(); using var bounded = new MemoryStream(); byte[] buffer = new byte[8192]; int read; while ((read=stream.Read(buffer))>0) { if (bounded.Length + read > MaxBytes) throw new InvalidDataException("Graph is too large."); bounded.Write(buffer,0,read); }
         var envelope = JsonSerializer.Deserialize<Envelope>(bounded.ToArray()) ?? throw new InvalidDataException("Invalid graph project."); if (envelope.Version != 1 || envelope.Graph is null) throw new InvalidDataException("Unsupported graph project."); envelope.Graph.Validate(); return envelope.Graph;
     }
+    public static ModuleGraph Load(string path)
+    {
+        using var file=File.OpenRead(path); if(file.Length>MaxBytes)throw new InvalidDataException("Graph project is too large."); return ReadArchive(file);
+    }
+    public static void SaveEncrypted(string path,ModuleGraph graph,string password)
+    {
+        if(!path.EndsWith(".sam",StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("Encrypted graph must use .sam.");
+        if(File.Exists(path) && !IsGraph(path)) throw new IOException("Cannot overwrite a legacy or unrecognized project with a graph."); graph.Validate();
+        var json=JsonSerializer.SerializeToUtf8Bytes(new Envelope { Graph=graph }); if(json.Length>MaxBytes)throw new InvalidDataException("Graph project is too large.");
+        using var archive=new MemoryStream(); using(var zip=new ZipArchive(archive,ZipArchiveMode.Create,true)) {using var entry=zip.CreateEntry("graph.json",CompressionLevel.Optimal).Open();entry.Write(json);}
+        var plain=archive.ToArray(); try {var encrypted=EncryptedProject.Encrypt(plain,password); string target=Path.GetFullPath(path),temp=Path.Combine(Path.GetDirectoryName(target)!,".sam-"+Guid.NewGuid().ToString("N")+".tmp"); try {File.WriteAllBytes(temp,encrypted);File.Move(temp,target,true);} finally {if(File.Exists(temp))File.Delete(temp);} } finally {System.Security.Cryptography.CryptographicOperations.ZeroMemory(plain);}
+    }
+    public static ModuleGraph LoadEncrypted(string path,string password)
+    {
+        var f=new FileInfo(path); if(f.Length>MaxBytes+1024)throw new InvalidDataException("Graph project is too large."); var plain=EncryptedProject.Decrypt(File.ReadAllBytes(path),password);
+        try {using var stream=new MemoryStream(plain); return ReadArchive(stream);} finally {System.Security.Cryptography.CryptographicOperations.ZeroMemory(plain);}
+    }
+
 }
