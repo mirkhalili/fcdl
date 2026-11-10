@@ -14,7 +14,7 @@ public sealed class UserPreferences
     private static string PathName => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"JacquardStudio","preferences.json");
     public static UserPreferences Load()
     {
-        if(!File.Exists(PathName))return new(); var f=new FileInfo(PathName); if(f.Length>256*1024) throw new InvalidDataException("فایل تنظیمات بیش از حد بزرگ است.");
+        if(!File.Exists(PathName))return new() {Theme=ThemeManager.ReadLight() ? "light" : "dark"}; var f=new FileInfo(PathName); if(f.Length>256*1024) throw new InvalidDataException("فایل تنظیمات بیش از حد بزرگ است.");
         var prefs=JsonSerializer.Deserialize<UserPreferences>(File.ReadAllBytes(PathName)) ?? throw new InvalidDataException("فایل تنظیمات نامعتبر است.");
         if(prefs.Version!=1 || prefs.HiddenModules is null || prefs.HiddenModules.Count>128 || (prefs.PasswordSalt is null)!=(prefs.PasswordHash is null)) throw new InvalidDataException("فایل تنظیمات نامعتبر است.");
         if(prefs.HasPassword) { try {if(Convert.FromBase64String(prefs.PasswordSalt!).Length!=16 || Convert.FromBase64String(prefs.PasswordHash!).Length!=32) throw new InvalidDataException("اطلاعات رمز ورود نامعتبر است.");} catch(FormatException) {throw new InvalidDataException("اطلاعات رمز ورود نامعتبر است.");} }

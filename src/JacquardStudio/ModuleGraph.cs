@@ -154,7 +154,7 @@ public static class ModuleExecutor
                 case ModuleKind.BinaryLoad:
                     if(string.IsNullOrEmpty(node.ImagePng))throw new InvalidOperationException("ابتدا نقشهٔ سیاه‌وسفید آماده را انتخاب کنید.");
                     var binaryBytes=Convert.FromBase64String(node.ImagePng); if(binaryBytes.Length>ImageLoader.MaxFileBytes)throw new InvalidDataException("فایل نقشه بیش از حد بزرگ است.");
-                    using(var binaryStream=new MemoryStream(binaryBytes)) {var binary=BitmapDecoder.Create(binaryStream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad).Frames[0];binary.Freeze();_=DesignAnalysis.ReadBinary(binary);result=new(ModuleData.Fabric,binary);} break;
+                    using(var binaryStream=new MemoryStream(binaryBytes)) {var binary=BitmapDecoder.Create(binaryStream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad).Frames[0];binary.Freeze();if((long)binary.PixelWidth*binary.PixelHeight>DesignProcessor.MaxPixels)throw new InvalidDataException("نقشه باید حداکثر چهار میلیون پیکسل باشد.");_=DesignAnalysis.ReadBinary(binary);result=new(ModuleData.Fabric,binary);} break;
                 case ModuleKind.BinaryConvert:
                     result=new(ModuleData.Fabric,GraphChecks.Threshold(Input("image").Image!,node.Threshold,node.InvertBinary)); break;
                 case ModuleKind.SeamCheck:

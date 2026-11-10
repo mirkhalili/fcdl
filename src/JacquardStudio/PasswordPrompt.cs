@@ -14,6 +14,6 @@ public sealed class PasswordPrompt : Window
         var warning=new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,7,0,0)}; panel.Children.Add(warning);
         var buttons=new StackPanel {Orientation=Orientation.Horizontal,Margin=new Thickness(0,10,0,0)};
         var ok=new Button {Content="تأیید",Margin=new Thickness(4),IsDefault=true}; var cancel=new Button {Content="انصراف",Margin=new Thickness(4),IsCancel=true}; buttons.Children.Add(ok); buttons.Children.Add(cancel); panel.Children.Add(buttons);
-        ok.Click+=(_,_)=>{if(string.IsNullOrEmpty(password.Password) || confirm && password.Password!=again.Password) {warning.Text="رمز را وارد کنید و از یکسان بودن تکرار آن مطمئن شوید.";return;} Password=password.Password; DialogResult=true;}; Content=panel; Loaded+=(_,_)=>password.Focus();
+        ok.Click+=(_,_)=>{if(string.IsNullOrEmpty(password.Password) || confirm && (password.Password.Length<8 || password.Password!=again.Password)) {warning.Text="رمز را وارد کنید؛ برای رمز جدید حداقل ۸ نویسه و تکرار یکسان لازم است.";return;} Password=password.Password; DialogResult=true;}; Content=panel; Loaded+=(_,_)=>password.Focus();
     }
 }

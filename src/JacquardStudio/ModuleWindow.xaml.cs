@@ -262,7 +262,7 @@ public partial class ModuleWindow : Window
     private void Workspace_KeyDown(object sender,KeyEventArgs e) { if(e.Key==Key.Delete && e.OriginalSource is not TextBox && e.OriginalSource is not PasswordBox) { DeleteSelection(); e.Handled=true; } }
     private void ZoomIn_Click(object sender,RoutedEventArgs e) => SetZoom(zoom*1.25);
     private void ZoomOut_Click(object sender,RoutedEventArgs e) => SetZoom(zoom/1.25);
-    private void SetZoom(double value) { zoom=Math.Clamp(value,.05,2); GraphCanvas.LayoutTransform=new ScaleTransform(zoom,zoom); ZoomLabel.Text=$"{zoom*100:0}%"; }
+    private void SetZoom(double value) { zoom=Math.Clamp(value,.01,2); GraphCanvas.LayoutTransform=new ScaleTransform(zoom,zoom); ZoomLabel.Text=$"{zoom*100:0}%"; }
     private void GraphScroll_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (busy || e.ChangedButton != MouseButton.Middle) return;
@@ -398,7 +398,7 @@ public partial class ModuleWindow : Window
         try
         {
             busy=true; Status.Text="در حال بارگذاری طرح…"; var first=await Task.Run(()=>ext==".jc5" ? new ImageResult(Jc5Codec.Load(picker.FileName),1,0,"JC5") : ImageLoader.Load(picker.FileName,0)); busy=false;
-            ImageResult chosen=first; if(ext!=".jc5") { var pages=new SourcePageWindow(picker.FileName,first) { Owner=owner }; if(pages.ShowDialog()!=true || pages.Result is not { } selectedPage) return; chosen=selectedPage; } if(binary) await Task.Run(()=>DesignAnalysis.ReadBinary(chosen.Image));
+            ImageResult chosen=first; if(ext!=".jc5") { var pages=new SourcePageWindow(picker.FileName,first) { Owner=owner }; if(pages.ShowDialog()!=true || pages.Result is not { } selectedPage) return; chosen=selectedPage; } if(binary) await Task.Run(()=> {if((long)chosen.Image.PixelWidth*chosen.Image.PixelHeight>DesignProcessor.MaxPixels)throw new InvalidDataException("نقشه باید حداکثر چهار میلیون پیکسل باشد."); _=DesignAnalysis.ReadBinary(chosen.Image);});
             busy=true; var png=await Task.Run(()=>ModuleExecutor.EmbedImage(chosen.Image)); node.ImagePng=png; node.VectorPdfBase64=chosen.Vector is null ? null : Convert.ToBase64String(chosen.Vector.PdfBytes); node.SourcePage=chosen.PageIndex; node.Label=System.IO.Path.GetFileName(picker.FileName); Changed(); RenderGraph(); Inspect(); Status.Text=$"صفحه {chosen.PageIndex+1} از {chosen.PageCount} انتخاب شد.";
         }
         catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or UnauthorizedAccessException) { ModuleErrors.Show(owner,ex); }
@@ -635,8 +635,14 @@ public partial class ModuleWindow : Window
         if(saveAs || target is null || !target.EndsWith(".sam",StringComparison.OrdinalIgnoreCase))
         {
             var dialog=new SaveFileDialog { Filter="SAM graph project (*.sam)|*.sam",FileName=target is null ? "project.sam" : System.IO.Path.GetFileNameWithoutExtension(target)+".sam",AddExtension=true,DefaultExt=".sam" }; if(dialog.ShowDialog(this)!=true)return false; target=dialog.FileName;
-            var choice=MessageBox.Show(this,"پروژه رمزگذاری شود؟\nبازیابی مشترک در همه نسخه‌های برنامه وجود دارد و امنیت محرمانگی را محدود می‌کند.","رمزگذاری پروژه",MessageBoxButton.YesNoCancel,MessageBoxImage.Warning); if(choice==MessageBoxResult.Cancel)return false;
-            if(choice==MessageBoxResult.Yes) { var prompt=new PasswordPrompt("رمز پروژه","رمز پروژه را وارد و تکرار کنید.",true) {Owner=this}; if(prompt.ShowDialog()!=true)return false; password=prompt.Password; recovery=false; } else {password=null;recovery=false;}
+        }
+        if(password is null)
+        {
+            var prompt=new PasswordPrompt("رمز پروژه","برای ذخیره، رمز پروژه (حداقل ۸ نویسه) را وارد و تکرار کنید. رمز بازیابی مشترک در همه نسخه‌ها قابل استخراج است و محرمانگی را محدود می‌کند.",true) {Owner=this}; if(prompt.ShowDialog()!=true)return false; password=prompt.Password;
+        }
+        else if(saveAs)
+        {
+            var prompt=new PasswordPrompt("رمز پروژه","برای نسخهٔ جدید رمز را وارد و تکرار کنید. رمز بازیابی مشترک قابل استخراج است و محرمانگی را محدود می‌کند.",true) {Owner=this}; if(prompt.ShowDialog()!=true)return false; password=prompt.Password; recovery=false;
         }
         if(recovery) { var prompt=new PasswordPrompt("تعیین رمز جدید","پروژه با رمز بازیابی باز شده است. برای ذخیره، یک رمز جدید تعیین کنید؛ رمز قبلی دیگر معتبر نخواهد بود.",true) {Owner=this}; if(prompt.ShowDialog()!=true)return false; password=prompt.Password; recovery=false; }
         try {if(password is null) ModuleProjectFile.Save(target!,graph); else ModuleProjectFile.SaveEncrypted(target!,graph,password); projectPassword=password;openedWithRecovery=recovery;projectPath=target; dirty=false; UpdateTitle(); Status.Text="پروژه ماژولی ذخیره شد."; return true; } catch(Exception ex) when(ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException) { ModuleErrors.Show(this,ex,"خطای ذخیره پروژه"); return false; }
