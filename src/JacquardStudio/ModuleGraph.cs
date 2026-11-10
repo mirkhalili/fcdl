@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData, PeriodicFloats, MatchPalette, RectangleMask, ApplyMask }
+public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData, PeriodicFloats, MatchPalette, RectangleMask, ApplyMask, DesignEditor }
 public enum ModuleData { Image, Palette, Weaves, Fabric, Preview, Report, Any, MachineConfig, Metadata, Visual, Mask }
 public sealed record DesignField(string Title, string Text);
 public sealed record ModuleColorEdit(string InputHash, PaletteResult Palette, bool[] Locks);
@@ -25,6 +25,8 @@ public sealed class ModuleNode
     public string? AiResultPng { get; set; }
     public string? AiInputHash { get; set; }
     public string? AiPromptHash { get; set; }
+    public string? DesignEditPng { get; set; }
+    public string? DesignEditInputHash { get; set; }
     public int MaskX { get; set; } public int MaskY { get; set; } public int MaskWidth { get; set; } public int MaskHeight { get; set; }
     public bool MaskInvert { get; set; } public string MaskFill { get; set; } = "#FFFFFF";
     public int Threshold { get; set; } = 128;
@@ -59,7 +61,7 @@ public sealed class ModuleGraph
     public List<ModuleEdge> Edges { get; set; } = new();
     public static ModuleData Output(ModuleKind kind) => kind switch
     {
-        ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.SeamCheck or ModuleKind.Compare or ModuleKind.ExportData or ModuleKind.ApplyMask => ModuleData.Image,
+        ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.SeamCheck or ModuleKind.Compare or ModuleKind.ExportData or ModuleKind.ApplyMask or ModuleKind.DesignEditor => ModuleData.Image,
         ModuleKind.RectangleMask => ModuleData.Mask,
         ModuleKind.Colors or ModuleKind.MatchPalette => ModuleData.Palette,
         ModuleKind.Weaves or ModuleKind.CreateWeave => ModuleData.Weaves,
@@ -71,7 +73,7 @@ public sealed class ModuleGraph
     };
     public static IReadOnlyDictionary<string, ModuleData> Inputs(ModuleKind kind) => kind switch
     {
-        ModuleKind.Resize or ModuleKind.Colors or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.BinaryConvert => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image },
+        ModuleKind.Resize or ModuleKind.Colors or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.BinaryConvert or ModuleKind.DesignEditor => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image },
         ModuleKind.RectangleMask => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image },
         ModuleKind.ApplyMask => new Dictionary<string, ModuleData> { ["image"] = ModuleData.Image, ["mask"] = ModuleData.Mask },
         ModuleKind.MatchPalette => new Dictionary<string, ModuleData> { ["palette"] = ModuleData.Palette, ["reference"] = ModuleData.Palette },
@@ -199,6 +201,12 @@ public static class ModuleExecutor
                     if(string.IsNullOrEmpty(node.AiResultPng) || node.AiInputHash!=ImageFingerprint(aiInput) || node.AiPromptHash!=AiImageEdit.PromptHash(node.AiPrompt)) throw new InvalidOperationException("ابتدا تصویر و پرامپت را در ماژول هوش مصنوعی ارسال و نتیجه را تأیید کنید.");
                     var aiBytes=Convert.FromBase64String(node.AiResultPng); if(aiBytes.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("AI image is too large.");
                     using(var aiStream=new MemoryStream(aiBytes)) { var frame=BitmapDecoder.Create(aiStream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad).Frames[0]; if((long)frame.PixelWidth*frame.PixelHeight>DesignProcessor.MaxPixels) throw new InvalidDataException("AI image is too large."); frame.Freeze(); result=new(ModuleData.Image,frame); } break;
+                case ModuleKind.DesignEditor:
+                    var designInput=Input("image").Image!;
+                    if(node.DesignEditPng is null) { result=new(ModuleData.Image,designInput); break; }
+                    if(node.DesignEditInputHash!=ImageFingerprint(designInput)) throw new InvalidOperationException("ورودی طراحی تغییر کرده است؛ ویرایشگر را باز و مجدداً اعمال کنید.");
+                    var designBytes=Convert.FromBase64String(node.DesignEditPng); if(designBytes.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("تصویر طراحی بیش از حد بزرگ است.");
+                    using(var designStream=new MemoryStream(designBytes)) { var frame=BitmapDecoder.Create(designStream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad).Frames[0]; if(frame.PixelWidth!=designInput.PixelWidth || frame.PixelHeight!=designInput.PixelHeight || (long)frame.PixelWidth*frame.PixelHeight>DesignProcessor.MaxPixels) throw new InvalidDataException("ابعاد تصویر طراحی معتبر نیست."); frame.Freeze();result=new(ModuleData.Image,frame); } break;
                 case ModuleKind.Crop:
                     var cropInput=Input("image").Image!;
                     if (node.Crop is { } crop) { if (crop.InputHash != ImageFingerprint(cropInput)) throw new InvalidOperationException("ورودی برش تغییر کرده است؛ ماژول برش را مجدداً اعمال کنید."); result=new(ModuleData.Image,GraphImageOperations.Crop(cropInput,crop)); }

@@ -40,6 +40,7 @@ public partial class ModuleWindow : Window
         (ModuleKind.MachineDefinition,"تعریف ماشین","\uE90F","#AFA5D1","MACHINE PROFILE"),
         (ModuleKind.DesignIdentity,"شناسنامه طرح","\uE8A5","#A3C6A6","DESIGN IDENTITY"),
         (ModuleKind.AiEdit,"هوش مصنوعی","\uE945","#D1A4BC","AI IMAGE EDIT"),
+        (ModuleKind.DesignEditor,"طراحی و ویرایش طرح","\uE70F","#C89570","DESIGN EDITOR"),
         (ModuleKind.Crop,"برش طرح","\uE7A8","#E89B73","CROP"),
         (ModuleKind.Repeat,"راپورت‌بندی","\uE8A5","#61A9F7","REPEAT"),
         (ModuleKind.Report,"گزارش","\uE9D2","#72C8C5","REPORT"),
@@ -137,6 +138,7 @@ public partial class ModuleWindow : Window
             ModuleKind.DesignIdentity => "فیلدهای عنوان و متن دلخواه را وارد کرده و به گزارش متصل کنید.",
             ModuleKind.AiEdit => "تصویر و پرامپت فقط پس از تأیید به OpenAI ارسال می‌شود و خروجی در پروژه ذخیره می‌شود. کلید از متغیر محیطی خوانده می‌شود.",
             ModuleKind.AutoWeaves => "چند رنگ و چند بافت را انتخاب کنید؛ به ترتیب فهرست، جفت‌های یک‌به‌یک اختصاص می‌یابند و رنگ‌های باقی‌مانده نمایش داده می‌شوند.",
+            ModuleKind.DesignEditor => "ویرایش پیکسلی تصویر با قلم، خط، مستطیل، پرکردن، قطره‌چکان و بازگشت. با تغییر ورودی، ویرایش باید مجدداً تأیید شود.",
             ModuleKind.Crop => "ابتدا جهت حذف را انتخاب کنید؛ با کلیک روی پیکسل مرزی بخش آن سمت حذف می‌شود و پیکسل انتخاب‌شده باقی می‌ماند. ورودی تصویر است.",
             ModuleKind.Repeat => "طرح با تعداد ستون و ردیف انتخابی تکرار می‌شود. نیم‌عرض ردیف‌ها را و نیم‌طول ستون‌ها را به اندازه نصف طرح جابه‌جا می‌کند.",
             ModuleKind.Report => "خروجی چند ماژول را به ورودی گزارش وصل کنید. پیش‌نمایش، چاپ و ذخیره PDF هر ماژول را نمایش می‌دهد. حداکثر ۱۶ ورودی.",
@@ -512,6 +514,7 @@ public partial class ModuleWindow : Window
         if (node.Kind == ModuleKind.ApplyWeaves) { await EditWeaveMappingAsync(node); return; }
         if (node.Kind == ModuleKind.AutoWeaves) { await EditAutoWeavesAsync(node); return; }
         if (node.Kind == ModuleKind.Crop) { await EditCropAsync(node); return; }
+        if (node.Kind == ModuleKind.DesignEditor) { await EditDesignAsync(node); return; }
         if (node.Kind == ModuleKind.CreateWeave) { await EditWeaveDesignerAsync(node); return; }
         if (node.Kind is ModuleKind.Resize or ModuleKind.Colors) { await EditLegacyModuleAsync(node); return; }
         int index=graph.Nodes.FindIndex(n=>n.Id==node.Id); var backup=System.Text.Json.JsonSerializer.Deserialize<ModuleNode>(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(node))!;
@@ -606,6 +609,29 @@ public partial class ModuleWindow : Window
         if(dialog.ShowDialog()!=true)return;
         node.WeaveAssignments=draft; node.CustomWeaves=custom; node.DefaultWeaveIndex=-1; Changed(node.Id); MergeResults(colors); MergeResults(patterns);
         if(palette.Colors.All(c=>custom.ContainsKey(c) || draft.TryGetValue(c,out int index) && index>=0 && index<available.Count)) await ExecuteAsync(node); else { Status.Text="رنگ‌های بدون بافت را در ماژول مشخص کنید؛ خروجی تا تکمیل آماده نیست."; RenderGraph(); }
+    }
+    private async Task EditDesignAsync(ModuleNode node)
+    {
+        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="image");
+        if(edge is null) { MessageBox.Show(this,"ابتدا یک تصویر به ورودی ماژول طراحی متصل کنید."); return; }
+        IReadOnlyDictionary<Guid,ModuleValue> inputs; BitmapSource source; string hash;
+        try { busy=true; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=false; inputs=await Task.Run(()=>ModuleExecutor.Run(graph,edge.From)); source=inputs[edge.From].Image ?? throw new InvalidOperationException("تصویر ورودی آماده نیست."); hash=await Task.Run(()=>ModuleExecutor.ImageFingerprint(source)); }
+        catch(Exception ex) when(ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) {ModuleErrors.Show(this,ex);return;}
+        finally {busy=false;GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=true;}
+        if(node.DesignEditPng is not null && node.DesignEditInputHash!=hash && MessageBox.Show(this,"ورودی تغییر کرده است. ویرایش قبلی کنار گذاشته شود؟","طراحی",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
+        try
+        {
+            BitmapSource initial=source;
+            if(node.DesignEditPng is not null && node.DesignEditInputHash==hash)
+            {
+                byte[] bytes=Convert.FromBase64String(node.DesignEditPng); if(bytes.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("تصویر بیش از حد بزرگ است.");
+                using var stream=new MemoryStream(bytes); var frame=BitmapDecoder.Create(stream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad).Frames[0];
+                if(frame.PixelWidth!=source.PixelWidth || frame.PixelHeight!=source.PixelHeight) throw new InvalidDataException("ابعاد تصویر طراحی معتبر نیست."); frame.Freeze(); initial=frame;
+            }
+            var editor=new DesignEditorWindow(initial) {Owner=this}; if(editor.ShowDialog()!=true || editor.Result is null)return;
+            string encoded=await Task.Run(()=>ModuleExecutor.EmbedImage(editor.Result)); node.DesignEditPng=encoded;node.DesignEditInputHash=hash;Changed(node.Id);MergeResults(inputs);await ExecuteAsync(node);RenderGraph();
+        }
+        catch(Exception ex) when(ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) {ModuleErrors.Show(this,ex);}
     }
     private async Task EditCropAsync(ModuleNode node)
     {
