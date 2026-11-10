@@ -232,8 +232,8 @@ internal static class Program
                     bool joins=line[0]==line[^1]; if(joins)segments.Add((referenceRuns[0].Length+referenceRuns[^1].Length,line[0]==0,true));
                     for(int k=joins?1:0;k<referenceRuns.Count-(joins?1:0);k++)segments.Add((referenceRuns[k].Length,referenceRuns[k].Black,false));
                 }
-                var actual=PeriodicFloatAnalysis.Analyze(line,len,1,minimum,FloatDirection.Weft);
-                Check(actual.BlackRuns==segments.Count(t=>t.black && t.size>=minimum) && actual.WhiteRuns==segments.Count(t=>!t.black && t.size>=minimum) && actual.CrossingRuns==segments.Count(t=>t.crossing && t.size>=minimum) && actual.UnboundedBlack==ub && actual.UnboundedWhite==uw && actual.LongestFinite==segments.Select(t=>t.size).DefaultIfEmpty(0).Max(),"periodic float exhaustive oracle");
+                var periodicActual=PeriodicFloatAnalysis.Analyze(line,len,1,minimum,FloatDirection.Weft);
+                Check(periodicActual.BlackRuns==segments.Count(t=>t.black && t.size>=minimum) && periodicActual.WhiteRuns==segments.Count(t=>!t.black && t.size>=minimum) && periodicActual.CrossingRuns==segments.Count(t=>t.crossing && t.size>=minimum) && periodicActual.UnboundedBlack==ub && periodicActual.UnboundedWhite==uw && periodicActual.LongestFinite==segments.Select(t=>t.size).DefaultIfEmpty(0).Max(),"periodic float exhaustive oracle");
             }
             var qualityGraph=new ModuleGraph(); var binarySource=qualityGraph.Add(ModuleKind.BinaryLoad,0,0);binarySource.ImagePng=ModuleExecutor.EmbedImage(b.Image);var qc=qualityGraph.Add(ModuleKind.QualityCheck,250,0);qualityGraph.Connect(binarySource.Id,qc.Id,"fabric");
             Check(ModuleExecutor.Run(qualityGraph,qc.Id)[qc.Id].QualityNotes!.Any(t=>t.Contains("تعریف ماشین وصل نیست")), "quality module checks binary map without implying machine validation");
