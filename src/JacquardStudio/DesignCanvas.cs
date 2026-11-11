@@ -133,6 +133,14 @@ public sealed class DesignCanvas
         double innerX=rx-thickness,innerY=ry-thickness;
         for(int y=top;y<=bottom;y++)for(int x=left;x<=right;x++) {double dx=x-cx,dy=y-cy;double outer=dx*dx/(rx*rx)+dy*dy/(ry*ry);if(outer>1)continue;bool inner=innerX>0 && innerY>0 && dx*dx/(innerX*innerX)+dy*dy/(innerY*innerY)<1;if(filled || !inner)Put(x,y,color);}
     }
+    /// <summary>Draw the upper or lower half of an ellipse contained in the drag rectangle.</summary>
+    public void Arc(int x0,int y0,int x1,int y1,Color color,int thickness=1,bool bottom=false)
+    {
+        Editable();Check(x0,y0);Check(x1,y1);if(thickness<1 || thickness>32)throw new ArgumentOutOfRangeException(nameof(thickness));
+        int left=Math.Min(x0,x1),right=Math.Max(x0,x1),top=Math.Min(y0,y1),end=Math.Max(y0,y1);double cx=(left+right)/2.0,cy=(top+end)/2.0,rx=(right-left)/2.0,ry=(end-top)/2.0;
+        int steps=(int)Math.Clamp(2L*(right-left+end-top),12,16000);int? px=null,py=null;
+        for(int k=0;k<=steps;k++){double a=Math.PI*k/steps+(bottom?0:Math.PI);int x=Math.Clamp((int)Math.Round(cx+rx*Math.Cos(a)),left,right),y=Math.Clamp((int)Math.Round(cy+ry*Math.Sin(a)),top,end);if(px is int ox && py is int oy)Line(ox,oy,x,y,color,thickness);else Line(x,y,x,y,color,thickness);px=x;py=y;}
+    }
     public void SelectColor(int x,int y)
     {
         Check(x,y);Color target=At(x,y);var m=new bool[Width*Height];for(int p=0;p<m.Length;p++)m[p]=ColorAt(Current.Pixels,p)==target;Selection=m;

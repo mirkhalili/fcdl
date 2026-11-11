@@ -40,7 +40,7 @@ public static class ProjectFile
         public DateTimeOffset? CreatedAt { get; set; }
         public string WidthInput { get; set; } = ""; public string HeightInput { get; set; } = ""; public string ColorInput { get; set; } = "50";
         public string Stage { get; set; } = "Size"; public bool English { get; set; } public int MachineFormatIndex { get; set; }
-        public int? ColorLimit { get; set; } public int SourceColors { get; set; }
+        public int? ColorLimit { get; set; } public int ColorDistance { get; set; } public int SourceColors { get; set; }
         public bool[]? LockedColors { get; set; } public int[]? Colors { get; set; } public PatternInfo?[]? Patterns { get; set; }
     }
     private static void CheckDimensions(int width, int height, int limit)
@@ -108,7 +108,7 @@ public static class ProjectFile
             HasOverrides = session.PixelOverrides is not null,
             Designer = Bounded(state.Metadata?.Designer, 100), Usage = Bounded(state.Metadata?.Usage, 100), Description = Bounded(state.Metadata?.Description, 300),
             CreatedAt = state.CreatedAt, SourceName = Bounded(state.SourceName, 255), WidthInput = Bounded(state.WidthInput, 32), HeightInput = Bounded(state.HeightInput, 32), ColorInput = Bounded(state.ColorInput, 32),
-            Stage = Bounded(state.Stage, 16), English = state.English, MachineFormatIndex = state.MachineFormatIndex, ColorLimit = session.AppliedColorLimit,
+            Stage = Bounded(state.Stage, 16), English = state.English, MachineFormatIndex = state.MachineFormatIndex, ColorLimit = session.AppliedColorLimit, ColorDistance=session.AppliedColorDistance,
             SourceColors = palette?.SourceColorCount ?? 0, Colors = palette?.Colors, LockedColors = palette is null ? null : session.LockedColors,
             Patterns = palette is null ? null : session.Patterns.Select((p, i) => p is null ? null : new PatternInfo { Width = p.Width, Height = p.Height, Name = Bounded(state.PatternNames[i], 255), WeftColors = WeaveBank.CopyColors(p.WeftColors) }).ToArray()
         };
@@ -224,7 +224,8 @@ public static class ProjectFile
             setup = new MachineSetup(Bounded(settings.LeftWidth, 32, "0"), Bounded(settings.RightWidth, 32, "0"), ReadWeave(settings.LeftPattern, "machine/left.bin"), ReadWeave(settings.RightPattern, "machine/right.bin"), Bounded(settings.LeftPattern?.Name, 255), Bounded(settings.RightPattern?.Name, 255), settings.BoxEnabled, settings.BoxPlacement, Bounded(settings.BoxHooks, 256), Bounded(settings.BoxCodes, 8192), Bounded(settings.Sequence, 8192), settings.StartFromBottom, settings.UseSource, settings.RedAsBlack, m.Version >= 4 && settings.AbsoluteLayout, Bounded(settings.TotalHooks, 32), Bounded(settings.DesignStart, 32), Bounded(settings.WeftStart, 32, "0"), Bounded(settings.WeftCount, 32, "0"));
         }
         if (m.Version >= 13 && m.LockedColors is not null && (palette is null || m.LockedColors.Length != palette.Colors.Length)) throw new InvalidDataException("Invalid color locks.");
-        var session = WorkflowSession.Restore(source, resized, palette, m.ColorLimit, patterns, overrides, vectorSource, m.Version >= 13 ? m.LockedColors : null);
+        if(m.ColorDistance is <0 or >441)throw new InvalidDataException("Invalid RGB threshold.");
+        var session = WorkflowSession.Restore(source, resized, palette, m.ColorLimit, patterns, overrides, vectorSource, m.Version >= 13 ? m.LockedColors : null,m.ColorDistance);
         return new ProjectState(session, Bounded(m.SourceName, 255), Bounded(m.WidthInput, 32), Bounded(m.HeightInput, 32), Bounded(m.ColorInput, 32, "50"), stage, m.English, m.MachineFormatIndex, names, m.CreatedAt, new DesignMetadata(Bounded(m.Designer, 100), Bounded(m.Usage, 100), Bounded(m.Description, 300)), setup, m.Version >= 5 && m.DraftWeft is { } draft ? BoundedDraft(draft) : null, m.Version >= 6 && m.Simulation is { } simulation ? BoundedSimulation(simulation with { Wefts = m.Version < 7 ? null : simulation.Wefts, Mode = m.Version < 10 ? 1 : simulation.Mode }) : null);
     }
 }

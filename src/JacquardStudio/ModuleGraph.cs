@@ -26,6 +26,11 @@ public sealed class ModuleNode
     public string? AiInputHash { get; set; }
     public string? AiPromptHash { get; set; }
     public DesignDocumentData? DesignEditDocument { get; set; }
+    public bool DesignStandalone { get; set; }
+    public int DesignWidth { get; set; } = 256;
+    public int DesignHeight { get; set; } = 256;
+    public double DesignWarpDensity { get; set; } = 40;
+    public double DesignWeftDensity { get; set; } = 40;
     public string? DesignEditPng { get; set; }
     public string? DesignEditInputHash { get; set; }
     public int MaskX { get; set; } public int MaskY { get; set; } public int MaskWidth { get; set; } public int MaskHeight { get; set; }
@@ -34,6 +39,7 @@ public sealed class ModuleNode
     public bool InvertBinary { get; set; }
     public int Width { get; set; } public int Height { get; set; }
     public int ColorLimit { get; set; } = 256;
+    public int ColorDistance { get; set; }
     public ModuleColorEdit? ColorEdit { get; set; }
     public GraphCrop? Crop { get; set; }
     public int RepeatColumns { get; set; } = 1;
@@ -91,7 +97,7 @@ public sealed class ModuleGraph
     public ModuleNode Add(ModuleKind kind, double x, double y)
     {
         if (Nodes.Count >= 128 || !Enum.IsDefined(kind) || !double.IsFinite(x) || !double.IsFinite(y) || x is < 0 or > 10000 || y is < 0 or > 10000) throw new ArgumentException("Invalid module or position.");
-        var node = new ModuleNode { Kind = kind, X = x, Y = y, DefaultWeaveIndex = kind==ModuleKind.AutoWeaves ? -1 : 0 }; if(kind==ModuleKind.BlankDesign){node.Width=256;node.Height=256;} Nodes.Add(node); return node;
+        var node = new ModuleNode { Kind = kind, X = x, Y = y, DefaultWeaveIndex = kind==ModuleKind.AutoWeaves ? -1 : 0 }; if(kind==ModuleKind.BlankDesign){node.Width=256;node.Height=256;} if(kind==ModuleKind.Colors)node.ColorDistance=12; Nodes.Add(node); return node;
     }
     /// <summary>Place existing nodes in insertion order without altering connections.</summary>
     public void Arrange(int rows, int columns)
@@ -123,7 +129,9 @@ public sealed class ModuleGraph
         if (Nodes.Any(n => n.Kind == ModuleKind.CreateWeave && (n.Weaves.Count > 1 || n.Weaves.Any(p => p is null || p.Width > WeaveEditor.MaxSide || p.Height > WeaveEditor.MaxSide)))) throw new InvalidDataException("A weave designer node holds at most one weave.");
         foreach (var n in Nodes) {
             if(n.DesignFields is null || n.DesignFields.Count>50 || n.DesignFields.Any(f=>f is null || string.IsNullOrWhiteSpace(f.Title) || f.Title.Length>100 || f.Text is null || f.Text.Length>2000) || n.Manufacturer is null || n.Manufacturer.Length>100 || n.AiPrompt is null || n.AiPrompt.Length>4000 || n.SourcePage<0 || n.SourcePage>=ImageLoader.MaxFrames) throw new InvalidDataException("Invalid module metadata.");
+            if(n.Kind==ModuleKind.DesignEditor && n.DesignStandalone) { try {new DesignBlankSettings(n.DesignWidth,n.DesignHeight,n.DesignWarpDensity,n.DesignWeftDensity).Validate();} catch(ArgumentException ex){throw new InvalidDataException("Invalid blank design settings.",ex);} }
             if(n.DesignEditDocument is { } doc && (n.Kind!=ModuleKind.DesignEditor || n.DesignEditInputHash is null || n.DesignEditInputHash.Length!=64 || doc.Layers is null || doc.Layers.Count is <1 or >DesignCanvas.MaxLayers || doc.Active<0 || doc.Active>=doc.Layers.Count || doc.Layers.Any(l=>l is null || string.IsNullOrWhiteSpace(l.Name) || l.Name.Length>80 || l.Opacity is <0 or >100 || string.IsNullOrEmpty(l.Png) || l.Png.Length>ImageLoader.MaxFileBytes*2) || doc.TraceOpacity is <0 or >100 || doc.TraceWidth is <0 or >16000 || doc.TraceHeight is <0 or >16000 || Math.Abs((long)doc.TraceX)>16000 || Math.Abs((long)doc.TraceY)>16000 || doc.TracePng?.Length>ImageLoader.MaxFileBytes*2)) throw new InvalidDataException("Invalid design document.");
+            if (n.Kind == ModuleKind.Colors && n.ColorDistance is <0 or >441) throw new InvalidDataException("Invalid color threshold.");
             if (n.Kind == ModuleKind.RectangleMask && (n.MaskX < 0 || n.MaskY < 0 || n.MaskWidth < 0 || n.MaskHeight < 0)) throw new InvalidDataException("Invalid mask coordinates.");
             if (n.Kind == ModuleKind.ApplyMask && (n.MaskFill is null || n.MaskFill.Length > 32)) throw new InvalidDataException("Invalid mask background.");
             if (n.Kind == ModuleKind.Repeat && (n.RepeatColumns < 1 || n.RepeatRows < 1 || !Enum.IsDefined(n.RepeatMode))) throw new InvalidDataException("Invalid repeat settings.");
@@ -206,7 +214,10 @@ public static class ModuleExecutor
                 case ModuleKind.BlankDesign:
                     result=new(ModuleData.Image,DesignCanvas.Blank(node.Width,node.Height,FabricSimulation.ParseColor(node.MaskFill)));break;
                 case ModuleKind.DesignEditor:
-                    var designInput=Input("image").Image!;
+                    var designEdge=graph.Edges.SingleOrDefault(e=>e.To==id && e.Port=="image");
+                    BitmapSource designInput;
+                    if(designEdge is null) {if(!node.DesignStandalone)throw new InvalidOperationException("برای بوم بدون تصویر، ابتدا ماژول طراحی را باز و ابعاد را تعیین کنید.");designInput=DesignCanvas.Blank(node.DesignWidth,node.DesignHeight,Colors.White);}
+                    else {if(node.DesignStandalone)throw new InvalidOperationException("ورودی طراحی تغییر کرده است؛ ویرایشگر را باز و دوباره تأیید کنید.");designInput=Evaluate(designEdge.From).Image ?? throw new InvalidOperationException("ورودی تصویر آماده نیست.");}
                     if(node.DesignEditPng is null && node.DesignEditDocument is null) { result=new(ModuleData.Image,designInput); break; }
                     if(node.DesignEditInputHash!=ImageFingerprint(designInput)) throw new InvalidOperationException("ورودی طراحی تغییر کرده است؛ ویرایشگر را باز و مجدداً اعمال کنید.");
                     if(node.DesignEditDocument is { } designDocument) {result=new(ModuleData.Image,new DesignCanvas(designInput,designDocument).Composite());break;}
@@ -228,7 +239,7 @@ public static class ModuleExecutor
                 case ModuleKind.Colors:
                     var image = Input("image").Image!; PaletteResult palette;
                     if (node.ColorEdit is { } edit) { if (edit.Palette.Width != image.PixelWidth || edit.Palette.Height != image.PixelHeight || edit.InputHash != ImageFingerprint(image)) throw new InvalidOperationException("ورودی مدیریت رنگ تغییر کرده است؛ ماژول رنگ را باز و دوباره اعمال کنید."); palette=edit.Palette; }
-                    else palette = DesignProcessor.Prepare(image,image.PixelWidth,image.PixelHeight,node.ColorLimit);
+                    else { var rawPalette=DesignProcessor.Prepare(image,image.PixelWidth,image.PixelHeight,node.ColorDistance>0 ? 256 : node.ColorLimit);palette=PaletteSimilarity.Reduce(rawPalette,new bool[rawPalette.Colors.Length],node.ColorLimit,node.ColorDistance).Palette; }
                     result = new(ModuleData.Palette,DesignProcessor.RenderColors(palette),palette); break;
                 case ModuleKind.MatchPalette:
                     var matched=PaletteReferenceMatcher.Match(Input("palette").Palette!,Input("reference").Palette!);
@@ -307,6 +318,7 @@ public static class ModuleExecutor
         if(value.Weaves is { } weaves) { lines.Add($"تعداد بافت: {weaves.Count}"); foreach(var name in node.WeaveNames.Take(20)) lines.Add("بافت: " + name); }
         if(node.Kind==ModuleKind.Floats) lines.Add($"فلوت: {value.FloatCount} · حداقل طول {node.FloatMinimum} · {(node.FloatWarp ? "تار" : "پود")}");
         if(value.Analysis is { } a) lines.Add($"میانگین شاخص تار: {a.Mean:0.##} (تحلیل نسبی، نه اندازه‌گیری فیزیکی)");
+        if(node.Kind==ModuleKind.DesignEditor && node.DesignStandalone)lines.Add($"بوم: {node.DesignWidth} تار × {node.DesignHeight} پود · تراکم: {node.DesignWarpDensity} / {node.DesignWeftDensity} در سانتی‌متر (فقط اطلاعات طرح)");
         if(node.Kind==ModuleKind.Repeat) lines.Add($"تکرار: {node.RepeatColumns} × {node.RepeatRows} · {node.RepeatMode}");
         if(node.Kind==ModuleKind.Crop && node.Crop is { } c) lines.Add($"برش: ({c.X}, {c.Y}) · {c.Width} × {c.Height}");
         if(node.Kind==ModuleKind.Resize) lines.Add($"اندازه درخواستی: {node.Width} × {node.Height} (صفر یعنی اندازه ورودی)");

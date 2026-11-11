@@ -69,7 +69,7 @@ public partial class MainWindow : Window
     {
         if (kind is not (ModuleKind.Resize or ModuleKind.Colors or ModuleKind.ApplyWeaves or ModuleKind.Floats or ModuleKind.Tension)) throw new ArgumentException("This module is not supported by the legacy stage editor.");
         moduleEditorKind=kind; connectedWeaves=projectWeaves ?? Array.Empty<BankItem>(); AllowDrop=false; session=prepared.Snapshot(); path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"jacquard-graph-input"); sourceName="Graph input"; current=new ImageResult(session.Source,1,0,"Graph");
-        WidthInput.Text=session.Resized!.PixelWidth.ToString(); HeightInput.Text=session.Resized.PixelHeight.ToString(); ColorInput.Text=(session.AppliedColorLimit ?? 256).ToString();
+        WidthInput.Text=session.Resized!.PixelWidth.ToString(); HeightInput.Text=session.Resized.PixelHeight.ToString(); ColorInput.Text=(session.AppliedColorLimit ?? 256).ToString(); ColorDistanceInput.Text=session.AppliedColorDistance.ToString();
         stage=kind switch { ModuleKind.Resize => Stage.Size, ModuleKind.ApplyWeaves => Stage.Patterns, ModuleKind.Floats => Stage.Floats, ModuleKind.Tension => Stage.Analysis, _ => Stage.Colors }; Navigation.Visibility=Visibility.Collapsed;
         OpenButton.Visibility=SaveProjectButton.Visibility=SaveProjectAsButton.Visibility=InfoButton.Visibility=ReportButton.Visibility=BankButton.Visibility=Visibility.Collapsed;
         ModuleApplyButton.Visibility=ModuleCancelButton.Visibility=Visibility.Visible; ToColorButton.Visibility=ToPatternButton.Visibility=Visibility.Collapsed;
@@ -114,7 +114,7 @@ public partial class MainWindow : Window
     private void MarkProjectDirty() { if (session is not null) { projectDirty = true; UpdateWindowTitle(); } }
     private string T(string fa, string en) => english ? en : fa;
     private bool SizeDirty => session?.Resized is null || !NumberInput.TryInt(WidthInput.Text, out int w) || !NumberInput.TryInt(HeightInput.Text, out int h) || w != session.Resized.PixelWidth || h != session.Resized.PixelHeight;
-    private bool ColorsDirty => session?.Palette is null || !NumberInput.TryInt(ColorInput.Text, out int colors) || colors != session.AppliedColorLimit;
+    private bool ColorsDirty => session?.Palette is null || !NumberInput.TryInt(ColorInput.Text, out int colors) || colors != session.AppliedColorLimit || !NumberInput.TryInt(ColorDistanceInput.Text,out int distance) || distance != session.AppliedColorDistance;
 
     private async Task<bool> ConfirmDiscardAsync()
     {
@@ -142,17 +142,17 @@ public partial class MainWindow : Window
         SetBusy(true); StatusText.Text = T("در حال باز کردن تصویر…", "Loading image…");
         try
         {
-            var result = await Task.Run(() => ImageLoader.Load(filename, page));
+            var result = await Task.Run(() => ImageLoader.Load(filename, page, true));
             var next = new WorkflowSession(result.Image, result.Vector);
             double scale = Math.Min(1, Math.Sqrt((double)DesignProcessor.MaxPixels / ((long)result.Image.PixelWidth * result.Image.PixelHeight)));
             int initialWidth = Math.Min(DesignProcessor.MaxPixels, Math.Max(1, (int)Math.Floor(result.Image.PixelWidth * scale)));
             int initialHeight = Math.Min(DesignProcessor.MaxPixels / initialWidth, Math.Max(1, (int)Math.Floor(result.Image.PixelHeight * scale)));
             await Task.Run(() => next.ApplySize(initialWidth, initialHeight));
             path = filename; projectPath = null; projectCreated = DateTimeOffset.Now; metadata = new(); LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); LoadSimulationSettings(new SimulationSettings()); ClearHistory(); sourceName = Path.GetFileName(filename); current = result; session = next; RebuildPaletteEntries();
-            WidthInput.Text = initialWidth.ToString(); HeightInput.Text = initialHeight.ToString(); ColorInput.Text = "256";
+            WidthInput.Text = initialWidth.ToString(); HeightInput.Text = initialHeight.ToString(); ColorInput.Text = "256"; ColorDistanceInput.Text="12";
             FileValue.Text = Path.GetFileName(filename); FormatValue.Text = $"{result.Format} · {result.Image.Format.BitsPerPixel} bpp";
             zoom = 1; SetZoom(1); stage = Stage.Size; projectDirty = true; ShowStage();
-            StatusText.Text = scale < 1 ? T("تصویر بزرگ بود؛ اندازه اولیه متناسب با سقف ۴ میلیون پیکسل کاهش یافت.", "Image was scaled to fit the 4-million-pixel processing limit.") : T("اندازه اولیه اعمال شد؛ در صورت نیاز آن را تغییر دهید.", "Original dimensions applied; change them if needed.");
+            StatusText.Text = result.OriginalWidth>0 ? T($"عرض تصویر از {result.OriginalWidth} به ۴۰۰۰ پیکسل کاهش یافت." + (scale<1 ? " اندازه پردازشی نیز با سقف چهار میلیون پیکسل متناسب شد." : ""), $"Image width was reduced from {result.OriginalWidth} to 4000 pixels.") : scale < 1 ? T("تصویر بزرگ بود؛ اندازه اولیه متناسب با سقف ۴ میلیون پیکسل کاهش یافت.", "Image was scaled to fit the 4-million-pixel processing limit.") : T("اندازه اولیه اعمال شد؛ در صورت نیاز آن را تغییر دهید.", "Original dimensions applied; change them if needed.");
         }
         catch (Exception ex)
         {
@@ -228,7 +228,7 @@ public partial class MainWindow : Window
             // Only replace current work after the complete archive has been checked.
             session = state.Session; path = filename; projectPath = filename; projectCreated = state.CreatedAt; metadata = state.Metadata ?? new(); LoadMachineSettings(state.Machine ?? new MachineSetup(AbsoluteLayout: true), state.DraftWeft); LoadSimulationSettings(state.Simulation ?? new SimulationSettings()); ClearHistory(); sourceName = state.SourceName;
             current = new ImageResult(session.Source, 1, 0, "SAM");
-            WidthInput.Text = state.WidthInput; HeightInput.Text = state.HeightInput; ColorInput.Text = state.ColorInput;
+            WidthInput.Text = state.WidthInput; HeightInput.Text = state.HeightInput; ColorInput.Text = state.ColorInput; ColorDistanceInput.Text = session.AppliedColorDistance.ToString();
             english = state.English; stage = Enum.Parse<Stage>(state.Stage); machineFormatIndex = state.MachineFormatIndex;
             switch (machineFormatIndex) { case 0: FormatJC4.IsChecked = true; break; case 1: FormatJC5.IsChecked = true; break; case 2: FormatZC5.IsChecked = true; break; case 3: FormatEP.IsChecked = true; break; case 4: FormatJC6.IsChecked = true; break; case 5: FormatBonas.IsChecked = true; break; }
             RebuildPaletteEntries(state.PatternNames);
@@ -394,12 +394,13 @@ public partial class MainWindow : Window
         if (busy || session?.Resized is null || SizeDirty) return;
         if (!NumberInput.TryInt(ColorInput.Text, out int colors) || colors is < 1 or > 256)
         { MessageBox.Show(this, T("تعداد رنگ باید بین ۱ تا ۲۵۶ باشد.", "The color count must be between 1 and 256.")); return; }
+        if(!NumberInput.TryInt(ColorDistanceInput.Text,out int rgbDistance) || rgbDistance is <0 or >441) {MessageBox.Show(this,T("آستانه فاصله RGB باید بین ۰ تا ۴۴۱ باشد.","RGB distance threshold must be between 0 and 441."));return;}
         if (session.LockedColors.Count(x => x) > colors) { MessageBox.Show(this, T("تعداد رنگ نباید کمتر از تعداد رنگ‌های قفل‌شده باشد.", "The limit cannot be less than the number of locked colors.")); return; }
         if (confirm && !ConfirmPatternLoss()) return;
         var before = CaptureHistory(); SetBusy(true); StatusText.Text = T("در حال بررسی رنگ‌ها…", "Analyzing colors…");
         try
         {
-            await Task.Run(() => session.ApplyColors(colors)); RecordHistory(before);
+            await Task.Run(() => session.ApplyColors(colors,rgbDistance)); RecordHistory(before);
             RebuildPaletteEntries(); stage = Stage.Colors; ShowStage();
             StatusText.Text = session.LockedColors.Any(x => x) && session.Palette!.Colors.Length < colors
                 ? T("با وجود قفل، افزایش تعداد رنگ‌های حذف‌شده را بازنمی‌گرداند؛ برای بازسازی از تصویر، قفل‌ها را باز کنید.", "With locks active, increasing the limit cannot restore removed colors; unlock all colors to rebuild from the source.")
@@ -508,7 +509,7 @@ public partial class MainWindow : Window
     {
         session = state.Session.Snapshot(); stage = state.Stage; MarkProjectDirty(); InvalidateAnalysis();
         if (session.Resized is not null) { WidthInput.Text = session.Resized.PixelWidth.ToString(); HeightInput.Text = session.Resized.PixelHeight.ToString(); }
-        if (session.AppliedColorLimit is int limit) ColorInput.Text = limit.ToString();
+        if (session.AppliedColorLimit is int limit) ColorInput.Text = limit.ToString(); ColorDistanceInput.Text=session.AppliedColorDistance.ToString();
         RebuildPaletteEntries(state.Names);
         for (int i = 0; i < entries.Count; i++) if (state.Paths[i] is string path && session.Patterns[i] is { } pattern) entries[i].Assign(path, pattern);
         ShowStage(); StatusText.Text = T("تاریخچه تغییرات بازیابی شد.", "History state restored.");
@@ -1407,7 +1408,7 @@ public partial class MainWindow : Window
         WidthLabel.Text = T("عرض (پیکسل)", "Width (px)"); HeightLabel.Text = T("ارتفاع (پیکسل)", "Height (px)"); ApplySizeButton.Content = T("اعمال اندازه", "Apply size"); SaveSizeButton.Content = T("ذخیره خروجی اندازه", "Save resized image"); ToColorButton.Content = T("مرحله بعد: رنگ ←", "Next: colors →");
         SizeNotice.Text = T("تصویر پیکسلی با نزدیک‌ترین همسایه و PDF/AI از منبع برداری بدون هموارسازی تغییر اندازه می‌یابند؛ نسبت ابعاد خودکار حفظ نمی‌شود.", "Raster images use nearest-neighbor; PDF/AI are rerendered from vectors without smoothing. Aspect ratio is not locked.");
         ColorTitle.Text = T("مرحله ۲ · کاهش رنگ", "Stage 2 · Colors"); ColorHint.Text = T("ورودی این مرحله تصویر تغییراندازه‌یافته است؛ ابتدا تا ۲۵۶ رنگ سازگار با تصویر نمایش داده می‌شود؛ سپس تعداد را کاهش دهید.", "Input is the resized image; up to 256 adaptive colors are shown first; reduce the count as needed.");
-        ColorLimitLabel.Text = T("حداکثر تعداد رنگ (۱ تا ۲۵۶)", "Maximum colors (1–256)"); ApplyColorButton.Content = T("اعمال تعداد رنگ", "Apply color limit"); SaveColorButton.Content = T("خروجی تصویر", "Export image"); SavePaletteButton.Content = T("ذخیره پالت رنگ PNG", "Save palette PNG"); ToPatternButton.Content = T("مرحله بعد: بافت ←", "Next: patterns →");
+        ColorLimitLabel.Text = T("حداکثر تعداد رنگ (۱ تا ۲۵۶)", "Maximum colors (1–256)"); ColorDistanceLabel.Text=T("آستانه شباهت RGB (۰ تا ۴۴۱؛ صفر = بدون ادغام)","RGB similarity threshold (0–441; 0 = no merging)"); ApplyColorButton.Content = T("اعمال تعداد رنگ", "Apply color limit"); SaveColorButton.Content = T("خروجی تصویر", "Export image"); SavePaletteButton.Content = T("ذخیره پالت رنگ PNG", "Save palette PNG"); ToPatternButton.Content = T("مرحله بعد: بافت ←", "Next: patterns →");
         SaveButton.Content = T("ذخیره تصویر", "Save image");
         ColorSelectionHint.Text = T("برای انتخاب رنگ‌ها، روی تصویر کادر بکشید.", "Drag on the image to select colors."); DeleteColorButton.Content = T("حذف رنگ‌های انتخابی", "Remove selected"); MergeColorButton.Content = T("ادغام رنگ‌ها", "Merge colors");
         BankTitle.Text = T("بانک و طراحی بافت", "Weave bank and editor"); BankHint.Text = T("یک بافت انتخاب کنید یا روی شبکه ترسیم کنید.", "Select a weave or draw on the grid."); BankBackButton.Content = T("بازگشت", "Back");

@@ -11,6 +11,7 @@ public sealed class WorkflowSession
     public PaletteResult? Palette { get; private set; }
     public BitmapSource? ColorPreview { get; private set; }
     public int? AppliedColorLimit { get; private set; }
+    public int AppliedColorDistance { get; private set; }
     // Immutable-by-replacement, aligned with Palette.Colors for undo and SAM persistence.
     public bool[] LockedColors { get; private set; } = Array.Empty<bool>();
     public WeavePattern?[] Patterns { get; private set; } = Array.Empty<WeavePattern?>();
@@ -28,21 +29,18 @@ public sealed class WorkflowSession
         Resized = image; Palette = null; ColorPreview = null; AppliedColorLimit = null; LockedColors = Array.Empty<bool>();
         Patterns = Array.Empty<WeavePattern?>(); PatternPreview = null; BasePatternPreview = null; PixelOverrides = null;
     }
-    public void ApplyColors(int maximum)
+    public void ApplyColors(int maximum, int rgbDistance = 0)
     {
         var input = Resized ?? throw new InvalidOperationException("Apply size first.");
         if (maximum is < 1 or > 256) throw new ArgumentOutOfRangeException(nameof(maximum));
+        if(rgbDistance is <0 or >441)throw new ArgumentOutOfRangeException(nameof(rgbDistance));
         PaletteResult palette; bool[] locks;
-        if (Palette is { } current && LockedColors.Any(x => x))
-        {
-            int lockedCount = LockedColors.Count(x => x); if (maximum < lockedCount) throw new ArgumentException("The color limit cannot be lower than the number of locked colors.");
-            var keep = Enumerable.Range(0, current.Colors.Length).Where(i => LockedColors[i]).Concat(Enumerable.Range(0, current.Colors.Length).Where(i => !LockedColors[i]).OrderByDescending(i => current.Counts[i]).ThenBy(i => current.Colors[i]).Take(Math.Max(0, maximum - lockedCount))).Order().ToArray();
-            palette = DesignProcessor.KeepColors(current, keep); locks = keep.Select(i => LockedColors[i]).ToArray();
-        }
-        else { palette = DesignProcessor.Prepare(input, input.PixelWidth, input.PixelHeight, maximum); locks = new bool[palette.Colors.Length]; }
+        if (Palette is { } current && LockedColors.Any(x => x)) { palette=current;locks=(bool[])LockedColors.Clone(); }
+        else { palette = DesignProcessor.Prepare(input, input.PixelWidth, input.PixelHeight, rgbDistance>0 ? 256 : maximum); locks = new bool[palette.Colors.Length]; }
+        (palette,locks)=PaletteSimilarity.Reduce(palette,locks,maximum,rgbDistance);
         var patterns = new WeavePattern?[palette.Colors.Length];
         var preview = DesignProcessor.Render(palette, patterns); var colorPreview = DesignProcessor.RenderColors(palette);
-        Palette = palette; LockedColors = locks; Patterns = patterns; ColorPreview = colorPreview; PatternPreview = preview; BasePatternPreview = preview; AppliedColorLimit = maximum; PixelOverrides = null;
+        Palette = palette; LockedColors = locks; Patterns = patterns; ColorPreview = colorPreview; PatternPreview = preview; BasePatternPreview = preview; AppliedColorLimit = maximum; AppliedColorDistance=rgbDistance; PixelOverrides = null;
     }
     public void MergeColors(int source, int target)
     {
@@ -95,10 +93,10 @@ public sealed class WorkflowSession
         var basePreview = DesignProcessor.Render(palette, next); var preview = ApplyOverrides(basePreview, PixelOverrides);
         Patterns = next; BasePatternPreview = basePreview; PatternPreview = preview;
     }
-    internal static WorkflowSession Restore(BitmapSource source, BitmapSource? resized, PaletteResult? palette, int? limit, WeavePattern?[] patterns, byte[]? overrides = null, VectorDocument? vector = null, bool[]? lockedColors = null)
+    internal static WorkflowSession Restore(BitmapSource source, BitmapSource? resized, PaletteResult? palette, int? limit, WeavePattern?[] patterns, byte[]? overrides = null, VectorDocument? vector = null, bool[]? lockedColors = null, int colorDistance = 0)
     {
         if (lockedColors is not null && (palette is null || lockedColors.Length != palette.Colors.Length)) throw new ArgumentException("Invalid color locks.");
-        var session = new WorkflowSession(source, vector) { Resized = resized, Palette = palette, AppliedColorLimit = limit, Patterns = patterns, PixelOverrides = overrides, LockedColors = lockedColors is null ? new bool[palette?.Colors.Length ?? 0] : (bool[])lockedColors.Clone() };
+        var session = new WorkflowSession(source, vector) { Resized = resized, Palette = palette, AppliedColorLimit = limit, AppliedColorDistance=colorDistance, Patterns = patterns, PixelOverrides = overrides, LockedColors = lockedColors is null ? new bool[palette?.Colors.Length ?? 0] : (bool[])lockedColors.Clone() };
         if (palette is not null)
         {
             session.ColorPreview = DesignProcessor.RenderColors(palette);
@@ -147,6 +145,6 @@ public sealed class WorkflowSession
         PixelOverrides = next; PatternPreview = output;
     }
     // Stage results are replaced, never modified in place; share them for bounded undo snapshots.
-    public WorkflowSession Snapshot() => new(Source, Vector) { Resized = Resized, Palette = Palette, LockedColors = LockedColors, ColorPreview = ColorPreview, AppliedColorLimit = AppliedColorLimit, Patterns = Patterns, PatternPreview = PatternPreview, BasePatternPreview = BasePatternPreview, PixelOverrides = PixelOverrides };
+    public WorkflowSession Snapshot() => new(Source, Vector) { Resized = Resized, Palette = Palette, LockedColors = LockedColors, ColorPreview = ColorPreview, AppliedColorLimit = AppliedColorLimit, AppliedColorDistance = AppliedColorDistance, Patterns = Patterns, PatternPreview = PatternPreview, BasePatternPreview = BasePatternPreview, PixelOverrides = PixelOverrides };
     public bool CanSave => Palette is not null && Patterns.Length > 0 && Patterns.All(p => p is not null);
 }

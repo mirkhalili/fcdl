@@ -433,9 +433,9 @@ public partial class ModuleWindow : Window
         string ext=System.IO.Path.GetExtension(picker.FileName).ToLowerInvariant(); if(vector ? ext is not (".pdf" or ".ai") : binary ? ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jc5") : ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".ico" or ".wdp" or ".jxr")) { MessageBox.Show(owner,"پسوند فایل با نوع ماژول سازگار نیست."); return; }
         try
         {
-            busy=true; Status.Text="در حال بارگذاری طرح…"; var first=await Task.Run(()=>ext==".jc5" ? new ImageResult(Jc5Codec.Load(picker.FileName),1,0,"JC5") : ImageLoader.Load(picker.FileName,0)); busy=false;
-            ImageResult chosen=first; if(ext!=".jc5") { var pages=new SourcePageWindow(picker.FileName,first) { Owner=owner }; if(pages.ShowDialog()!=true || pages.Result is not { } selectedPage) return; chosen=selectedPage; } if(binary) await Task.Run(()=> {if((long)chosen.Image.PixelWidth*chosen.Image.PixelHeight>DesignProcessor.MaxPixels)throw new InvalidDataException("نقشه باید حداکثر چهار میلیون پیکسل باشد."); _=DesignAnalysis.ReadBinary(chosen.Image);});
-            busy=true; var png=await Task.Run(()=>ModuleExecutor.EmbedImage(chosen.Image)); node.ImagePng=png; node.VectorPdfBase64=chosen.Vector is null ? null : Convert.ToBase64String(chosen.Vector.PdfBytes); node.SourcePage=chosen.PageIndex; node.Label=System.IO.Path.GetFileName(picker.FileName); Changed(); RenderGraph(); Inspect(); Status.Text=$"صفحه {chosen.PageIndex+1} از {chosen.PageCount} انتخاب شد.";
+            busy=true; Status.Text="در حال بارگذاری طرح…"; var first=await Task.Run(()=>ext==".jc5" ? new ImageResult(Jc5Codec.Load(picker.FileName),1,0,"JC5") : ImageLoader.Load(picker.FileName,0,!binary)); busy=false;
+            ImageResult chosen=first; if(ext!=".jc5") { var pages=new SourcePageWindow(picker.FileName,first,!binary) { Owner=owner }; if(pages.ShowDialog()!=true || pages.Result is not { } selectedPage) return; chosen=selectedPage; } if(binary) await Task.Run(()=> {if((long)chosen.Image.PixelWidth*chosen.Image.PixelHeight>DesignProcessor.MaxPixels)throw new InvalidDataException("نقشه باید حداکثر چهار میلیون پیکسل باشد."); _=DesignAnalysis.ReadBinary(chosen.Image);});
+            busy=true; var png=await Task.Run(()=>ModuleExecutor.EmbedImage(chosen.Image)); node.ImagePng=png; node.VectorPdfBase64=chosen.Vector is null ? null : Convert.ToBase64String(chosen.Vector.PdfBytes); node.SourcePage=chosen.PageIndex; node.Label=System.IO.Path.GetFileName(picker.FileName); Changed(); RenderGraph(); Inspect(); Status.Text=$"صفحه {chosen.PageIndex+1} از {chosen.PageCount} انتخاب شد." + (chosen.OriginalWidth>0 ? $" عرض از {chosen.OriginalWidth} به {chosen.Image.PixelWidth} پیکسل کاهش یافت." : "");
         }
         catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or UnauthorizedAccessException) { ModuleErrors.Show(owner,ex); }
         finally { busy=false; }
@@ -619,24 +619,28 @@ public partial class ModuleWindow : Window
     }
     private async Task EditDesignAsync(ModuleNode node)
     {
-        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="image");
-        if(edge is null) { MessageBox.Show(this,"ابتدا یک تصویر به ورودی ماژول طراحی متصل کنید."); return; }
-        IReadOnlyDictionary<Guid,ModuleValue> inputs; BitmapSource source; string hash;
-        try { busy=true; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=false; inputs=await Task.Run(()=>ModuleExecutor.Run(graph,edge.From)); source=inputs[edge.From].Image ?? throw new InvalidOperationException("تصویر ورودی آماده نیست."); hash=await Task.Run(()=>ModuleExecutor.ImageFingerprint(source)); }
+        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="image"); bool standalone=edge is null;
+        var settings=new DesignBlankSettings(node.DesignWidth,node.DesignHeight,node.DesignWarpDensity,node.DesignWeftDensity);
+        if(standalone) { var setup=new DesignBlankWindow(settings){Owner=this};if(setup.ShowDialog()!=true || setup.Result is null)return;settings=setup.Result; }
+        IReadOnlyDictionary<Guid,ModuleValue> inputs=new Dictionary<Guid,ModuleValue>(); BitmapSource source; string hash;
+        try { busy=true; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=false; if(standalone)source=await Task.Run(()=>DesignCanvas.Blank(settings.Width,settings.Height,Colors.White));else {inputs=await Task.Run(()=>ModuleExecutor.Run(graph,edge!.From));source=inputs[edge!.From].Image ?? throw new InvalidOperationException("تصویر ورودی آماده نیست.");} hash=await Task.Run(()=>ModuleExecutor.ImageFingerprint(source)); }
         catch(Exception ex) when(ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) {ModuleErrors.Show(this,ex);return;}
         finally {busy=false;GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=true;}
-        if((node.DesignEditPng is not null || node.DesignEditDocument is not null) && node.DesignEditInputHash!=hash && MessageBox.Show(this,"ورودی تغییر کرده است. ویرایش قبلی کنار گذاشته شود؟","طراحی",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
+        bool compatible=node.DesignEditInputHash==hash && node.DesignStandalone==standalone;
+        if((node.DesignEditPng is not null || node.DesignEditDocument is not null) && !compatible && MessageBox.Show(this,"ورودی یا ابعاد تغییر کرده است. ویرایش قبلی کنار گذاشته شود؟","طراحی",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
         try
         {
             BitmapSource initial=source;
-            if(node.DesignEditDocument is null && node.DesignEditPng is not null && node.DesignEditInputHash==hash)
+            if(node.DesignEditDocument is null && node.DesignEditPng is not null && compatible)
             {
                 byte[] bytes=Convert.FromBase64String(node.DesignEditPng); if(bytes.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("تصویر بیش از حد بزرگ است.");
                 using var stream=new MemoryStream(bytes); var frame=BitmapDecoder.Create(stream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad).Frames[0];
                 if(frame.PixelWidth!=source.PixelWidth || frame.PixelHeight!=source.PixelHeight) throw new InvalidDataException("ابعاد تصویر طراحی معتبر نیست."); frame.Freeze(); initial=frame;
             }
-            var editor=new DesignEditorWindow(initial,node.DesignEditInputHash==hash ? node.DesignEditDocument : null) {Owner=this}; if(editor.ShowDialog()!=true || editor.Result is null || editor.Document is null)return;
-            string encoded=await Task.Run(()=>ModuleExecutor.EmbedImage(editor.Result)); node.DesignEditPng=encoded;node.DesignEditDocument=editor.Document;node.DesignEditInputHash=hash;Changed(node.Id);MergeResults(inputs);await ExecuteAsync(node);RenderGraph();
+            var editor=new DesignEditorWindow(initial,compatible ? node.DesignEditDocument : null,standalone ? settings : null) {Owner=this}; if(editor.ShowDialog()!=true || editor.Result is null || editor.Document is null)return;
+            string encoded=await Task.Run(()=>ModuleExecutor.EmbedImage(editor.Result)); node.DesignEditPng=encoded;node.DesignEditDocument=editor.Document;node.DesignEditInputHash=hash;node.DesignStandalone=standalone;
+            if(standalone){node.DesignWidth=settings.Width;node.DesignHeight=settings.Height;node.DesignWarpDensity=settings.WarpDensity;node.DesignWeftDensity=settings.WeftDensity;}
+            Changed(node.Id);MergeResults(inputs);await ExecuteAsync(node);RenderGraph();
         }
         catch(Exception ex) when(ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) {ModuleErrors.Show(this,ex);}
     }
@@ -665,8 +669,8 @@ public partial class ModuleWindow : Window
             if (node.Kind==ModuleKind.Colors && node.ColorEdit is { } prior && prior.InputHash!=hash && MessageBox.Show(this,"ورودی تصویر تغییر کرده است. ویرایش رنگ قبلی با پالت جدید جایگزین شود؟","ورودی تغییر کرده",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
             prepared=await Task.Run(()=> {
                 if(node.Kind==ModuleKind.Resize) { var s=new WorkflowSession(source,inputs[edge.From].Vector); s.ApplySize(node.Width==0 ? source.PixelWidth : node.Width,node.Height==0 ? source.PixelHeight : node.Height); return s; }
-                var edit=node.ColorEdit; var palette=edit is not null && edit.InputHash==hash ? edit.Palette : DesignProcessor.Prepare(source,source.PixelWidth,source.PixelHeight,node.ColorLimit);
-                return WorkflowSession.Restore(source,source,palette,node.ColorLimit,new WeavePattern?[palette.Colors.Length],lockedColors:edit is not null && edit.InputHash==hash ? edit.Locks : null);
+                var edit=node.ColorEdit; var raw=DesignProcessor.Prepare(source,source.PixelWidth,source.PixelHeight,node.ColorDistance>0 ? 256 : node.ColorLimit); var palette=edit is not null && edit.InputHash==hash ? edit.Palette : PaletteSimilarity.Reduce(raw,new bool[raw.Colors.Length],node.ColorLimit,node.ColorDistance).Palette;
+                return WorkflowSession.Restore(source,source,palette,node.ColorLimit,new WeavePattern?[palette.Colors.Length],lockedColors:edit is not null && edit.InputHash==hash ? edit.Locks : null,colorDistance:node.ColorDistance);
             });
         }
         catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) { ModuleErrors.Show(Window.GetWindow(Inspector) ?? this,ex,"خطای ورودی ماژول"); return; }
@@ -674,7 +678,7 @@ public partial class ModuleWindow : Window
         var dialog=new MainWindow { Owner=this }; dialog.ConfigureModuleEditor(node.Kind,prepared);
         if(dialog.ShowDialog()!=true || dialog.ModuleEditorResult is not { } output) return;
         if(node.Kind==ModuleKind.Resize) { node.Width=output.Resized!.PixelWidth; node.Height=output.Resized.PixelHeight; }
-        else { node.ColorLimit=output.AppliedColorLimit!.Value; node.ColorEdit=new ModuleColorEdit(hash,output.Palette!, (bool[])output.LockedColors.Clone()); }
+        else { node.ColorLimit=output.AppliedColorLimit!.Value; node.ColorDistance=output.AppliedColorDistance; node.ColorEdit=new ModuleColorEdit(hash,output.Palette!, (bool[])output.LockedColors.Clone()); }
         Changed(); MergeResults(inputs); await ExecuteAsync(node); RenderGraph();
     }
     private void ExportGraphImage(ModuleNode node)
