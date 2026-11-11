@@ -59,7 +59,8 @@ public partial class ModuleWindow : Window
         (ModuleKind.PeriodicFloats,"فلوت در راپورت مستقیم","\uE7C3","#E89B73","PERIODIC FLOAT CHECK"),
         (ModuleKind.MatchPalette,"تطبیق پالت مرجع","\uE790","#E2A766","PALETTE MATCH"),
         (ModuleKind.RectangleMask,"ماسک مستطیلی","\uE7A8","#7CAAE3","RECTANGLE MASK"),
-        (ModuleKind.ApplyMask,"اعمال ماسک","\uE74E","#72C8C5","APPLY MASK")
+        (ModuleKind.ApplyMask,"اعمال ماسک","\uE74E","#72C8C5","APPLY MASK"),
+        (ModuleKind.BlankDesign,"بوم طرح خالی","\uE70F","#C89570","BLANK CANVAS")
     };
     private static (ModuleKind kind, string name, string icon, string color, string subtitle) Spec(ModuleKind kind) => Types.Single(t => t.kind == kind);
     private static Brush Brush(string hex) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
@@ -138,7 +139,8 @@ public partial class ModuleWindow : Window
             ModuleKind.DesignIdentity => "فیلدهای عنوان و متن دلخواه را وارد کرده و به گزارش متصل کنید.",
             ModuleKind.AiEdit => "تصویر و پرامپت فقط پس از تأیید به OpenAI ارسال می‌شود و خروجی در پروژه ذخیره می‌شود. کلید از متغیر محیطی خوانده می‌شود.",
             ModuleKind.AutoWeaves => "چند رنگ و چند بافت را انتخاب کنید؛ به ترتیب فهرست، جفت‌های یک‌به‌یک اختصاص می‌یابند و رنگ‌های باقی‌مانده نمایش داده می‌شوند.",
-            ModuleKind.DesignEditor => "ویرایش پیکسلی تصویر با قلم، خط، مستطیل، پرکردن، قطره‌چکان و بازگشت. با تغییر ورودی، ویرایش باید مجدداً تأیید شود.",
+            ModuleKind.BlankDesign => "یک بوم رنگی با عرض و ارتفاع انتخابی بسازید و به ویرایشگر طرح وصل کنید.",
+            ModuleKind.DesignEditor => "ویرایش پیکسلی با لایه، قلم، اشکال، انتخاب آزاد و مستطیلی، کپی، جابه‌جایی، کانتور و تصویر مرجع برای Tracing. با تغییر ورودی ویرایش باید دوباره تأیید شود.",
             ModuleKind.Crop => "ابتدا جهت حذف را انتخاب کنید؛ با کلیک روی پیکسل مرزی بخش آن سمت حذف می‌شود و پیکسل انتخاب‌شده باقی می‌ماند. ورودی تصویر است.",
             ModuleKind.Repeat => "طرح با تعداد ستون و ردیف انتخابی تکرار می‌شود. نیم‌عرض ردیف‌ها را و نیم‌طول ستون‌ها را به اندازه نصف طرح جابه‌جا می‌کند.",
             ModuleKind.Report => "خروجی چند ماژول را به ورودی گزارش وصل کنید. پیش‌نمایش، چاپ و ذخیره PDF هر ماژول را نمایش می‌دهد. حداکثر ۱۶ ورودی.",
@@ -318,6 +320,11 @@ public partial class ModuleWindow : Window
             case ModuleKind.BinaryLoad:
                 Inspector.Children.Add(Note(node.ImagePng is null ? "تصویری انتخاب نشده است." : "تصویر در پروژه ذخیره می‌شود."));
                 Button("انتخاب طرح و صفحه", async () => await ChooseImage(node)); break;
+            case ModuleKind.BlankDesign:
+                Inspector.Children.Add(Note("برای شروع طراحی از صفر، بوم را با ابعاد و رنگ دلخواه بسازید. سقف چهار میلیون پیکسل است."));
+                Field("عرض بوم (پیکسل)",node.Width.ToString(),s=>{int n=Parse(s,0);if(n<1 || (long)n*node.Height>DesignProcessor.MaxPixels)throw new ArgumentException("ابعاد بوم معتبر نیست.");node.Width=n;});
+                Field("ارتفاع بوم (پیکسل)",node.Height.ToString(),s=>{int n=Parse(s,0);if(n<1 || (long)n*node.Width>DesignProcessor.MaxPixels)throw new ArgumentException("ابعاد بوم معتبر نیست.");node.Height=n;});
+                Field("رنگ پس‌زمینه (#RRGGBB)",node.MaskFill,s=>{var c=FabricSimulation.ParseColor(s);if(c.A!=255)throw new ArgumentException("رنگ پس‌زمینه باید مات باشد.");node.MaskFill=s;});break;
             case ModuleKind.ExportData:
                 Inspector.Children.Add(Note("تصویر یا نقشه را وصل و اجرا کنید. برای جدول، خروجی مدیریت رنگ را نیز به پالت وصل کنید."));
                 Button("ذخیره تصویر",()=>ExportGraphImage(node)); Button("ذخیره جدول پالت CSV",()=>ExportGraphPalette(node)); break;
@@ -618,18 +625,18 @@ public partial class ModuleWindow : Window
         try { busy=true; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=false; inputs=await Task.Run(()=>ModuleExecutor.Run(graph,edge.From)); source=inputs[edge.From].Image ?? throw new InvalidOperationException("تصویر ورودی آماده نیست."); hash=await Task.Run(()=>ModuleExecutor.ImageFingerprint(source)); }
         catch(Exception ex) when(ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) {ModuleErrors.Show(this,ex);return;}
         finally {busy=false;GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=true;}
-        if(node.DesignEditPng is not null && node.DesignEditInputHash!=hash && MessageBox.Show(this,"ورودی تغییر کرده است. ویرایش قبلی کنار گذاشته شود؟","طراحی",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
+        if((node.DesignEditPng is not null || node.DesignEditDocument is not null) && node.DesignEditInputHash!=hash && MessageBox.Show(this,"ورودی تغییر کرده است. ویرایش قبلی کنار گذاشته شود؟","طراحی",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
         try
         {
             BitmapSource initial=source;
-            if(node.DesignEditPng is not null && node.DesignEditInputHash==hash)
+            if(node.DesignEditDocument is null && node.DesignEditPng is not null && node.DesignEditInputHash==hash)
             {
                 byte[] bytes=Convert.FromBase64String(node.DesignEditPng); if(bytes.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("تصویر بیش از حد بزرگ است.");
                 using var stream=new MemoryStream(bytes); var frame=BitmapDecoder.Create(stream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad).Frames[0];
                 if(frame.PixelWidth!=source.PixelWidth || frame.PixelHeight!=source.PixelHeight) throw new InvalidDataException("ابعاد تصویر طراحی معتبر نیست."); frame.Freeze(); initial=frame;
             }
-            var editor=new DesignEditorWindow(initial) {Owner=this}; if(editor.ShowDialog()!=true || editor.Result is null)return;
-            string encoded=await Task.Run(()=>ModuleExecutor.EmbedImage(editor.Result)); node.DesignEditPng=encoded;node.DesignEditInputHash=hash;Changed(node.Id);MergeResults(inputs);await ExecuteAsync(node);RenderGraph();
+            var editor=new DesignEditorWindow(initial,node.DesignEditInputHash==hash ? node.DesignEditDocument : null) {Owner=this}; if(editor.ShowDialog()!=true || editor.Result is null || editor.Document is null)return;
+            string encoded=await Task.Run(()=>ModuleExecutor.EmbedImage(editor.Result)); node.DesignEditPng=encoded;node.DesignEditDocument=editor.Document;node.DesignEditInputHash=hash;Changed(node.Id);MergeResults(inputs);await ExecuteAsync(node);RenderGraph();
         }
         catch(Exception ex) when(ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) {ModuleErrors.Show(this,ex);}
     }

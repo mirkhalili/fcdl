@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData, PeriodicFloats, MatchPalette, RectangleMask, ApplyMask, DesignEditor }
+public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData, PeriodicFloats, MatchPalette, RectangleMask, ApplyMask, DesignEditor, BlankDesign }
 public enum ModuleData { Image, Palette, Weaves, Fabric, Preview, Report, Any, MachineConfig, Metadata, Visual, Mask }
 public sealed record DesignField(string Title, string Text);
 public sealed record ModuleColorEdit(string InputHash, PaletteResult Palette, bool[] Locks);
@@ -25,6 +25,7 @@ public sealed class ModuleNode
     public string? AiResultPng { get; set; }
     public string? AiInputHash { get; set; }
     public string? AiPromptHash { get; set; }
+    public DesignDocumentData? DesignEditDocument { get; set; }
     public string? DesignEditPng { get; set; }
     public string? DesignEditInputHash { get; set; }
     public int MaskX { get; set; } public int MaskY { get; set; } public int MaskWidth { get; set; } public int MaskHeight { get; set; }
@@ -61,7 +62,7 @@ public sealed class ModuleGraph
     public List<ModuleEdge> Edges { get; set; } = new();
     public static ModuleData Output(ModuleKind kind) => kind switch
     {
-        ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.SeamCheck or ModuleKind.Compare or ModuleKind.ExportData or ModuleKind.ApplyMask or ModuleKind.DesignEditor => ModuleData.Image,
+        ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.SeamCheck or ModuleKind.Compare or ModuleKind.ExportData or ModuleKind.ApplyMask or ModuleKind.DesignEditor or ModuleKind.BlankDesign => ModuleData.Image,
         ModuleKind.RectangleMask => ModuleData.Mask,
         ModuleKind.Colors or ModuleKind.MatchPalette => ModuleData.Palette,
         ModuleKind.Weaves or ModuleKind.CreateWeave => ModuleData.Weaves,
@@ -90,7 +91,7 @@ public sealed class ModuleGraph
     public ModuleNode Add(ModuleKind kind, double x, double y)
     {
         if (Nodes.Count >= 128 || !Enum.IsDefined(kind) || !double.IsFinite(x) || !double.IsFinite(y) || x is < 0 or > 10000 || y is < 0 or > 10000) throw new ArgumentException("Invalid module or position.");
-        var node = new ModuleNode { Kind = kind, X = x, Y = y, DefaultWeaveIndex = kind==ModuleKind.AutoWeaves ? -1 : 0 }; Nodes.Add(node); return node;
+        var node = new ModuleNode { Kind = kind, X = x, Y = y, DefaultWeaveIndex = kind==ModuleKind.AutoWeaves ? -1 : 0 }; if(kind==ModuleKind.BlankDesign){node.Width=256;node.Height=256;} Nodes.Add(node); return node;
     }
     /// <summary>Place existing nodes in insertion order without altering connections.</summary>
     public void Arrange(int rows, int columns)
@@ -122,6 +123,7 @@ public sealed class ModuleGraph
         if (Nodes.Any(n => n.Kind == ModuleKind.CreateWeave && (n.Weaves.Count > 1 || n.Weaves.Any(p => p is null || p.Width > WeaveEditor.MaxSide || p.Height > WeaveEditor.MaxSide)))) throw new InvalidDataException("A weave designer node holds at most one weave.");
         foreach (var n in Nodes) {
             if(n.DesignFields is null || n.DesignFields.Count>50 || n.DesignFields.Any(f=>f is null || string.IsNullOrWhiteSpace(f.Title) || f.Title.Length>100 || f.Text is null || f.Text.Length>2000) || n.Manufacturer is null || n.Manufacturer.Length>100 || n.AiPrompt is null || n.AiPrompt.Length>4000 || n.SourcePage<0 || n.SourcePage>=ImageLoader.MaxFrames) throw new InvalidDataException("Invalid module metadata.");
+            if(n.DesignEditDocument is { } doc && (n.Kind!=ModuleKind.DesignEditor || n.DesignEditInputHash is null || n.DesignEditInputHash.Length!=64 || doc.Layers is null || doc.Layers.Count is <1 or >DesignCanvas.MaxLayers || doc.Active<0 || doc.Active>=doc.Layers.Count || doc.Layers.Any(l=>l is null || string.IsNullOrWhiteSpace(l.Name) || l.Name.Length>80 || l.Opacity is <0 or >100 || string.IsNullOrEmpty(l.Png) || l.Png.Length>ImageLoader.MaxFileBytes*2) || doc.TraceOpacity is <0 or >100 || doc.TraceWidth is <0 or >16000 || doc.TraceHeight is <0 or >16000 || Math.Abs((long)doc.TraceX)>16000 || Math.Abs((long)doc.TraceY)>16000 || doc.TracePng?.Length>ImageLoader.MaxFileBytes*2)) throw new InvalidDataException("Invalid design document.");
             if (n.Kind == ModuleKind.RectangleMask && (n.MaskX < 0 || n.MaskY < 0 || n.MaskWidth < 0 || n.MaskHeight < 0)) throw new InvalidDataException("Invalid mask coordinates.");
             if (n.Kind == ModuleKind.ApplyMask && (n.MaskFill is null || n.MaskFill.Length > 32)) throw new InvalidDataException("Invalid mask background.");
             if (n.Kind == ModuleKind.Repeat && (n.RepeatColumns < 1 || n.RepeatRows < 1 || !Enum.IsDefined(n.RepeatMode))) throw new InvalidDataException("Invalid repeat settings.");
@@ -201,11 +203,14 @@ public static class ModuleExecutor
                     if(string.IsNullOrEmpty(node.AiResultPng) || node.AiInputHash!=ImageFingerprint(aiInput) || node.AiPromptHash!=AiImageEdit.PromptHash(node.AiPrompt)) throw new InvalidOperationException("ابتدا تصویر و پرامپت را در ماژول هوش مصنوعی ارسال و نتیجه را تأیید کنید.");
                     var aiBytes=Convert.FromBase64String(node.AiResultPng); if(aiBytes.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("AI image is too large.");
                     using(var aiStream=new MemoryStream(aiBytes)) { var frame=BitmapDecoder.Create(aiStream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad).Frames[0]; if((long)frame.PixelWidth*frame.PixelHeight>DesignProcessor.MaxPixels) throw new InvalidDataException("AI image is too large."); frame.Freeze(); result=new(ModuleData.Image,frame); } break;
+                case ModuleKind.BlankDesign:
+                    result=new(ModuleData.Image,DesignCanvas.Blank(node.Width,node.Height,FabricSimulation.ParseColor(node.MaskFill)));break;
                 case ModuleKind.DesignEditor:
                     var designInput=Input("image").Image!;
-                    if(node.DesignEditPng is null) { result=new(ModuleData.Image,designInput); break; }
+                    if(node.DesignEditPng is null && node.DesignEditDocument is null) { result=new(ModuleData.Image,designInput); break; }
                     if(node.DesignEditInputHash!=ImageFingerprint(designInput)) throw new InvalidOperationException("ورودی طراحی تغییر کرده است؛ ویرایشگر را باز و مجدداً اعمال کنید.");
-                    var designBytes=Convert.FromBase64String(node.DesignEditPng); if(designBytes.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("تصویر طراحی بیش از حد بزرگ است.");
+                    if(node.DesignEditDocument is { } designDocument) {result=new(ModuleData.Image,new DesignCanvas(designInput,designDocument).Composite());break;}
+                    var designBytes=Convert.FromBase64String(node.DesignEditPng!); if(designBytes.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("تصویر طراحی بیش از حد بزرگ است.");
                     using(var designStream=new MemoryStream(designBytes)) { var frame=BitmapDecoder.Create(designStream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad).Frames[0]; if(frame.PixelWidth!=designInput.PixelWidth || frame.PixelHeight!=designInput.PixelHeight || (long)frame.PixelWidth*frame.PixelHeight>DesignProcessor.MaxPixels) throw new InvalidDataException("ابعاد تصویر طراحی معتبر نیست."); frame.Freeze();result=new(ModuleData.Image,frame); } break;
                 case ModuleKind.Crop:
                     var cropInput=Input("image").Image!;
