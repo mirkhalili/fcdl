@@ -22,7 +22,7 @@ public static class LicenseToken
     }
     private static bool IsP256(ECDsa key) => key.KeySize==256 && key.ExportParameters(false).Curve.Oid.Value=="1.2.840.10045.3.1.7";
     public static bool IsDevice(string? value) => value is {Length:64} && value.All(c => c is >= '0' and <= '9' or >= 'A' and <= 'F');
-    private static bool ValidClaims(LicenseClaims c) => c.Version == 1 && c.Product == Product && IsDevice(c.Device) && Guid.TryParseExact(c.LicenseId,"D",out _) && c.IssuedAt > 0 && c.NotBefore >= c.IssuedAt - 300 && c.ExpiresAt > c.IssuedAt && c.ExpiresAt - c.IssuedAt <= MaximumLeaseSeconds && c.NotBefore < c.ExpiresAt;
+    private static bool ValidClaims(LicenseClaims c) => c.Version == 1 && c.Product == Product && IsDevice(c.Device) && Guid.TryParseExact(c.LicenseId,"D",out var licenseId) && licenseId != Guid.Empty && c.IssuedAt > 0 && c.NotBefore >= c.IssuedAt - 300 && c.ExpiresAt > c.IssuedAt && c.ExpiresAt - c.IssuedAt <= MaximumLeaseSeconds && c.NotBefore < c.ExpiresAt;
     public static string Issue(ECDsa privateKey, string device, Guid licenseId, DateTimeOffset now, TimeSpan validity)
     {
         if (!IsP256(privateKey) || !IsDevice(device) || licenseId == Guid.Empty || validity <= TimeSpan.Zero || validity > TimeSpan.FromSeconds(MaximumLeaseSeconds)) throw new ArgumentException("Invalid license parameters.");
