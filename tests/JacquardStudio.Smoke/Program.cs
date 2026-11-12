@@ -797,7 +797,7 @@ internal static class Program
             var pure = DesignProcessor.ReadPattern(image);
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
-            var app = new App { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
+            var app = new SmokeApp { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
             var blankDialog=new DesignBlankWindow(new DesignBlankSettings(120,80,32.5,25));var blankRoot=(System.Windows.Controls.DockPanel)blankDialog.Content;var blankForm=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)blankRoot.Children[1]).Content;var blankFields=blankForm.Children.OfType<System.Windows.Controls.TextBox>().ToArray();blankFields[0].Text="۱۲۰";blankFields[1].Text="۸۰";blankFields[2].Text="۳۲٫۵";blankFields[3].Text="۲۵";var blankButtons=(System.Windows.Controls.WrapPanel)blankRoot.Children[0];var blankApply=blankButtons.Children.OfType<System.Windows.Controls.Button>().Single(x=>Equals(x.Content,"ایجاد صفحه"));blankDialog.Loaded+=(_,_)=>blankDialog.Dispatcher.BeginInvoke(new Action(()=>blankApply.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent))));Check(blankDialog.ShowDialog()==true && blankDialog.Result is {Width:120,Height:80,WarpDensity:32.5,WeftDensity:25},"blank canvas dialog accepts Persian dimensions and densities");
             var designWindow=new DesignEditorWindow(blank);var designRoot=(System.Windows.Controls.DockPanel)designWindow.Content;var designBar=(System.Windows.Controls.WrapPanel)designRoot.Children[0];var designSide=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)designRoot.Children[2]).Content;var designLayerButtons=designSide.Children.OfType<System.Windows.Controls.WrapPanel>().First();
             var iconToolbar=(System.Windows.Controls.WrapPanel)designRoot.Children[1];Check(iconToolbar.Children.OfType<System.Windows.Controls.Primitives.ToggleButton>().Count()==15 && iconToolbar.Children.OfType<System.Windows.Controls.Primitives.ToggleButton>().Any(x=>Equals(x.ToolTip,"رسم کمان")),"icon toolbar exposes all tools including arc");
@@ -897,7 +897,7 @@ internal static class Program
             try{soloTimer.Start();var soloCard=(System.Windows.Controls.Border)nodeLayer.Children[nodeLayer.Children.Count-1];soloCard.ContextMenu.Items.OfType<System.Windows.Controls.MenuItem>().Single(x=>Equals(x.Header,"تنظیمات ماژول")).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));if(soloFrame.Continue)System.Windows.Threading.Dispatcher.PushFrame(soloFrame);}finally{soloTimer.Stop();System.Threading.SynchronizationContext.SetSynchronizationContext(soloOldContext);}
             Check(sawSetup && sawDesign && liveSolo.DesignStandalone && liveSolo.DesignWidth==12 && liveSolo.DesignHeight==8 && liveSolo.DesignWeftDensity==20 && ModuleExecutor.Run(moduleGraph,liveSolo.Id)[liveSolo.Id].Image!.PixelWidth==12,"unconnected design card creates a white project canvas and stores requested density");
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "037.0.2.5-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "038.0.0.0-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));
@@ -1091,4 +1091,11 @@ internal sealed class FakeImageHandler : System.Net.Http.HttpMessageHandler
         var payload=System.Text.Json.JsonSerializer.Serialize(new { data=new[]{new { b64_json=png }} });
         return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content=new System.Net.Http.StringContent(payload) });
     }
+}
+
+// WPF dispatches Startup during modal smoke dialogs even without Application.Run.
+// Load application resources without launching the real activation flow in UI component tests.
+internal sealed class SmokeApp : App
+{
+    protected override void OnStartup(System.Windows.StartupEventArgs e) { }
 }
