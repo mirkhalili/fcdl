@@ -828,6 +828,7 @@ internal static class Program
             var nodeLayer = (System.Windows.Controls.Canvas)moduleWindow.FindName("NodeLayer");
             var nodeVisual=(System.Windows.Controls.Border)nodeLayer.Children[0];var visualNode=moduleGraph.Nodes[0];
             Check(nodeVisual.Width==nodeVisual.Height && nodeVisual.CornerRadius.TopLeft==nodeVisual.Width/2,"module node is circular");
+            Check(moduleWindow.Icon is not null,"workspace window uses the SAM application icon");
             var watermark=(System.Windows.Controls.Image)moduleWindow.FindName("WorkspaceEmblem");Check(watermark.Source is not null && watermark.Opacity<.1 && !watermark.IsHitTestVisible,"transparent emblem does not intercept the workspace");
             var failedSet=(HashSet<Guid>)typeof(ModuleWindow).GetField("failedNodes",moduleFlags)!.GetValue(moduleWindow)!;visualNode.Configured=true;typeof(ModuleWindow).GetMethod("RenderSelection",moduleFlags)!.Invoke(moduleWindow,null);
             Check(((SolidColorBrush)nodeVisual.BorderBrush).Color==Color.FromRgb(0x55,0xCE,0x93) && nodeVisual.Effect is null,"successful node has a green outline");

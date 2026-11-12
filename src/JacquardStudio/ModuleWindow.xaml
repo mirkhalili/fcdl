@@ -1,6 +1,6 @@
 <Window x:Class="JacquardStudio.ModuleWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Jacquard Studio · Workspace" Width="1500" Height="900" MinWidth="1080" MinHeight="680" WindowStartupLocation="CenterScreen" WindowState="Maximized" PreviewKeyDown="Workspace_KeyDown" Background="{DynamicResource GraphBackground}" Foreground="{DynamicResource PrimaryText}" FontFamily="{StaticResource VazirFont}" Closing="Window_Closing">
+        Title="Jacquard Studio · Workspace" Icon="Assets/app.ico" Width="1500" Height="900" MinWidth="1080" MinHeight="680" WindowStartupLocation="CenterScreen" WindowState="Maximized" PreviewKeyDown="Workspace_KeyDown" Background="{DynamicResource GraphBackground}" Foreground="{DynamicResource PrimaryText}" FontFamily="{StaticResource VazirFont}" Closing="Window_Closing">
     <Window.Resources>
         <Style x:Key="GraphButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Background" Value="{DynamicResource ButtonBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource ButtonBorder}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Padding" Value="10,7"/><Setter Property="Margin" Value="3,0"/></Style>
     </Window.Resources>
