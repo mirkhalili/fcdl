@@ -27,10 +27,16 @@ jobs:
             Write-Output "::error title=Build details::$message"
             exit $code
           }
-          $testKey = [System.Security.Cryptography.ECDsa]::Create([System.Security.Cryptography.ECCurve]::NamedCurves.nistP256)
-          $testPublic = Join-Path $env:RUNNER_TEMP 'jacquard-test-public.pem'
-          [System.IO.File]::WriteAllText($testPublic, $testKey.ExportSubjectPublicKeyInfoPem())
-          $testKey.Dispose()
+          try {
+            $testKey = [System.Security.Cryptography.ECDsa]::Create()
+            $testKey.GenerateKey([System.Security.Cryptography.ECCurve]::CreateFromFriendlyName('nistP256'))
+            $testPublic = Join-Path $env:RUNNER_TEMP 'jacquard-test-public.pem'
+            [System.IO.File]::WriteAllText($testPublic, $testKey.ExportSubjectPublicKeyInfoPem())
+            $testKey.Dispose()
+          } catch {
+            Write-Output "::error title=Test key setup::$($_.Exception.Message)"
+            exit 1
+          }
           dotnet run --project tests/JacquardStudio.Smoke/JacquardStudio.Smoke.csproj -c Release "-p:LicensePublicKeyFile=$testPublic" *> smoke-log.txt
           $code = $LASTEXITCODE
           Get-Content smoke-log.txt
