@@ -8,7 +8,7 @@ public sealed class SettingsWindow : Window
     public UserPreferences Result { get; }
     public SettingsWindow(UserPreferences initial,IEnumerable<(ModuleKind Kind,string Name)> types)
     {
-        Result=new UserPreferences {Theme=initial.Theme,HiddenModules=initial.HiddenModules.ToList(),PasswordSalt=initial.PasswordSalt,PasswordHash=initial.PasswordHash};
+        Result=new UserPreferences {Theme=initial.Theme,HiddenModules=initial.HiddenModules.ToList(),TelemetryEnabled=initial.TelemetryEnabled,PasswordSalt=initial.PasswordSalt,PasswordHash=initial.PasswordHash};
         Title="تنظیمات برنامه";Width=760;Height=800;MinWidth=540;MinHeight=500;WindowStartupLocation=WindowStartupLocation.CenterOwner;FlowDirection=FlowDirection.RightToLeft;SetResourceReference(BackgroundProperty,"Surface");
         var root=new DockPanel {Margin=new Thickness(22)}; var top=new StackPanel {Orientation=Orientation.Horizontal,Margin=new Thickness(0,0,0,12)};DockPanel.SetDock(top,Dock.Top);root.Children.Add(top);
         var apply=new Button {Content="اعمال تنظیمات و بستن",Margin=new Thickness(4)}; var cancel=new Button {Content="انصراف",Margin=new Thickness(4),IsCancel=true};top.Children.Add(apply);top.Children.Add(cancel);
@@ -27,6 +27,10 @@ public sealed class SettingsWindow : Window
         var deviceId=new TextBox {IsReadOnly=true,FlowDirection=FlowDirection.LeftToRight,Margin=new Thickness(0,8,0,0),TextWrapping=TextWrapping.Wrap};body.Children.Add(deviceId);
         var getId=new Button {Content="خواندن شناسه دستگاه",HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,8,0,0)};body.Children.Add(getId);
         getId.Click+=async (_,_)=>{getId.IsEnabled=false;try {deviceId.Text=await Task.Run(HardwareIdentity.ReadDeviceId);}catch(Exception ex) when(ex is System.Management.ManagementException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or IOException or System.Runtime.InteropServices.COMException){deviceId.Text="";MessageBox.Show(this,"دریافت شناسه سخت‌افزار ممکن نیست.\n"+ex.Message,"شناسه دستگاه",MessageBoxButton.OK,MessageBoxImage.Warning);}finally {getId.IsEnabled=true;}};
+        Heading("اتصال به سایت و گزارش اجرا");body.Children.Add(new TextBlock {Text="در صورت فعال‌کردن این گزینه، هنگام هر اجرا شناسه نرم‌افزار و هش دستگاه، نسخه برنامه و ویندوز، مدل پردازنده، ظرفیت RAM و نام دستگاه به mirkhalili.com/app فرستاده می‌شود. سایت IP و زمان دریافت را ثبت می‌کند. سریال خام سخت‌افزار ارسال نمی‌شود. این قابلیت هنوز فعال‌سازی یا غیرفعال‌سازی لایسنس نیست.",TextWrapping=TextWrapping.Wrap});
+        var reporting=new CheckBox {Content="با ارسال اطلاعات بالا در هر اجرا موافقم",IsChecked=initial.TelemetryEnabled,Margin=new Thickness(0,10,0,0)};body.Children.Add(reporting);
+        var testReport=new Button {Content="ارسال آزمایشی گزارش",HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,8,0,0)};body.Children.Add(testReport);
+        testReport.Click+=async (_,_)=>{if(reporting.IsChecked!=true){MessageBox.Show(this,"ابتدا رضایت ارسال اطلاعات را انتخاب کنید.");return;}testReport.IsEnabled=false;try {MessageBox.Show(this,await SiteReporting.SendAsync(),"پاسخ سایت");}catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or System.Net.Http.HttpRequestException or TaskCanceledException or System.Management.ManagementException or InvalidOperationException or ArgumentException or System.Security.Cryptography.CryptographicException or System.Text.Json.JsonException or System.Runtime.InteropServices.COMException){MessageBox.Show(this,"ارسال به سایت ممکن نیست. سرور باید نصب و پیکربندی شده باشد.\n"+ex.Message,"ارتباط با سایت");}finally {testReport.IsEnabled=true;}};
         apply.Click+=(_,_)=>{
             try
             {
@@ -35,7 +39,7 @@ public sealed class SettingsWindow : Window
                 if(remove.IsChecked==true && (pass.Password.Length>0 || repeat.Password.Length>0))throw new ArgumentException("یا رمز را حذف کنید یا رمز جدید تعیین کنید.");
                 if(remove.IsChecked==true){Result.PasswordSalt=null;Result.PasswordHash=null;}
                 else if(pass.Password.Length>0 || repeat.Password.Length>0){if(pass.Password!=repeat.Password)throw new ArgumentException("تکرار رمز جدید یکسان نیست.");Result.SetPassword(pass.Password);}
-                Result.Theme=keys[theme.SelectedIndex]; Result.HiddenModules=checks.Where(x=>x.Value.IsChecked!=true).Select(x=>x.Key.ToString()).ToList();Result.Save();DialogResult=true;
+                Result.TelemetryEnabled=reporting.IsChecked==true; Result.Theme=keys[theme.SelectedIndex]; Result.HiddenModules=checks.Where(x=>x.Value.IsChecked!=true).Select(x=>x.Key.ToString()).ToList();Result.Save();DialogResult=true;
             }
             catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or ArgumentException) {MessageBox.Show(this,ex.Message,"خطای تنظیمات",MessageBoxButton.OK,MessageBoxImage.Warning);}
         };

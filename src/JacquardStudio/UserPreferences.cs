@@ -8,6 +8,7 @@ public sealed class UserPreferences
     public int Version { get; set; }=1;
     public string Theme { get; set; }="dark";
     public List<string> HiddenModules { get; set; }=new();
+    public bool TelemetryEnabled { get; set; }
     public string? PasswordSalt { get; set; }
     public string? PasswordHash { get; set; }
     public bool HasPassword => PasswordSalt is not null && PasswordHash is not null;
