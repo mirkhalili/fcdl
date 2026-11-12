@@ -293,6 +293,15 @@ internal static class Program
             var loadedLayerData=layerReload.Nodes.Single(n=>n.Id==layerEditor.Id).DesignEditDocument!;Check(loadedLayerData.Layers.Count==3 && loadedLayerData.TraceOpacity==37 && loadedLayerData.TracePng==layeredData.TracePng,"editable layers and tracing survive encrypted project");
             Check(ModuleExecutor.ImageFingerprint(ModuleExecutor.Run(layerReload,layerEditor.Id)[layerEditor.Id].Image!)==ModuleExecutor.ImageFingerprint(designDoc.Composite()),"graph output composites layers and excludes trace");
             loadedLayerData.Layers[0].Opacity=101;Expect<InvalidDataException>(()=>ModuleExecutor.Run(layerReload,layerEditor.Id));
+            // Cross-runtime fixture contains only an OpenSSL-generated public key and signatures (test private key discarded).
+            using(var fixture=System.Text.Json.JsonDocument.Parse(File.ReadAllText("tests/fixtures/activation-interop.json")))
+            using(var fixtureKey=System.Security.Cryptography.ECDsa.Create())
+            {
+                var f=fixture.RootElement;fixtureKey.ImportFromPem(f.GetProperty("publicKey").GetString()!);string fDevice=f.GetProperty("device").GetString()!;var fTime=DateTimeOffset.FromUnixTimeSeconds(f.GetProperty("now").GetInt64());string fAuth=f.GetProperty("authorization").GetString()!, fLease=f.GetProperty("lease").GetString()!;
+                string fPath=Path.Combine(dir,"interop-activation.dat");Check(ActivationStore.AcceptOnline(fixtureKey,fDevice,fAuth,fLease,fTime,fPath),"OpenSSL-signed authorization and PHP-shaped lease validate in .NET");
+                Check(ActivationStore.Details(fixtureKey,fDevice,fTime,fPath)?.LicenseUntil==f.GetProperty("licenseExpiresAt").GetInt64(),"site subscription date from signed interoperable lease");
+                Check(!ActivationStore.AcceptOnline(fixtureKey,new string('B',64),fAuth,fLease,fTime,fPath),"wrong device rejects interoperable authorization");
+            }
             using(var signing=System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256))
             using(var publicKey=System.Security.Cryptography.ECDsa.Create())
             {
