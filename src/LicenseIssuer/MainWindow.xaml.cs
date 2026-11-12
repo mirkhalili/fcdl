@@ -31,7 +31,7 @@ public partial class MainWindow : Window
     }
     private void Issue(object sender,RoutedEventArgs e)
     {
-        try {if(!Guid.TryParseExact(LicenseId.Text.Trim(),"D",out var id) || !int.TryParse(Days.Text,out int days) || days is < 1 or > 7)throw new ArgumentException("شناسه لایسنس و تعداد روز معتبر وارد کنید.");using var key=ECDsa.Create();key.ImportFromPem(File.ReadAllText(KeyPath.Text));Token.Text=LicenseToken.Issue(key,Device.Text.Trim().ToUpperInvariant(),id,DateTimeOffset.UtcNow,TimeSpan.FromDays(days),CustomerName.Text);Status.Text="رشته ایجاد شد؛ آن را از مسیر امن به کاربر بدهید.";}
+        try {if(!Guid.TryParseExact(LicenseId.Text.Trim(),"D",out var id))throw new ArgumentException("شناسه لایسنس معتبر وارد کنید.");using var key=ECDsa.Create();key.ImportFromPem(File.ReadAllText(KeyPath.Text));Token.Text=LicenseToken.IssueAuthorization(key,Device.Text.Trim().ToUpperInvariant(),id,DateTimeOffset.UtcNow,CustomerName.Text);Status.Text="رشته ایجاد شد؛ آن را از مسیر امن به کاربر بدهید.";}
         catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or CryptographicException or ArgumentException) {Token.Clear();MessageBox.Show(this,ex.Message,"خطا");}
     }
 }

@@ -7,7 +7,7 @@ namespace JacquardStudio;
 /// <summary>Signed short-lived authorization; a missing pinned public key is never treated as a valid license.</summary>
 public static class ActivationStore
 {
-    private sealed record Saved(string Token,long LastSeen,bool Revoked=false,bool Manual=false);
+    private sealed record Saved(string Token,long LastSeen,bool Revoked=false,bool Manual=false,string? Authorization=null,long OfflineUntil=0);
     private static string DefaultPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"JacquardStudio","activation.dat");
     public static ECDsa? PublicKey()
     {
@@ -17,21 +17,44 @@ public static class ActivationStore
     }
     public static bool Accept(ECDsa key,string device,string token,DateTimeOffset now,bool allowRevoked=false,string? path=null,bool manual=true)
     {
-        token=token.Trim();if(!allowRevoked && IsRevoked(path))return false;if(!LicenseToken.TryVerify(key,token,device,now,out _))return false;Write(new Saved(token,now.ToUnixTimeSeconds(),Manual:manual),path);return true;
+        token=token.Trim();if(!allowRevoked && IsRevoked(path))return false;
+        if(!manual){if(!LicenseToken.TryVerify(key,token,device,now,out _))return false;Write(new Saved(token,now.ToUnixTimeSeconds()),path);return true;}
+        if(!LicenseToken.TryVerifyAuthorization(key,token,device,now,out var claims) || claims is null)return false;
+        long timestamp=now.ToUnixTimeSeconds();var previous=Read(path);if(previous is not null && timestamp<previous.LastSeen-300)return false;long end=previous is {Manual:true} && previous.Token==token && previous.OfflineUntil>0 ? previous.OfflineUntil : timestamp+LicenseToken.MaximumLeaseSeconds;
+        if(claims.ExpiresAt>0)end=Math.Min(end,claims.ExpiresAt);if(timestamp>=end)return false;
+        Write(new Saved(token,timestamp,Manual:true,OfflineUntil:end),path);return true;
+    }
+    public static bool AcceptOnline(ECDsa key,string device,string authorization,string lease,DateTimeOffset now,string? path=null)
+    {
+        authorization=authorization.Trim();lease=lease.Trim();
+        if(!LicenseToken.TryVerifyAuthorization(key,authorization,device,now,out _) || !LicenseToken.TryVerify(key,lease,device,now,out var claims) || claims is null || claims.ActivationHash!=LicenseToken.AuthorizationDigest(authorization))return false;
+        Write(new Saved(lease,now.ToUnixTimeSeconds(),Authorization:authorization),path);return true;
+    }
+    private static (LicenseClaims Claims,string? ManualToken,long OfflineUntil,long? LicenseUntil)? Inspect(Saved? saved,ECDsa key,string device,DateTimeOffset now)
+    {
+        long timestamp=now.ToUnixTimeSeconds();if(saved is null || saved.Revoked || timestamp<saved.LastSeen-300)return null;
+        if(saved.Manual && saved.Token.StartsWith("JSA1.",StringComparison.Ordinal))
+        {
+            if(saved.OfflineUntil<=timestamp || !LicenseToken.TryVerifyAuthorization(key,saved.Token,device,now,out var auth) || auth is null)return null;
+            return (auth,saved.Token,saved.OfflineUntil,null);
+        }
+        if(!LicenseToken.TryVerify(key,saved.Token,device,now,out var lease) || lease is null)return null;
+        if(saved.Manual && saved.OfflineUntil>0 && timestamp>=saved.OfflineUntil)return null;
+        if(saved.Authorization is not null)
+        {
+            if(!LicenseToken.TryVerifyAuthorization(key,saved.Authorization,device,now,out var auth) || auth is null || lease.ActivationHash!=LicenseToken.AuthorizationDigest(saved.Authorization))return null;
+            return (auth,null,lease.ExpiresAt,lease.LicenseExpiresAt);
+        }
+        return (lease,saved.Manual?saved.Token:null,lease.ExpiresAt,lease.LicenseExpiresAt ?? lease.ExpiresAt);
     }
     public static bool Valid(ECDsa key,string device,DateTimeOffset now,string? path=null)
     {
-        try
-        {
-            var saved=Read(path);if(saved is null || saved.Revoked || now.ToUnixTimeSeconds()<saved.LastSeen-300 || !LicenseToken.TryVerify(key,saved.Token,device,now,out _))return false;
-            Write(saved with {LastSeen=Math.Max(saved.LastSeen,now.ToUnixTimeSeconds())},path);return true;
-        }
-        catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or CryptographicException or JsonException or ArgumentException) {return false;}
+        try {var saved=Read(path);if(Inspect(saved,key,device,now) is null)return false;Write(saved! with {LastSeen=Math.Max(saved.LastSeen,now.ToUnixTimeSeconds())},path);return true;}
+        catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or CryptographicException or JsonException or ArgumentException){return false;}
     }
-    public static (LicenseClaims Claims,string? ManualToken)? Details(ECDsa key,string device,DateTimeOffset now,string? path=null)
+    public static (LicenseClaims Claims,string? ManualToken,long OfflineUntil,long? LicenseUntil)? Details(ECDsa key,string device,DateTimeOffset now,string? path=null)
     {
-        try {var saved=Read(path);if(saved is null || saved.Revoked || now.ToUnixTimeSeconds()<saved.LastSeen-300 || !LicenseToken.TryVerify(key,saved.Token,device,now,out var claims) || claims is null)return null;return (claims,saved.Manual?saved.Token:null);}
-        catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or CryptographicException or JsonException or ArgumentException){return null;}
+        try{return Inspect(Read(path),key,device,now);}catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or CryptographicException or JsonException or ArgumentException){return null;}
     }
     private static Saved? Read(string? path)
     {

@@ -11,11 +11,11 @@ namespace JacquardStudio;
 public static class SiteReporting
 {
     private static readonly Uri Endpoint=new("https://www.mirkhalili.com/app/api.php");
-    private static readonly HttpClient Client=new(new HttpClientHandler { AllowAutoRedirect=false }) {Timeout=TimeSpan.FromSeconds(12),MaxResponseContentBufferSize=4096};
+    private static readonly HttpClient Client=new(new HttpClientHandler { AllowAutoRedirect=false }) {Timeout=TimeSpan.FromSeconds(12),MaxResponseContentBufferSize=16384};
     private sealed record Credentials(string InstallationId,string Secret,string? Device=null);
-    private sealed record Report(string InstallationId,string Secret,string Device,string AppVersion,string OsVersion,string CpuModel,long RamBytes,string MachineName,string CustomerName,string Phone,string City,string? ManualToken);
+    private sealed record Report(string InstallationId,string Secret,string Device,string AppVersion,string OsVersion,string CpuModel,long RamBytes,string MachineName,string CustomerName,string Phone,string City,string? ManualToken,int LicenseProtocol);
     public sealed record Contact(string CustomerName,string Phone,string City);
-    public sealed record SiteReply(string? Status,string? Token);
+    public sealed record SiteReply(string? Status,string? Token,string? ActivationCode);
     private static readonly JsonSerializerOptions JsonOptions=new(JsonSerializerDefaults.Web);
     private static readonly object Gate=new();
     private static Credentials Identity(string device)
@@ -55,7 +55,7 @@ public static class SiteReporting
         using(var results=search.Get()) foreach(ManagementObject item in results) using(item) {cpu=Clean(item["Name"] as string,160);break;}
         using(var search=new ManagementObjectSearcher("SELECT TotalPhysicalMemory FROM Win32_ComputerSystem"))
         using(var results=search.Get()) foreach(ManagementObject item in results) using(item) {if(item["TotalPhysicalMemory"] is not null)memory=Convert.ToInt64(item["TotalPhysicalMemory"]);break;}
-        return new(identity.InstallationId,identity.Secret,device,Clean(AppVersion.Display,50),Clean(Environment.OSVersion.VersionString,150),cpu,memory,Clean(Environment.MachineName,100),Clean(contact?.CustomerName,120),Clean(contact?.Phone,60),Clean(contact?.City,100),manualToken);
+        return new(identity.InstallationId,identity.Secret,device,Clean(AppVersion.Display,50),Clean(Environment.OSVersion.VersionString,150),cpu,memory,Clean(Environment.MachineName,100),Clean(contact?.CustomerName,120),Clean(contact?.Phone,60),Clean(contact?.City,100),manualToken,2);
     }
     public static async Task<SiteReply> RequestAsync(Contact? contact=null,string? manualToken=null)
     {

@@ -94,10 +94,10 @@ public sealed class ActivationWindow : Window
             if(response.Status=="approved" && response.Token is { } issued)
             {
                 if(key is null){message.Text="کد آماده است، اما این نسخه کلید عمومی صدور ندارد؛ نسخه هماهنگ را از مدیر دریافت کنید.";return;}
-                if(ActivationStore.Accept(key,device,issued,DateTimeOffset.UtcNow,allowRevoked:true,manual:false)){message.Text="فعال‌سازی موفق بود.";if(interactive)DialogResult=true;return;}
-                message.Text="کد سایت معتبر نیست یا با کلید این نسخه مطابقت ندارد.";return;
+                if(response.ActivationCode is { } code && ActivationStore.AcceptOnline(key,device,code,issued,DateTimeOffset.UtcNow)){message.Text="فعال‌سازی موفق بود.";if(interactive)DialogResult=true;return;}
+                ActivationStore.Revoke();message.Text="کد دریافتی در برنامه تأیید نشد؛ امضا، شناسه دستگاه و کلید صادرکننده را بررسی کنید.";return;
             }
-            message.Text=response.Status=="pending"?"درخواست ثبت شد؛ پس از ثبت کد توسط مدیر، برنامه را دوباره اجرا کنید.":"کد معتبر در سایت آماده نیست.";
+            message.Text=response.Status switch {"pending"=>"درخواست ثبت شد؛ پس از ثبت کد توسط مدیر، برنامه را دوباره اجرا کنید.","upgrade_required"=>"برای فعال‌سازی نسخه جدید برنامه را نصب کنید.",_=>"کد معتبر در سایت آماده نیست."};
         }
         catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or HttpRequestException or TaskCanceledException or ManagementException or InvalidOperationException or ArgumentException or CryptographicException or JsonException or System.Runtime.InteropServices.COMException){message.Text="سایت در دسترس نیست؛ کد معتبر تا پایان مهلت آفلاین قابل استفاده است.";}
         finally {busy=false;RefreshButtons();}

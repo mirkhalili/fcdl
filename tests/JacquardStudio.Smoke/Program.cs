@@ -299,6 +299,20 @@ internal static class Program
                 publicKey.ImportSubjectPublicKeyInfo(signing.ExportSubjectPublicKeyInfo(),out _);
                 var deviceId=JacquardLicensing.LicenseToken.DeviceDigest("CPU-123456","DISK-789012");var now=DateTimeOffset.UtcNow;var id=Guid.NewGuid();
                 var signed=JacquardLicensing.LicenseToken.Issue(signing,deviceId,id,now,TimeSpan.FromDays(7),"نام آزمون");
+                var authorization=JacquardLicensing.LicenseToken.IssueAuthorization(signing,deviceId,id,now,"نام آزمون");
+                Check(JacquardLicensing.LicenseToken.TryVerifyAuthorization(publicKey,authorization,deviceId,now.AddDays(45),out _) && !JacquardLicensing.LicenseToken.TryVerify(publicKey,authorization,deviceId,now,out _),"long-term device authorization is not a seven-day lease");
+                Check(!JacquardLicensing.LicenseToken.TryVerifyAuthorization(publicKey,authorization,JacquardLicensing.LicenseToken.DeviceDigest("CPU-123456","DISK-OTHER"),now,out _),"authorization is checked against the local device");
+                long subscriptionEnd=now.AddDays(45).ToUnixTimeSeconds();var authHash=JacquardLicensing.LicenseToken.AuthorizationDigest(authorization);
+                var onlineLease=JacquardLicensing.LicenseToken.Issue(signing,deviceId,id,now,TimeSpan.FromDays(7),licenseExpiresAt:subscriptionEnd,activationHash:authHash);
+                string onlinePath=Path.Combine(dir,"online-activation.dat");
+                Check(!ActivationStore.AcceptOnline(publicKey,deviceId,"not-signed",onlineLease,now,onlinePath) && !ActivationStore.AcceptOnline(publicKey,deviceId,authorization,signed,now,onlinePath),"online acceptance requires matching signed authorization and bound lease");
+                Check(ActivationStore.AcceptOnline(publicKey,deviceId,authorization,onlineLease,now,onlinePath) && ActivationStore.Valid(publicKey,deviceId,now,onlinePath),"valid authorization and site lease activate");
+                Check(ActivationStore.Details(publicKey,deviceId,now,onlinePath)?.LicenseUntil==subscriptionEnd && !ActivationStore.Valid(publicKey,deviceId,now.AddDays(8),onlinePath),"site subscription date is distinct from the seven-day offline lease");
+                var renewed=JacquardLicensing.LicenseToken.Issue(signing,deviceId,id,now.AddDays(8),TimeSpan.FromDays(7),licenseExpiresAt:subscriptionEnd,activationHash:authHash);
+                Check(ActivationStore.AcceptOnline(publicKey,deviceId,authorization,renewed,now.AddDays(8),onlinePath),"site may renew leases without replacing long-term code");
+                string manualPath=Path.Combine(dir,"manual-authorization.dat");Check(ActivationStore.Accept(publicKey,deviceId,authorization,now,path:manualPath) && ActivationStore.Valid(publicKey,deviceId,now.AddDays(6),manualPath),"manual authorization permits seven days offline");
+                Check(!ActivationStore.Valid(publicKey,deviceId,now.AddDays(8),manualPath) && !ActivationStore.Accept(publicKey,deviceId,authorization,now.AddDays(8),path:manualPath),"reentering the same offline authorization does not reset its deadline");
+
                 Check(JacquardLicensing.LicenseToken.TryVerify(publicKey,signed,deviceId,now,out var claims) && claims!.LicenseId==id.ToString("D"),"signed device license validates");
                 Check(!JacquardLicensing.LicenseToken.TryVerify(publicKey,signed,JacquardLicensing.LicenseToken.DeviceDigest("CPU-123456","DISK-OTHER"),now,out _),"hardware replacement invalidates license");
                 Check(!JacquardLicensing.LicenseToken.TryVerify(publicKey,signed,deviceId,now.AddDays(7),out _),"license expires at the seven-day boundary");
@@ -923,7 +937,7 @@ internal static class Program
             try{soloTimer.Start();var soloCard=(System.Windows.Controls.Border)nodeLayer.Children[nodeLayer.Children.Count-1];soloCard.ContextMenu.Items.OfType<System.Windows.Controls.MenuItem>().Single(x=>Equals(x.Header,"تنظیمات ماژول")).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));if(soloFrame.Continue)System.Windows.Threading.Dispatcher.PushFrame(soloFrame);}finally{soloTimer.Stop();System.Threading.SynchronizationContext.SetSynchronizationContext(soloOldContext);}
             Check(sawSetup && sawDesign && liveSolo.DesignStandalone && liveSolo.DesignWidth==12 && liveSolo.DesignHeight==8 && liveSolo.DesignWeftDensity==20 && ModuleExecutor.Run(moduleGraph,liveSolo.Id)[liveSolo.Id].Image!.PixelWidth==12,"unconnected design card creates a white project canvas and stores requested density");
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "041.0.0.0-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "042.0.0.0-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));

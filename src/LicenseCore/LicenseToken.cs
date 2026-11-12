@@ -6,7 +6,7 @@ namespace JacquardLicensing;
 
 // Token format JSL1.base64url(UTF8 JSON).base64url(ECDSA P-256/SHA-256 DER signature).
 // The signature covers the exact bytes of the JSON, not a reserialized document.
-public sealed record LicenseClaims(int Version, string Product, string Device, string LicenseId, long IssuedAt, long NotBefore, long ExpiresAt, string? CustomerName = null);
+public sealed record LicenseClaims(int Version, string Product, string Device, string LicenseId, long IssuedAt, long NotBefore, long ExpiresAt, string? CustomerName = null, long? LicenseExpiresAt = null, string? ActivationHash = null);
 
 public static class LicenseToken
 {
@@ -22,29 +22,43 @@ public static class LicenseToken
     }
     private static bool IsP256(ECDsa key) => key.KeySize==256 && key.ExportParameters(false).Curve.Oid.Value=="1.2.840.10045.3.1.7";
     public static bool IsDevice(string? value) => value is {Length:64} && value.All(c => c is >= '0' and <= '9' or >= 'A' and <= 'F');
-    private static bool ValidClaims(LicenseClaims c) => (c.CustomerName is null || c.CustomerName.Length <= 120 && !c.CustomerName.Any(char.IsControl)) && c.Version == 1 && c.Product == Product && IsDevice(c.Device) && Guid.TryParseExact(c.LicenseId,"D",out var licenseId) && licenseId != Guid.Empty && c.IssuedAt > 0 && c.NotBefore >= c.IssuedAt - 300 && c.ExpiresAt > c.IssuedAt && c.ExpiresAt - c.IssuedAt <= MaximumLeaseSeconds && c.NotBefore < c.ExpiresAt;
-    public static string Issue(ECDsa privateKey, string device, Guid licenseId, DateTimeOffset now, TimeSpan validity, string? customerName = null)
+    private static bool CommonClaims(LicenseClaims c) => (c.CustomerName is null || c.CustomerName.Length <= 120 && !c.CustomerName.Any(char.IsControl)) && c.Version == 1 && c.Product == Product && IsDevice(c.Device) && Guid.TryParseExact(c.LicenseId,"D",out var licenseId) && licenseId != Guid.Empty && c.IssuedAt > 0 && c.NotBefore >= c.IssuedAt - 300;
+    private static bool ValidLease(LicenseClaims c) => CommonClaims(c) && c.ExpiresAt > c.IssuedAt && c.ExpiresAt - c.IssuedAt <= MaximumLeaseSeconds && c.NotBefore < c.ExpiresAt && (c.LicenseExpiresAt is null || c.LicenseExpiresAt >= c.ExpiresAt) && (c.ActivationHash is null || IsDevice(c.ActivationHash));
+    private static string Sign(ECDsa privateKey, string format, LicenseClaims claims)
+    {
+        var payload=JsonSerializer.SerializeToUtf8Bytes(claims,JsonOptions);var signature=privateKey.SignData(payload,HashAlgorithmName.SHA256,DSASignatureFormat.Rfc3279DerSequence);return format+"."+Encode(payload)+"."+Encode(signature);
+    }
+    public static string Issue(ECDsa privateKey, string device, Guid licenseId, DateTimeOffset now, TimeSpan validity, string? customerName = null, long? licenseExpiresAt = null, string? activationHash = null)
     {
         if (!IsP256(privateKey) || !IsDevice(device) || licenseId == Guid.Empty || validity <= TimeSpan.Zero || validity > TimeSpan.FromSeconds(MaximumLeaseSeconds)) throw new ArgumentException("Invalid license parameters.");
-        long issued=now.ToUnixTimeSeconds();var claims=new LicenseClaims(1,Product,device,licenseId.ToString("D"),issued,issued-60,issued+(long)validity.TotalSeconds,customerName?.Trim());
-        if(!ValidClaims(claims))throw new ArgumentException("Invalid license times.");
-        var payload=JsonSerializer.SerializeToUtf8Bytes(claims,JsonOptions);var signature=privateKey.SignData(payload,HashAlgorithmName.SHA256,DSASignatureFormat.Rfc3279DerSequence);
-        return "JSL1."+Encode(payload)+"."+Encode(signature);
+        long issued=now.ToUnixTimeSeconds();var claims=new LicenseClaims(1,Product,device,licenseId.ToString("D"),issued,issued-60,issued+(long)validity.TotalSeconds,customerName?.Trim(),licenseExpiresAt,activationHash);
+        if(!ValidLease(claims))throw new ArgumentException("Invalid license times.");return Sign(privateKey,"JSL1",claims);
     }
-    public static bool TryVerify(ECDsa publicKey, string? token, string device, DateTimeOffset now, out LicenseClaims? claims)
+    // Device-bound authorization has no subscription date; online signed leases enforce the site's end date.
+    public static string IssueAuthorization(ECDsa privateKey,string device,Guid licenseId,DateTimeOffset now,string? customerName=null)
     {
-        claims=null;
-        if (!IsP256(publicKey) || !IsDevice(device) || token is null || token.Length>MaxTokenLength) return false;
+        if(!IsP256(privateKey) || !IsDevice(device) || licenseId==Guid.Empty)throw new ArgumentException("Invalid license parameters.");
+        long issued=now.ToUnixTimeSeconds();var claims=new LicenseClaims(1,Product,device,licenseId.ToString("D"),issued,issued-60,0,customerName?.Trim());
+        if(!CommonClaims(claims))throw new ArgumentException("Invalid authorization.");return Sign(privateKey,"JSA1",claims);
+    }
+    private static bool VerifyFormat(ECDsa publicKey,string? token,string device,DateTimeOffset now,string format,out LicenseClaims? claims)
+    {
+        claims=null;if(!IsP256(publicKey) || !IsDevice(device) || token is null || token.Length>MaxTokenLength)return false;
         try
         {
-            var parts=token.Split('.');if(parts.Length!=3 || parts[0]!="JSL1")return false;var payload=Decode(parts[1]);var signature=Decode(parts[2]);
+            var parts=token.Split('.');if(parts.Length!=3 || parts[0]!=format)return false;var payload=Decode(parts[1]);var signature=Decode(parts[2]);
             if(payload.Length>2048 || signature.Length>80 || !publicKey.VerifyData(payload,signature,HashAlgorithmName.SHA256,DSASignatureFormat.Rfc3279DerSequence))return false;
             var c=JsonSerializer.Deserialize<LicenseClaims>(payload,JsonOptions);long timestamp=now.ToUnixTimeSeconds();
-            if(c is null || !ValidClaims(c) || c.Device!=device || timestamp<c.NotBefore || timestamp>=c.ExpiresAt) return false;
+            if(c is null || c.Device!=device || timestamp<c.NotBefore)return false;
+            if(format=="JSA1") {if(!CommonClaims(c) || c.ExpiresAt!=0 || c.LicenseExpiresAt is not null || c.ActivationHash is not null)return false;}
+            else if(!ValidLease(c) || timestamp>=c.ExpiresAt)return false;
             claims=c;return true;
         }
-        catch (Exception ex) when (ex is FormatException or JsonException or CryptographicException or ArgumentException) {return false;}
+        catch(Exception ex) when(ex is FormatException or JsonException or CryptographicException or ArgumentException){return false;}
     }
+    public static bool TryVerify(ECDsa publicKey,string? token,string device,DateTimeOffset now,out LicenseClaims? claims) => VerifyFormat(publicKey,token,device,now,"JSL1",out claims);
+    public static bool TryVerifyAuthorization(ECDsa publicKey,string? token,string device,DateTimeOffset now,out LicenseClaims? claims) => VerifyFormat(publicKey,token,device,now,"JSA1",out claims) || TryVerify(publicKey,token,device,now,out claims);
+    public static string AuthorizationDigest(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
     public static string DeviceDigest(string cpuId, string diskId)
     {
         static string Normalize(string input) => input.Trim().ToUpperInvariant();
