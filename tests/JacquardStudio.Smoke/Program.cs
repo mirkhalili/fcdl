@@ -829,6 +829,7 @@ internal static class Program
             var firstLibraryGroup=(System.Windows.Controls.DockPanel)moduleLibrary.Children[0];var aiLibraryGroup=(System.Windows.Controls.DockPanel)moduleLibrary.Children[10];
             Check(System.Windows.Controls.DockPanel.GetDock(firstLibraryGroup.Children[0])==System.Windows.Controls.Dock.Left && firstLibraryGroup.Children[1] is System.Windows.Controls.Border && System.Windows.Controls.DockPanel.GetDock(aiLibraryGroup.Children[1])==System.Windows.Controls.Dock.Left && aiLibraryGroup.Children[1] is System.Windows.Controls.Button,"library help and AI settings use reserved left slots so right icons align");
             var nodeLayer = (System.Windows.Controls.Canvas)moduleWindow.FindName("NodeLayer");
+            var startupVisual=new StartupSplashWindow();var splashGrid=(System.Windows.Controls.Grid)startupVisual.Content;var samLabel=splashGrid.Children.OfType<System.Windows.Controls.TextBlock>().Single(t=>t.Text=="SAM");Check(samLabel.Foreground is LinearGradientBrush sheen && sheen.RelativeTransform.HasAnimatedProperties,"startup SAM text uses an animated light sweep");startupVisual.Close();
             var nodeVisual=(System.Windows.Controls.Border)nodeLayer.Children[0];var visualNode=moduleGraph.Nodes[0];
             Check(nodeVisual.Width==nodeVisual.Height && nodeVisual.CornerRadius.TopLeft==nodeVisual.Width/2,"module node is circular");
             Check(moduleWindow.Icon is not null,"workspace window uses the SAM application icon");

@@ -385,8 +385,10 @@ public partial class ModuleWindow : Window
         Inspector.Children.Add(Note("ورودی‌ها: " + (ModuleGraph.Inputs(node.Kind).Count==0 ? "بدون ورودی" : string.Join(" · ",ModuleGraph.Inputs(node.Kind).Keys.Select(p => PortName(p)+(graph.Edges.Any(e=>e.To==node.Id && e.Port==p) ? " ✓" : " ○"))))));
         void Field(string label,string value,Action<string> assign)
         {
-            Inspector.Children.Add(new TextBlock { Text=label, FontSize=12, Margin=new Thickness(0,10,0,4) }); var input=new TextBox { Text=value, Padding=new Thickness(7), FlowDirection=FlowDirection.LeftToRight };
-            input.LostKeyboardFocus += (_,_) => { if (input.Text!=value) { try { assign(input.Text); Changed(); value=input.Text; } catch (ArgumentException ex) { input.Text=value; ModuleErrors.Show(Window.GetWindow(Inspector) ?? this,ex); } } }; Inspector.Children.Add(input);
+            var row=new Grid {Margin=new Thickness(0,2,0,2),FlowDirection=FlowDirection.RightToLeft};row.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(2,GridUnitType.Star)});row.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(3,GridUnitType.Star)});
+            row.Children.Add(new TextBlock {Text=label,FontSize=12,Margin=new Thickness(4,0,6,0),VerticalAlignment=VerticalAlignment.Center,TextWrapping=TextWrapping.Wrap});
+            var input=new TextBox {Text=value,Padding=new Thickness(6,4,6,4),FlowDirection=FlowDirection.LeftToRight};Grid.SetColumn(input,1);row.Children.Add(input);
+            input.LostKeyboardFocus += (_,_) => { if (input.Text!=value) { try { assign(input.Text); Changed(); value=input.Text; } catch (ArgumentException ex) { input.Text=value; ModuleErrors.Show(Window.GetWindow(Inspector) ?? this,ex); } } };Inspector.Children.Add(row);
         }
         void Button(string text,Action action) { var b=new Button { Content=text, Margin=new Thickness(0,8,0,0), Padding=new Thickness(8) }; b.Click+=(_,_)=>action(); Inspector.Children.Add(b); }
         switch (node.Kind)

@@ -43,6 +43,7 @@ jobs:
         run: |
           dotnet publish src/LicenseIssuer/LicenseIssuer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o artifacts/license-issuer
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path artifacts/license-issuer/LicenseIssuer.exe)) { throw "Single-file issuer executable is missing" }
       - name: Build installer
         shell: pwsh
         run: |
@@ -104,6 +105,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Jacquard-License-Issuer-Prototype
-          path: artifacts/license-issuer/*
+          path: artifacts/license-issuer/LicenseIssuer.exe
           if-no-files-found: error
           retention-days: 30
