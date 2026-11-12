@@ -293,6 +293,19 @@ internal static class Program
             var loadedLayerData=layerReload.Nodes.Single(n=>n.Id==layerEditor.Id).DesignEditDocument!;Check(loadedLayerData.Layers.Count==3 && loadedLayerData.TraceOpacity==37 && loadedLayerData.TracePng==layeredData.TracePng,"editable layers and tracing survive encrypted project");
             Check(ModuleExecutor.ImageFingerprint(ModuleExecutor.Run(layerReload,layerEditor.Id)[layerEditor.Id].Image!)==ModuleExecutor.ImageFingerprint(designDoc.Composite()),"graph output composites layers and excludes trace");
             loadedLayerData.Layers[0].Opacity=101;Expect<InvalidDataException>(()=>ModuleExecutor.Run(layerReload,layerEditor.Id));
+            using(var signing=System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256))
+            using(var publicKey=System.Security.Cryptography.ECDsa.Create())
+            {
+                publicKey.ImportSubjectPublicKeyInfo(signing.ExportSubjectPublicKeyInfo(),out _);
+                var deviceId=JacquardLicensing.LicenseToken.DeviceDigest("CPU-123456","DISK-789012");var now=DateTimeOffset.UtcNow;var id=Guid.NewGuid();
+                var signed=JacquardLicensing.LicenseToken.Issue(signing,deviceId,id,now,TimeSpan.FromDays(7));
+                Check(JacquardLicensing.LicenseToken.TryVerify(publicKey,signed,deviceId,now,out var claims) && claims!.LicenseId==id.ToString("D"),"signed device license validates");
+                Check(!JacquardLicensing.LicenseToken.TryVerify(publicKey,signed,JacquardLicensing.LicenseToken.DeviceDigest("CPU-123456","DISK-OTHER"),now,out _),"hardware replacement invalidates license");
+                Check(!JacquardLicensing.LicenseToken.TryVerify(publicKey,signed,deviceId,now.AddDays(7),out _),"license expires at the seven-day boundary");
+                var parts=signed.Split('.');parts[1]=(parts[1][0]=='A'?"B":"A")+parts[1][1..];Check(!JacquardLicensing.LicenseToken.TryVerify(publicKey,string.Join(".",parts),deviceId,now,out _),"tampered signed payload rejected");
+                Expect<ArgumentException>(()=>JacquardLicensing.LicenseToken.Issue(signing,deviceId,id,now,TimeSpan.FromDays(8)));
+                Expect<ArgumentException>(()=>JacquardLicensing.LicenseToken.DeviceDigest("UNKNOWN","DISK-789012"));
+            }
             var arcCanvas=new DesignCanvas(DesignCanvas.Blank(7,7,Colors.White));arcCanvas.Arc(0,0,6,6,Colors.Red);Check(arcCanvas.At(3,0)==Colors.Red && arcCanvas.At(0,3)==Colors.Red && arcCanvas.At(3,6)==Colors.White,"upper elliptical arc");
             var arcLower=new DesignCanvas(DesignCanvas.Blank(7,7,Colors.White));arcLower.Arc(0,0,6,6,Colors.Blue,1,true);Check(arcLower.At(3,6)==Colors.Blue && arcLower.At(3,0)==Colors.White,"lower elliptical arc");
             var arcRight=new DesignCanvas(DesignCanvas.Blank(9,9,Colors.White));arcRight.ArcSection(0,0,8,8,Colors.Red,1,270,180);Check(arcRight.At(8,4)==Colors.Red && arcRight.At(0,4)==Colors.White,"right half arc");

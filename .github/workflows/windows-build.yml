@@ -17,6 +17,8 @@ jobs:
           dotnet-version: 10.0.x
       - name: Build and smoke-test on Windows
         run: |
+          dotnet build src/LicenseIssuer/LicenseIssuer.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build src/JacquardStudio/JacquardStudio.csproj -c Release *> build-log.txt
           $code = $LASTEXITCODE
           Get-Content build-log.txt
@@ -36,6 +38,10 @@ jobs:
       - name: Publish self-contained Windows x64 application
         run: |
           dotnet publish src/JacquardStudio/JacquardStudio.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish license issuer prototype
+        run: |
+          dotnet publish src/LicenseIssuer/LicenseIssuer.csproj -c Release -r win-x64 --self-contained true -o artifacts/license-issuer
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build installer
         shell: pwsh
@@ -91,5 +97,13 @@ jobs:
         with:
           name: JacquardStudio-Windows-x64
           path: artifacts/installer/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload license issuer prototype
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jacquard-License-Issuer-Prototype
+          path: artifacts/license-issuer/*
           if-no-files-found: error
           retention-days: 30

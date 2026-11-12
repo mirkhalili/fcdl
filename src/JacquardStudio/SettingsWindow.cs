@@ -23,7 +23,10 @@ public sealed class SettingsWindow : Window
         var remove=new CheckBox {Content="حذف رمز ورود فعلی",Margin=new Thickness(0,12,0,0),IsEnabled=initial.HasPassword};body.Children.Add(remove);
         Heading("ماژول‌های کتابخانه"); body.Children.Add(new TextBlock {Text="ماژول غیرفعال از فهرست افزودن پنهان می‌شود؛ ماژول‌های موجود پروژه حذف یا متوقف نمی‌شوند.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,8)});
         var checks=new Dictionary<ModuleKind,CheckBox>(); foreach(var item in types) {var check=new CheckBox {Content=item.Name,IsChecked=!initial.HiddenModules.Contains(item.Kind.ToString()),Margin=new Thickness(0,4,0,4)};checks[item.Kind]=check;body.Children.Add(check);}
-        Heading("ثبت برنامه");body.Children.Add(new TextBlock {Text="بخش ثبت برنامه آماده‌سازی شده است. سامانهٔ صدور و بررسی لایسنس هنوز تعریف نشده و فعال‌سازی واقعی انجام نمی‌شود.",TextWrapping=TextWrapping.Wrap});
+        Heading("شناسه دستگاه و ثبت برنامه");body.Children.Add(new TextBlock {Text="فعال‌سازی هنوز آماده استفاده نیست. این دکمه صرفاً شناسه هش‌شده پردازنده و دیسک ویندوز را برای بررسی نمایش می‌دهد؛ هیچ اطلاعاتی به سایت ارسال نمی‌شود. با تعویض قطعات شناسه تغییر می‌کند.",TextWrapping=TextWrapping.Wrap});
+        var deviceId=new TextBox {IsReadOnly=true,FlowDirection=FlowDirection.LeftToRight,Margin=new Thickness(0,8,0,0),TextWrapping=TextWrapping.Wrap};body.Children.Add(deviceId);
+        var getId=new Button {Content="خواندن شناسه دستگاه",HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,8,0,0)};body.Children.Add(getId);
+        getId.Click+=async (_,_)=>{getId.IsEnabled=false;try {deviceId.Text=await Task.Run(HardwareIdentity.ReadDeviceId);}catch(Exception ex) when(ex is System.Management.ManagementException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or IOException or System.Runtime.InteropServices.COMException){deviceId.Text="";MessageBox.Show(this,"دریافت شناسه سخت‌افزار ممکن نیست.\n"+ex.Message,"شناسه دستگاه",MessageBoxButton.OK,MessageBoxImage.Warning);}finally {getId.IsEnabled=true;}};
         apply.Click+=(_,_)=>{
             try
             {
