@@ -23,6 +23,12 @@ public partial class MainWindow : Window
         }
         catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or CryptographicException or ArgumentException) {MessageBox.Show(this,ex.Message,"خطا");}
     }
+    private void SaveToken(object sender,RoutedEventArgs e)
+    {
+        if(string.IsNullOrWhiteSpace(Token.Text)){MessageBox.Show(this,"ابتدا کد فعال‌سازی بسازید.");return;}
+        var dialog=new SaveFileDialog {Filter="Activation code|*.lic;*.txt",FileName="activation.lic",AddExtension=true,DefaultExt=".lic"};if(dialog.ShowDialog(this)!=true)return;
+        try{File.WriteAllText(dialog.FileName,Token.Text.Trim(),new System.Text.UTF8Encoding(false));Status.Text="فایل کد ذخیره شد؛ آن را از مسیر امن به کاربر بدهید.";}catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or ArgumentException){MessageBox.Show(this,ex.Message,"خطا");}
+    }
     private void Issue(object sender,RoutedEventArgs e)
     {
         try {if(!Guid.TryParseExact(LicenseId.Text.Trim(),"D",out var id) || !int.TryParse(Days.Text,out int days) || days is < 1 or > 7)throw new ArgumentException("شناسه لایسنس و تعداد روز معتبر وارد کنید.");using var key=ECDsa.Create();key.ImportFromPem(File.ReadAllText(KeyPath.Text));Token.Text=LicenseToken.Issue(key,Device.Text.Trim().ToUpperInvariant(),id,DateTimeOffset.UtcNow,TimeSpan.FromDays(days));Status.Text="رشته ایجاد شد؛ آن را از مسیر امن به کاربر بدهید.";}

@@ -13,6 +13,7 @@
   <TextBlock Margin="0,16,0,4" Text="اعتبار (روز، حداکثر ۷)"/><TextBox x:Name="Days" Text="7" FlowDirection="LeftToRight"/>
   <Button Content="تولید رشته فعال‌سازی" Click="Issue" Margin="0,16" Padding="12,6" HorizontalAlignment="Right"/>
   <TextBlock Text="رشته فعال‌سازی"/><TextBox x:Name="Token" AcceptsReturn="True" Height="120" TextWrapping="Wrap" FlowDirection="LeftToRight" IsReadOnly="True" VerticalScrollBarVisibility="Auto"/>
+  <Button Content="ذخیره کد در فایل" Click="SaveToken" Margin="0,10" HorizontalAlignment="Right"/>
   <TextBlock x:Name="Status" Margin="0,12" TextWrapping="Wrap"/>
  </StackPanel></ScrollViewer>
 </Window>

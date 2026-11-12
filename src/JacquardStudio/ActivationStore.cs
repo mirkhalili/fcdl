@@ -43,5 +43,10 @@ public static class ActivationStore
     {
         try{return Read(path)?.Revoked ?? false;}catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or CryptographicException or JsonException or ArgumentException){return true;}
     }
+    public static void Clear(string? path=null) {path ??= DefaultPath;if(File.Exists(path))File.Delete(path);}
+    public static string ReadTokenFile(string path)
+    {
+        using var stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read);if(stream.Length>8192)throw new InvalidDataException("فایل فعال‌سازی بیش از حد بزرگ است.");using var reader=new StreamReader(stream,new System.Text.UTF8Encoding(false,true),true);var value=reader.ReadToEnd().Trim();if(value.Length>4096)throw new InvalidDataException("کد فعال‌سازی بیش از حد طولانی است.");return value;
+    }
     public static void Revoke(string? path=null) => Write(new Saved("",DateTimeOffset.UtcNow.ToUnixTimeSeconds(),true),path);
 }

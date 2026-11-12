@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 find website -name '*.php' -print0 | xargs -0 -n1 php -l
+mysql -h 127.0.0.1 -uroot -ptest-only-password -e 'CREATE DATABASE jacquard_migration CHARACTER SET utf8mb4'
+mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_migration < website/tests/schema-038.sql
+mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_migration -e "INSERT INTO installations VALUES ('3b01a77c-85a6-491e-94d8-28c4ec5e7138', REPEAT('a',64),REPEAT('A',64),'approved',UTC_TIMESTAMP(),UTC_TIMESTAMP(),'127.0.0.1','v','os','cpu',1,'pc'), ('f6bc3945-7683-4da5-b3c8-4d6e69d845f8',REPEAT('b',64),REPEAT('A',64),'blocked',UTC_TIMESTAMP(),UTC_TIMESTAMP(),'127.0.0.1','v','os','cpu',1,'pc'); INSERT INTO execution_events(installation_id,observed_at,ip) VALUES ('3b01a77c-85a6-491e-94d8-28c4ec5e7138',UTC_TIMESTAMP(),'127.0.0.1');"
+mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_migration < website/private/migrate-038-to-039.sql
+[[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_migration -e 'SELECT status FROM devices') == blocked ]]
+[[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_migration -e 'SELECT COUNT(*) FROM execution_events WHERE os_version=""') == 1 ]]
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test < website/private/schema.sql
 config=$(mktemp)
 export JACQUARD_TEST_RELEASES=$(mktemp -d)
@@ -15,13 +21,14 @@ export JACQUARD_CONFIG="$config"
 php -S 127.0.0.1:18999 -t website/public >/tmp/jacquard-php.log 2>&1 & server=$!
 sleep 2
 curl -fsS http://127.0.0.1:18999/ | grep -q 'تار و پود'
-request='{"installationId":"3b01a77c-85a6-491e-94d8-28c4ec5e7138","secret":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","device":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","appVersion":"test","osVersion":"Windows","cpuModel":"CPU","ramBytes":1024,"machineName":"PC"}'
+request='{"installationId":"3b01a77c-85a6-491e-94d8-28c4ec5e7138","secret":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","device":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","appVersion":"test","osVersion":"Windows","cpuModel":"CPU","ramBytes":1024,"machineName":"PC","customerName":"First User","phone":"123","city":"Utrecht"}'
 first=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
 [[ "$first" == *'"status":"pending"'* ]]
-mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE installations SET status='blocked'"
+[[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT customer_name FROM devices') == 'First User' ]]
+mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET status='blocked'"
 second=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
 [[ "$second" == *'"status":"blocked"'* ]]
-mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE installations SET status='approved'"
+mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET status='approved'"
 approved=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
 export APPROVED_REPLY="$approved"
 python3 - <<'PYTEST'
@@ -41,6 +48,24 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/jso
 [[ "$code" == 403 ]]
 count=$(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events')
 [[ "$count" == 3 ]]
+# The device expiry limits the signed lease, and reinstallation inherits device approval.
+mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET expires_at=UTC_TIMESTAMP()+INTERVAL 1 HOUR"
+short=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
+export SHORT_REPLY="$short"
+python3 - <<'PYTEST'
+import os,json,base64
+r=json.loads(os.environ['SHORT_REPLY']); p=r['token'].split('.')[1]; c=json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))
+assert r['status']=='approved' and 0 < c['expiresAt']-c['issuedAt'] <= 3600
+PYTEST
+mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET expires_at=UTC_TIMESTAMP()-INTERVAL 1 SECOND"
+expired=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
+[[ "$expired" == *'"status":"expired"'* && "$expired" == *'"token":null'* ]]
+mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET expires_at=NULL"
+reinstall=${request/3b01a77c-85a6-491e-94d8-28c4ec5e7138/f6bc3945-7683-4da5-b3c8-4d6e69d845f8}
+reinstalled=$(curl -fsS -H 'Content-Type: application/json' --data "$reinstall" http://127.0.0.1:18999/api.php)
+[[ "$reinstalled" == *'"status":"approved"'* ]]
+[[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM devices') == 1 ]]
+
 cookies=$(mktemp); html=$(mktemp); fake=$(mktemp); downloaded=$(mktemp)
 curl -fsS -c "$cookies" http://127.0.0.1:18999/admin.php > "$html"
 csrf=$(sed -n 's/.*name="csrf" value="\([a-f0-9]*\)".*/\1/p' "$html" | head -1)
@@ -49,6 +74,14 @@ curl -fsS -b "$cookies" -c "$cookies" -X POST -d "csrf=$csrf&action=login&userna
 curl -fsS -b "$cookies" http://127.0.0.1:18999/admin.php > "$html"
 grep -q 'بارگذاری فایل نصب' "$html"
 csrf=$(sed -n 's/.*name="csrf" value="\([a-f0-9]*\)".*/\1/p' "$html" | head -1)
+device=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+curl -fsS -b "$cookies" --data-urlencode "csrf=$csrf" --data-urlencode 'action=save_device' --data-urlencode "device=$device" --data-urlencode 'status=approved' --data-urlencode 'expiry=2090-01-01' --data-urlencode 'customer_name=Test User' --data-urlencode 'phone=12345' --data-urlencode 'city=Amsterdam' --data-urlencode 'notes=<script>' http://127.0.0.1:18999/admin.php > "$html"
+grep -q 'Test User' "$html"; grep -q 'Amsterdam' "$html"
+curl -fsS -b "$cookies" "http://127.0.0.1:18999/admin.php?device=$device" > "$html"
+grep -q 'تاریخچه اتصال' "$html";grep -q 'Windows' "$html";grep -q '&lt;script&gt;' "$html";grep -q '2090-01-01' "$html"
+[[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e "SELECT expires_at FROM devices") == '2090-01-02 00:00:00' ]]
+code=$(curl -sS -o /dev/null -w '%{http_code}' --data "csrf=$csrf&action=delete_device&device=$device" http://127.0.0.1:18999/admin.php)
+[[ "$code" == 403 ]]
 { printf MZ; head -c 2048 /dev/zero; } > "$fake"
 curl -fsS -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=setup.exe" http://127.0.0.1:18999/admin.php > "$html"
 grep -q 'فایل منتشر شد' "$html"
@@ -58,5 +91,10 @@ printf 'not an installer' > "$fake";head -c 2048 /dev/zero >> "$fake"
 curl -fsS -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=evil.php" http://127.0.0.1:18999/admin.php > "$html"
 grep -q 'اجرایی ویندوز نیست' "$html"
 curl -fsS http://127.0.0.1:18999/download.php > "$fake";cmp "$fake" "$downloaded"
+curl -fsS -b "$cookies" "http://127.0.0.1:18999/admin.php?device=$device&delete=1" > "$html";grep -q 'تأیید می‌کنید' "$html"
+curl -fsS -b "$cookies" -X POST -d "csrf=$csrf&action=delete_device&device=$device" http://127.0.0.1:18999/admin.php > "$html"
+[[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events') == 0 ]]
+new=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
+[[ "$new" == *'"status":"pending"'* ]]
 rm -f "$cookies" "$html" "$fake" "$downloaded"
 echo 'Website API smoke tests passed.'
