@@ -64,9 +64,18 @@ public sealed class ModuleNode
     public int MachineFormat { get; set; } = 1;
 }
 public sealed record ModuleEdge(Guid From, Guid To, string Port);
+public sealed class GraphAnnotation
+{
+    public Guid Id { get; set; }=Guid.NewGuid();
+    public bool IsFrame { get; set; }
+    public double X { get; set; } public double Y { get; set; }
+    public double Width { get; set; }=260; public double Height { get; set; }=120;
+    public string Text { get; set; }="یادداشت"; public string Color { get; set; }="#E8A958";
+}
 public sealed class ModuleGraph
 {
     public List<ModuleNode> Nodes { get; set; } = new();
+    public List<GraphAnnotation> Annotations { get; set; } = new();
     public List<ModuleEdge> Edges { get; set; } = new();
     public static ModuleData Output(ModuleKind kind) => kind switch
     {
@@ -151,6 +160,7 @@ public sealed class ModuleGraph
     }
     public void Validate()
     {
+        if(Annotations is null || Annotations.Count>256 || Annotations.Any(a=>a is null || a.Id==Guid.Empty || !double.IsFinite(a.X) || !double.IsFinite(a.Y) || !double.IsFinite(a.Width) || !double.IsFinite(a.Height) || a.X is <0 or >10000 || a.Y is <0 or >10000 || a.Width is <40 or >2000 || a.Height is <30 or >2000 || a.Text is null || a.Text.Length>300 || a.Color is null || a.Color.Length!=7 || a.Color[0]!='#' || !a.Color.Skip(1).All(Uri.IsHexDigit)) || Annotations.Select(a=>a.Id).Distinct().Count()!=Annotations.Count)throw new InvalidDataException("Invalid workspace annotations.");
         if (Nodes is null || Edges is null || Nodes.Count > 128 || Edges.Count > 256 || Nodes.Any(n => n is null || n.Id == Guid.Empty || !Enum.IsDefined(n.Kind) || !double.IsFinite(n.X) || !double.IsFinite(n.Y) || n.X is < 0 or > 10000 || n.Y is < 0 or > 10000 || n.Label is null || n.Label.Length > 255 || n.Weaves is null || n.Weaves.Count > 256 || n.WeaveNames is null || n.WeaveNames.Count != n.Weaves.Count || n.WeaveNames.Any(x => x is null || x.Length > 100) || n.WeaveAssignments is null || n.WeaveAssignments.Count > 256 || n.CustomWeaves is null || n.CustomWeaves.Count > 256 || n.Machine is null || n.Simulation is null) || Nodes.Select(n => n.Id).Distinct().Count() != Nodes.Count) throw new InvalidDataException("Invalid graph nodes.");
         if (Nodes.Any(n => n.Kind == ModuleKind.CreateWeave && (n.Weaves.Count > 1 || n.Weaves.Any(p => p is null || p.Width > WeaveEditor.MaxSide || p.Height > WeaveEditor.MaxSide)))) throw new InvalidDataException("A weave designer node holds at most one weave.");
         foreach (var n in Nodes) {

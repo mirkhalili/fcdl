@@ -5,7 +5,10 @@ return [
     'db_user' => 'CHANGE_ME',
     'db_password' => 'CHANGE_ME',
     // Generate using: php -r 'echo password_hash(readline("Password: "), PASSWORD_DEFAULT), PHP_EOL;'
+    'admin_username' => 'admin',
     'admin_hash' => '',
+    // Store downloads outside the public web root; use an absolute path.
+    'download_dir' => __DIR__ . '/releases',
     'session_name' => 'jacquard_admin',
     'base_path' => '/app',
     // HTTPS is mandatory; set this true only for isolated local testing.

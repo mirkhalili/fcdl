@@ -28,7 +28,8 @@ UninstallDisplayIcon={app}\{#AppExeName}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: "..\artifacts\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\src\JacquardStudio\Assets\app.ico"; DestDir: "{app}"; DestName: "sam-{#AppVersion}.ico"; Flags: ignoreversion
 [Icons]
-Name: "{autoprograms}\Jacquard Studio"; Filename: "{app}\{#AppExeName}"
+Name: "{autoprograms}\Jacquard Studio"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\sam-{#AppVersion}.ico"
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Launch Jacquard Studio"; Flags: nowait postinstall skipifsilent

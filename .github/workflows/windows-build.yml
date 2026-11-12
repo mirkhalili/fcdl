@@ -41,7 +41,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Publish license issuer prototype
         run: |
-          dotnet publish src/LicenseIssuer/LicenseIssuer.csproj -c Release -r win-x64 --self-contained true -o artifacts/license-issuer
+          dotnet publish src/LicenseIssuer/LicenseIssuer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o artifacts/license-issuer
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build installer
         shell: pwsh

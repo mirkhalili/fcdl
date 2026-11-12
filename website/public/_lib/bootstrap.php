@@ -7,9 +7,9 @@ header('Referrer-Policy: no-referrer');
 header('X-Frame-Options: DENY');
 header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
 $configPath=getenv('JACQUARD_CONFIG') ?: dirname(__DIR__,3).'/jacquard-private/config.php';
-if (!$configPath || !is_file($configPath)) { http_response_code(503); exit('Service not configured.'); }
+if (!$configPath || !is_file($configPath)) { http_response_code(503); exit('سامانه هنوز پیکربندی نشده است. راهنمای نصب هاست را بررسی کنید.'); }
 $config=require $configPath;
-if (!is_array($config) || empty($config['db_dsn']) || empty($config['db_user']) || empty($config['admin_hash'])) { http_response_code(503); exit('Service not configured.'); }
+if (!is_array($config) || empty($config['db_dsn']) || empty($config['db_user']) || empty($config['admin_hash'])) { http_response_code(503); exit('سامانه هنوز پیکربندی نشده است. راهنمای نصب هاست را بررسی کنید.'); }
 $isHttps=isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
 $local=($config['allow_local_http'] ?? false) === true && in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1','::1'],true);
 if (!$isHttps && !$local) { http_response_code(403); exit('HTTPS required.'); }
@@ -23,6 +23,7 @@ function limit(PDO $db,string $scope,int $max,int $seconds): bool {
  $stmt->execute([$scope]);$stmt=$db->prepare('SELECT hits FROM request_limits WHERE scope=?');$stmt->execute([$scope]);return (int)$stmt->fetchColumn() <= $max;
 }
 function start_admin_session(array $config): void {
- session_name($config['session_name'] ?? 'jacquard_admin');session_set_cookie_params(['path'=>($config['base_path'] ?? '/app').'/','secure'=>true,'httponly'=>true,'samesite'=>'Strict']);session_start();
+ global $local;
+ session_name($config['session_name'] ?? 'jacquard_admin');session_set_cookie_params(['path'=>($config['base_path'] ?? '/app').'/','secure'=>!$local,'httponly'=>true,'samesite'=>'Strict']);session_start();
  if (!isset($_SESSION['csrf'])) $_SESSION['csrf']=bin2hex(random_bytes(32));
 }

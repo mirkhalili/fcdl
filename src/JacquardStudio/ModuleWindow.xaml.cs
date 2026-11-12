@@ -17,13 +17,14 @@ public partial class ModuleWindow : Window
     private ModuleGraph graph = new();
     private readonly Dictionary<Guid, Border> cards = new();
     private readonly HashSet<Guid> failedNodes = new();
-    private const double NodeDiameter=168;
+    private const double NodeDiameter=124;
     private static double PortCenter(int index,int count) => NodeDiameter/2 + (index-(count-1)/2.0)*32;
     private IReadOnlyDictionary<Guid,ModuleValue> results = new Dictionary<Guid,ModuleValue>();
     private Guid? selected, connecting, dragging;
     private ModuleEdge? selectedWire;
     private Point libraryDragStart;
     private bool panning; private Point panOrigin; private double panX, panY;
+    private bool drawingFrame; private Point? frameStart; private Border? framePreview;
     private Point dragStart; private double dragX, dragY, zoom = 1;
     private bool dirty, busy, closing;
     private string? projectPath, projectPassword;
@@ -106,7 +107,7 @@ public partial class ModuleWindow : Window
         {
             if(preferences.HiddenModules.Contains(type.kind.ToString())) continue;
             var row = new Grid(); row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(38) });
-            var icon = new TextBlock { Text = type.icon, FontFamily = new FontFamily("Segoe MDL2 Assets"), Foreground = CategoryBrush(type.color), FontSize = 18, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center }; Grid.SetColumn(icon,1); row.Children.Add(icon);
+            var icon = ModuleIcons.Create(type.kind,26); Grid.SetColumn(icon,1); row.Children.Add(icon);
             var labels = new StackPanel(); labels.Children.Add(new TextBlock { Text = type.name, FontSize = 12, Foreground = ResourceBrush("PrimaryText") }); labels.Children.Add(new TextBlock { Text = type.subtitle, FontSize = 9, Foreground = ResourceBrush("Muted"), FlowDirection = FlowDirection.LeftToRight }); labels.FlowDirection=FlowDirection.RightToLeft; labels.HorizontalAlignment=HorizontalAlignment.Stretch; foreach(var label in labels.Children.OfType<TextBlock>()) label.TextAlignment=TextAlignment.Right; row.Children.Add(labels);
             var kind = type.kind; bool wasDragged=false; var group = new DockPanel { FlowDirection = FlowDirection.LeftToRight, Margin = new Thickness(0,2,0,2) };
             var help = new Button { Content = "?", ToolTip = "راهنمای " + type.name, Width = 28, Padding = new Thickness(0), Margin = new Thickness(3,0,0,0), Background = ResourceBrush("ButtonBackground"), Foreground = ResourceBrush("PrimaryText") }; DockPanel.SetDock(help,Dock.Left); group.Children.Add(help); help.Click += (_,_) => ShowModuleHelp(kind);
@@ -190,23 +191,22 @@ public partial class ModuleWindow : Window
     private void RenderGraph()
     {
         NodeLayer.Children.Clear(); cards.Clear();
-        GraphCanvas.Width = Math.Max(2600, graph.Nodes.Select(n => n.X + 300).DefaultIfEmpty(0).Max()); GraphCanvas.Height = Math.Max(1700, graph.Nodes.Select(n => n.Y + (n.Kind==ModuleKind.AiEdit ? 330 : 220)).DefaultIfEmpty(0).Max());
-        NodeLayer.Width = WireLayer.Width = GraphCanvas.Width; NodeLayer.Height = WireLayer.Height = GraphCanvas.Height;
+        GraphCanvas.Width = Math.Max(2600, graph.Nodes.Select(n => n.X + 300).Concat(graph.Annotations.Select(a=>a.X+a.Width+60)).DefaultIfEmpty(0).Max()); GraphCanvas.Height = Math.Max(1700, graph.Nodes.Select(n => n.Y + (n.Kind==ModuleKind.AiEdit ? 330 : 220)).Concat(graph.Annotations.Select(a=>a.Y+a.Height+60)).DefaultIfEmpty(0).Max());
+        NodeLayer.Width = WireLayer.Width = AnnotationLayer.Width = GraphCanvas.Width; NodeLayer.Height = WireLayer.Height = AnnotationLayer.Height = GraphCanvas.Height;
+        DrawAnnotations();
         foreach (var node in graph.Nodes)
         {
             var spec=Spec(node.Kind); var card=new Border { Width=NodeDiameter,Height=NodeDiameter,Background=NodeTint(spec.color),CornerRadius=new CornerRadius(NodeDiameter/2),Cursor=Cursors.Hand,ToolTip="انتخاب و جابه‌جایی ماژول؛ دوبار کلیک برای تنظیمات" };
             var inner=new Grid();
             var header=new Grid();
-            var title=new StackPanel {HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Width=112,IsHitTestVisible=false};
+            var title=new StackPanel {HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Width=82,IsHitTestVisible=false};
             if(results.TryGetValue(node.Id,out var value) && value.Image is { } picture)
             {
                 var thumb=new Border {Width=45,Height=45,CornerRadius=new CornerRadius(22.5),ClipToBounds=true,Background=ResourceBrush("GraphPreview"),HorizontalAlignment=HorizontalAlignment.Center,Child=new Image {Source=picture,Stretch=Stretch.UniformToFill}};title.Children.Add(thumb);
             }
-            else title.Children.Add(new TextBlock {Text=spec.icon,FontFamily=new FontFamily("Segoe MDL2 Assets"),Foreground=CategoryBrush(spec.color),FontSize=30,HorizontalAlignment=HorizontalAlignment.Center});
-            title.Children.Add(new TextBlock {Text=string.IsNullOrWhiteSpace(node.Label)?spec.name:node.Label,FlowDirection=FlowDirection.RightToLeft,TextAlignment=TextAlignment.Center,TextWrapping=TextWrapping.Wrap,MaxHeight=38,FontWeight=FontWeights.SemiBold,FontSize=11,Margin=new Thickness(0,5,0,0),TextTrimming=TextTrimming.CharacterEllipsis});
+            else title.Children.Add(ModuleIcons.Create(node.Kind,32));
+            title.Children.Add(new TextBlock {Text=string.IsNullOrWhiteSpace(node.Label)?spec.name:node.Label,FlowDirection=FlowDirection.RightToLeft,TextAlignment=TextAlignment.Center,TextWrapping=TextWrapping.Wrap,MaxHeight=38,FontWeight=FontWeights.SemiBold,FontSize=10,Margin=new Thickness(0,4,0,0),TextTrimming=TextTrimming.CharacterEllipsis});
             header.Children.Add(title);
-            var edit=new Button {Content="⋯",Padding=new Thickness(0),Width=27,Height=27,ToolTip="باز کردن تنظیمات ماژول",HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,20,27,0)};
-            edit.Click+=(_,e)=>{e.Handled=true;if(!busy){selected=node.Id;selectedWire=null;RenderSelection();Inspect();_=EditModuleAsync(node);}};header.Children.Add(edit);
             inner.Children.Add(new Border {Background=Brushes.Transparent,Child=header});
             var portGrid=new Grid();inner.Children.Add(portGrid);var inputs=ModuleGraph.Inputs(node.Kind).Keys.ToArray();
             for(int i=0;i<inputs.Length;i++)
@@ -233,7 +233,7 @@ public partial class ModuleWindow : Window
             card.MouseMove += (_,e) => { if (dragging!=node.Id || e.LeftButton!=MouseButtonState.Pressed) return; var now=e.GetPosition(NodeLayer); node.X=Math.Clamp(dragX+now.X-dragStart.X,0,Math.Max(0,GraphCanvas.Width-NodeDiameter)); node.Y=Math.Clamp(dragY+now.Y-dragStart.Y,0,Math.Max(0,GraphCanvas.Height-NodeDiameter)); Canvas.SetLeft(card,node.X); Canvas.SetTop(card,node.Y); DrawWires(); };
             card.MouseLeftButtonUp += (_,e) => { if (dragging != node.Id) return; dragging=null; card.ReleaseMouseCapture(); if (node.X != dragX || node.Y != dragY) { dirty=true; UpdateTitle(); } e.Handled=true; };
             card.LostMouseCapture += (_,_) => { dragging=null; };
-            card.ContextMenu=new ContextMenu(); var delete=new MenuItem { Header="حذف ماژول" }; delete.Click+=(_,_)=>RemoveNode(node.Id); card.ContextMenu.Items.Add(delete);
+            card.ContextMenu=new ContextMenu(); var editAction=new MenuItem { Header="تنظیمات ماژول" }; editAction.Click+=(_,_)=>{if(!busy){selected=node.Id;selectedWire=null;RenderSelection();Inspect();_=EditModuleAsync(node);}}; card.ContextMenu.Items.Add(editAction); var delete=new MenuItem { Header="حذف ماژول" }; delete.Click+=(_,_)=>RemoveNode(node.Id); card.ContextMenu.Items.Add(delete);
         }
         RenderSelection(); DrawWires();
     }
@@ -283,11 +283,42 @@ public partial class ModuleWindow : Window
         var grid=new WrapPanel();root.Children.Add(new ScrollViewer {Content=grid,VerticalScrollBarVisibility=ScrollBarVisibility.Auto});dialog.Content=root;
         foreach(var spec in Types) foreach(var port in graph.InsertionPorts(edge,spec.kind))
         {
-            var icon=new TextBlock {Text=spec.icon,FontFamily=new FontFamily("Segoe MDL2 Assets"),FontSize=27,HorizontalAlignment=HorizontalAlignment.Center,Foreground=CategoryBrush(spec.color)};
+            var icon=ModuleIcons.Create(spec.kind,36);
             var button=new Button {Content=icon,Width=68,Height=60,Margin=new Thickness(5),ToolTip=spec.name+" · ورودی "+PortName(port)};System.Windows.Automation.AutomationProperties.SetName(button,spec.name+" · "+PortName(port));
             button.Click+=(_,_)=>{try {var from=graph.Nodes.Single(n=>n.Id==edge.From);var to=graph.Nodes.Single(n=>n.Id==edge.To);var node=graph.InsertBetween(edge,spec.kind,port,Math.Clamp((from.X+to.X)/2,0,10000),Math.Clamp((from.Y+to.Y)/2+155,0,10000));selected=node.Id;selectedWire=null;Changed(node.Id);RenderGraph();Inspect();Status.Text="ماژول درج شد؛ تا تأیید تنظیمات در حالت عبور مستقیم است.";dialog.DialogResult=true;}catch(ArgumentException ex){MessageBox.Show(dialog,ex.Message);}};grid.Children.Add(button);
         }
         if(grid.Children.Count==0)grid.Children.Add(new TextBlock {Text="ماژول سازگاری برای این اتصال وجود ندارد.",TextWrapping=TextWrapping.Wrap});dialog.ShowDialog();
+    }
+    private void AddText_Click(object sender,RoutedEventArgs e)=>AddAnnotation(false);
+    private void AddFrame_Click(object sender,RoutedEventArgs e) {if(busy)return;if(graph.Annotations.Count>=256){MessageBox.Show(this,"حداکثر ۲۵۶ یادداشت مجاز است.");return;} drawingFrame=true;GraphScroll.Cursor=Cursors.Cross;Status.Text="برای رسم کادر روی فضای کار بکشید؛ Escape برای لغو.";}
+    private void AddAnnotation(bool frame)
+    {
+        if(busy)return;if(graph.Annotations.Count>=256){MessageBox.Show(this,"حداکثر ۲۵۶ یادداشت مجاز است.");return;}
+        var item=new GraphAnnotation {IsFrame=frame,X=Math.Clamp(GraphScroll.HorizontalOffset/zoom+60,0,10000),Y=Math.Clamp(GraphScroll.VerticalOffset/zoom+60,0,10000),Width=frame?350:210,Height=frame?200:65,Text=frame?"گروه ماژول‌ها":"یادداشت"};
+        if(EditAnnotation(item)){graph.Annotations.Add(item);dirty=true;UpdateTitle();RenderGraph();}
+    }
+    private bool EditAnnotation(GraphAnnotation item)
+    {
+        var dialog=new Window {Title=item.IsFrame?"کادر رنگی":"متن فضای کاری",Width=410,Height=450,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,FlowDirection=FlowDirection.RightToLeft};dialog.SetResourceReference(Window.BackgroundProperty,"Surface");dialog.SetResourceReference(Window.ForegroundProperty,"PrimaryText");
+        var panel=new StackPanel {Margin=new Thickness(18)};dialog.Content=panel;
+        TextBox Field(string label,string value) {panel.Children.Add(new TextBlock {Text=label,Margin=new Thickness(0,5,0,2)});var field=new TextBox {Text=value,Margin=new Thickness(0,0,0,4)};panel.Children.Add(field);return field;}
+        var text=Field("متن",item.Text);text.MaxLength=300;var width=Field("عرض",item.Width.ToString("0"));var height=Field("ارتفاع",item.Height.ToString("0"));var color=Field("رنگ #RRGGBB",item.Color);color.FlowDirection=FlowDirection.LeftToRight;
+        var choose=new Button {Content="انتخاب رنگ",Margin=new Thickness(0,6,0,0)};choose.Click+=(_,_)=>{var chosen=ColorChooser.Pick(dialog,color.Text);if(chosen is not null)color.Text=chosen;};panel.Children.Add(choose);
+        var ok=new Button {Content="ثبت",Margin=new Thickness(0,10,0,0)};panel.Children.Add(ok);ok.Click+=(_,_)=>{try{int w=Parse(width.Text,0),h=Parse(height.Text,0);string c=color.Text.Trim();if(w is <40 or >2000 || h is <30 or >2000 || c.Length!=7 || c[0]!='#' || !c.Skip(1).All(Uri.IsHexDigit))throw new ArgumentException("ابعاد یا رنگ معتبر نیست.");item.Width=w;item.Height=h;item.Text=text.Text;item.Color=c;dialog.DialogResult=true;}catch(ArgumentException ex){MessageBox.Show(dialog,ex.Message);}};return dialog.ShowDialog()==true;
+    }
+    private void DrawAnnotations()
+    {
+        AnnotationLayer.Children.Clear();foreach(var item in graph.Annotations)
+        {
+            var label=new TextBlock {Text=item.Text,Foreground=Brush(item.Color),Margin=new Thickness(8),TextWrapping=TextWrapping.Wrap,FontSize=item.IsFrame?13:15,FontWeight=FontWeights.SemiBold,IsHitTestVisible=false};
+            var frame=new Border {Width=item.Width,Height=item.Height,BorderBrush=Brush(item.Color),BorderThickness=new Thickness(item.IsFrame?2:1),CornerRadius=new CornerRadius(item.IsFrame?8:5),Background=item.IsFrame?null:ResourceBrush("GraphSurface"),Child=label,Cursor=Cursors.SizeAll,ToolTip="بکشید برای جابه‌جایی؛ راست‌کلیک برای ویرایش"};
+            Canvas.SetLeft(frame,item.X);Canvas.SetTop(frame,item.Y);AnnotationLayer.Children.Add(frame);
+            Point anchor=default;double oldX=0,oldY=0;bool moving=false;
+            frame.MouseLeftButtonDown+=(_,e)=>{if(busy)return;if(e.ClickCount==2){if(EditAnnotation(item)){dirty=true;UpdateTitle();RenderGraph();}e.Handled=true;return;}moving=true;anchor=e.GetPosition(AnnotationLayer);oldX=item.X;oldY=item.Y;frame.CaptureMouse();e.Handled=true;};
+            frame.MouseMove+=(_,e)=>{if(!moving || e.LeftButton!=MouseButtonState.Pressed)return;var p=e.GetPosition(AnnotationLayer);item.X=Math.Clamp(oldX+p.X-anchor.X,0,10000);item.Y=Math.Clamp(oldY+p.Y-anchor.Y,0,10000);Canvas.SetLeft(frame,item.X);Canvas.SetTop(frame,item.Y);};
+            frame.MouseLeftButtonUp+=(_,e)=>{if(!moving)return;moving=false;frame.ReleaseMouseCapture();if(item.X!=oldX || item.Y!=oldY){dirty=true;UpdateTitle();}e.Handled=true;};frame.LostMouseCapture+=(_,_)=>moving=false;
+            frame.ContextMenu=new ContextMenu();var edit=new MenuItem {Header="ویرایش"};edit.Click+=(_,_)=>{if(!busy && EditAnnotation(item)){dirty=true;UpdateTitle();RenderGraph();}};frame.ContextMenu.Items.Add(edit);var remove=new MenuItem {Header="حذف"};remove.Click+=(_,_)=>{if(busy)return;graph.Annotations.Remove(item);dirty=true;UpdateTitle();RenderGraph();};frame.ContextMenu.Items.Add(remove);
+        }
     }
     private void RemoveNode(Guid id) { if (busy) return; Invalidate(id); failedNodes.Remove(id); if(!graph.RemovePendingSplice(id)) graph.Remove(id); if (selected==id) selected=null; if (selectedWire is { } wire && (wire.From==id || wire.To==id)) selectedWire=null; if (connecting==id) connecting=null; Changed(); RenderGraph(); Inspect(); }
     private void Arrange_Click(object sender,RoutedEventArgs e)
@@ -301,35 +332,45 @@ public partial class ModuleWindow : Window
     private void ClearAll_Click(object sender,RoutedEventArgs e)
     {
         if(busy || graph.Nodes.Count==0 || MessageBox.Show(this,"همه ماژول‌ها و اتصال‌ها از پروژه حذف شوند؟","حذف همه",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
-        graph=new ModuleGraph(); failedNodes.Clear(); selected=connecting=null; selectedWire=null; Changed(); RenderGraph(); Inspect(); Status.Text="همه ماژول‌ها حذف شدند.";
+        graph=new ModuleGraph {Annotations=graph.Annotations}; failedNodes.Clear(); selected=connecting=null; selectedWire=null; Changed(); RenderGraph(); Inspect(); Status.Text="همه ماژول‌ها حذف شدند.";
     }
     private void Preset_Click(object sender,RoutedEventArgs e)
     {
         if(busy || graph.Nodes.Count>0 && MessageBox.Show(this,"زنجیره عمومی جایگزین تمام ماژول‌های فعلی شود؟","زنجیره عمومی",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
-        var savedPath=projectPath; CreateDefaultGraph(); projectPath=savedPath; Changed(); RenderGraph(); Inspect(); Status.Text="زنجیره عمومی ساخته شد.";
+        var savedPath=projectPath; var notes=graph.Annotations; CreateDefaultGraph(); graph.Annotations=notes; projectPath=savedPath; Changed(); RenderGraph(); Inspect(); Status.Text="زنجیره عمومی ساخته شد.";
     }
     private void Delete_Click(object sender,RoutedEventArgs e) => DeleteSelection();
     private void DeleteSelection() { if(busy)return; if(selectedWire is { } edge) { graph.Disconnect(edge.From,edge.To,edge.Port); selectedWire=null; Changed(edge.To); RenderGraph(); Inspect(); Status.Text="اتصال حذف شد."; } else if(selected is Guid id) RemoveNode(id); }
-    private void Workspace_KeyDown(object sender,KeyEventArgs e) { if(e.Key==Key.F1 && !busy) { Guide_Click(sender,e); e.Handled=true; return; } if(e.Key==Key.Delete && e.OriginalSource is not TextBox && e.OriginalSource is not PasswordBox) { DeleteSelection(); e.Handled=true; } }
+    private void Workspace_KeyDown(object sender,KeyEventArgs e) { if(e.Key==Key.Escape && drawingFrame) {CancelFrame();e.Handled=true;return;} if(e.Key==Key.F1 && !busy) { Guide_Click(sender,e); e.Handled=true; return; } if(e.Key==Key.Delete && e.OriginalSource is not TextBox && e.OriginalSource is not PasswordBox) { DeleteSelection(); e.Handled=true; } }
     private void ZoomIn_Click(object sender,RoutedEventArgs e) => SetZoom(zoom*1.25);
     private void ZoomOut_Click(object sender,RoutedEventArgs e) => SetZoom(zoom/1.25);
     private void SetZoom(double value) { zoom=Math.Clamp(value,.01,2); GraphCanvas.LayoutTransform=new ScaleTransform(zoom,zoom); ZoomLabel.Text=$"{zoom*100:0}%"; }
+    private void CancelFrame() {drawingFrame=false;frameStart=null;if(framePreview is not null)AnnotationLayer.Children.Remove(framePreview);framePreview=null;GraphScroll.ReleaseMouseCapture();GraphScroll.Cursor=null;}
     private void GraphScroll_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (busy || e.ChangedButton != MouseButton.Middle) return;
+        if(busy)return;
+        if(drawingFrame && e.ChangedButton==MouseButton.Left)
+        {
+            var p=e.GetPosition(GraphCanvas);if(p.X<0 || p.Y<0 || p.X>10000 || p.Y>10000)return;frameStart=p;framePreview=new Border {BorderBrush=Brush("#E8A958"),BorderThickness=new Thickness(2),IsHitTestVisible=false};AnnotationLayer.Children.Add(framePreview);Canvas.SetLeft(framePreview,p.X);Canvas.SetTop(framePreview,p.Y);GraphScroll.CaptureMouse();e.Handled=true;return;
+        }
+        if (e.ChangedButton != MouseButton.Middle) return;
         panning=true; panOrigin=e.GetPosition(GraphScroll); panX=GraphScroll.HorizontalOffset; panY=GraphScroll.VerticalOffset; GraphScroll.CaptureMouse(); GraphScroll.Cursor=Cursors.ScrollAll; e.Handled=true;
     }
     private void GraphScroll_MouseMove(object sender, MouseEventArgs e)
     {
+        if(drawingFrame && frameStart is Point start && framePreview is not null && e.LeftButton==MouseButtonState.Pressed)
+        {var p=e.GetPosition(GraphCanvas);double x=Math.Clamp(p.X,0,10000),y=Math.Clamp(p.Y,0,10000);Canvas.SetLeft(framePreview,Math.Min(start.X,x));Canvas.SetTop(framePreview,Math.Min(start.Y,y));framePreview.Width=Math.Min(2000,Math.Abs(x-start.X));framePreview.Height=Math.Min(2000,Math.Abs(y-start.Y));e.Handled=true;return;}
         if (!panning || e.MiddleButton != MouseButtonState.Pressed) return;
         var point=e.GetPosition(GraphScroll); GraphScroll.ScrollToHorizontalOffset(panX + panOrigin.X-point.X); GraphScroll.ScrollToVerticalOffset(panY + panOrigin.Y-point.Y); e.Handled=true;
     }
     private void GraphScroll_MouseUp(object sender, MouseButtonEventArgs e)
     {
+        if(drawingFrame && frameStart is not null && framePreview is not null && e.ChangedButton==MouseButton.Left)
+        {var item=new GraphAnnotation {IsFrame=true,X=Canvas.GetLeft(framePreview),Y=Canvas.GetTop(framePreview),Width=framePreview.Width,Height=framePreview.Height,Text="گروه ماژول‌ها"};CancelFrame();if(item.Width>=40 && item.Height>=30 && EditAnnotation(item)){graph.Annotations.Add(item);dirty=true;UpdateTitle();RenderGraph();}else Status.Text="رسم کادر لغو شد یا اندازه آن خیلی کوچک بود.";e.Handled=true;return;}
         if (!panning || e.ChangedButton != MouseButton.Middle) return;
         panning=false; GraphScroll.ReleaseMouseCapture(); GraphScroll.Cursor=null; e.Handled=true;
     }
-    private void GraphScroll_LostMouseCapture(object sender, MouseEventArgs e) { if (e.OriginalSource==GraphScroll) { panning=false; GraphScroll.Cursor=null; } }
+    private void GraphScroll_LostMouseCapture(object sender, MouseEventArgs e) { if (e.OriginalSource==GraphScroll) { panning=false; if(drawingFrame){drawingFrame=false;frameStart=null;if(framePreview is not null)AnnotationLayer.Children.Remove(framePreview);framePreview=null;} GraphScroll.Cursor=null; } }
     private void GraphScroll_MouseWheel(object sender, MouseWheelEventArgs e)
     {
         if (busy || (Keyboard.Modifiers & ModifierKeys.Control)==0) return;
