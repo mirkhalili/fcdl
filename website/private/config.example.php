@@ -9,6 +9,8 @@ return [
     'admin_hash' => '',
     // Store downloads outside the public web root; use an absolute path.
     'download_dir' => __DIR__ . '/releases',
+    // Absolute path outside web root; P-256 PEM matching the public key pinned in the desktop build.
+    'license_private_key' => __DIR__ . '/license-private.pem',
     'session_name' => 'jacquard_admin',
     'base_path' => '/app',
     // HTTPS is mandatory; set this true only for isolated local testing.

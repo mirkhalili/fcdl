@@ -305,6 +305,13 @@ internal static class Program
                 var parts=signed.Split('.');parts[1]=(parts[1][0]=='A'?"B":"A")+parts[1][1..];Check(!JacquardLicensing.LicenseToken.TryVerify(publicKey,string.Join(".",parts),deviceId,now,out _),"tampered signed payload rejected");
                 Expect<ArgumentException>(()=>JacquardLicensing.LicenseToken.Issue(signing,deviceId,id,now,TimeSpan.FromDays(8)));
                 Expect<ArgumentException>(()=>JacquardLicensing.LicenseToken.DeviceDigest("UNKNOWN","DISK-789012"));
+                string testActivationPath=Path.Combine(dir,"activation-test.dat");
+                Check(ActivationStore.Accept(publicKey,deviceId,signed,now,path:testActivationPath) && ActivationStore.Valid(publicKey,deviceId,now,testActivationPath),"activation accepts a signed device-bound lease");
+                Check(!ActivationStore.Valid(publicKey,JacquardLicensing.LicenseToken.DeviceDigest("CPU-123456","DISK-OTHER"),now,testActivationPath),"changed hardware does not unlock the app");
+                Check(!ActivationStore.Valid(publicKey,deviceId,now.AddDays(8),testActivationPath) && !ActivationStore.Valid(publicKey,deviceId,now.AddMinutes(-6),testActivationPath),"expired or rolled-back clock rejects activation");
+                ActivationStore.Revoke(testActivationPath);Check(ActivationStore.IsRevoked(testActivationPath) && !ActivationStore.Accept(publicKey,deviceId,signed,now,path:testActivationPath),"online revocation prevents offline reuse of an old code");
+                Check(ActivationStore.Accept(publicKey,deviceId,signed,now,allowRevoked:true,path:testActivationPath) && ActivationStore.Valid(publicKey,deviceId,now,testActivationPath),"signed online reapproval restores activation");
+
             }
             var arcCanvas=new DesignCanvas(DesignCanvas.Blank(7,7,Colors.White));arcCanvas.Arc(0,0,6,6,Colors.Red);Check(arcCanvas.At(3,0)==Colors.Red && arcCanvas.At(0,3)==Colors.Red && arcCanvas.At(3,6)==Colors.White,"upper elliptical arc");
             var arcLower=new DesignCanvas(DesignCanvas.Blank(7,7,Colors.White));arcLower.Arc(0,0,6,6,Colors.Blue,1,true);Check(arcLower.At(3,6)==Colors.Blue && arcLower.At(3,0)==Colors.White,"lower elliptical arc");
@@ -841,10 +848,9 @@ internal static class Program
             var alertToggle=(System.Windows.Controls.CheckBox)moduleWindow.FindName("AlertAnimations");alertToggle.IsChecked=false;typeof(ModuleWindow).GetMethod("RenderSelection",moduleFlags)!.Invoke(moduleWindow,null);
             Check(nodeVisual.Effect is System.Windows.Media.Effects.DropShadowEffect stillGlow && !stillGlow.HasAnimatedProperties,"blink can be disabled while retaining error indication");alertToggle.IsChecked=true;
             typeof(ModuleWindow).GetMethod("Invalidate",moduleFlags)!.Invoke(moduleWindow,new object?[]{visualNode.Id});Check(!failedSet.Contains(visualNode.Id) && !visualNode.Configured,"editing the affected path clears its error and stale result status");typeof(ModuleWindow).GetMethod("RenderSelection",moduleFlags)!.Invoke(moduleWindow,null);
-            System.Windows.Controls.Button Port(int index, string tip) { var card=(System.Windows.Controls.Border)nodeLayer.Children[index]; var inner=(System.Windows.Controls.Grid)card.Child; var ports=(System.Windows.Controls.Grid)inner.Children[1]; return ports.Children.OfType<System.Windows.Controls.Button>().Single(b => ((string?)b.ToolTip)?.Contains(tip)==true); }
-            Port(0,"انتخاب خروجی").RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-            Port(10,"اتصال ورودی").RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-            Check(moduleGraph.Edges.Any(e => e.From == moduleGraph.Nodes[0].Id && e.To == addedResize.Id && e.Port == "image"), "workspace port clicks create a real compatible branch");
+            Check(!((System.Windows.Controls.Grid)nodeVisual.Child).Children.OfType<System.Windows.Controls.Grid>().SelectMany(g=>g.Children.OfType<System.Windows.Controls.Button>()).Any(),"node has no visible port buttons");
+            bool connected=(bool)typeof(ModuleWindow).GetMethod("ConnectNodes",moduleFlags)!.Invoke(moduleWindow,new object?[]{moduleGraph.Nodes[0],addedResize,"image"})!;
+            Check(connected && moduleGraph.Edges.Any(e => e.From == moduleGraph.Nodes[0].Id && e.To == addedResize.Id && e.Port == "image"), "node-to-node connection creates a real compatible branch");
             var selectedEdge=moduleGraph.Edges.Single(e=>e.To==addedResize.Id && e.Port=="image");
             typeof(ModuleWindow).GetField("selectedWire",moduleFlags)!.SetValue(moduleWindow,selectedEdge);
             typeof(ModuleWindow).GetMethod("DeleteSelection",moduleFlags)!.Invoke(moduleWindow,null);

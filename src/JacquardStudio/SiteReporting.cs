@@ -7,17 +7,17 @@ using System.Text.Json;
 
 namespace JacquardStudio;
 
-/// <summary>Optional, user-authorized execution reporting. It does not grant or enforce licenses.</summary>
+/// <summary>User-authorized reporting and retrieval of signed activation leases.</summary>
 public static class SiteReporting
 {
-    private static readonly Uri Endpoint=new("https://mirkhalili.com/app/api.php");
+    private static readonly Uri Endpoint=new("https://www.mirkhalili.com/app/api.php");
     private static readonly HttpClient Client=new(new HttpClientHandler { AllowAutoRedirect=false }) {Timeout=TimeSpan.FromSeconds(12),MaxResponseContentBufferSize=4096};
-    private sealed record Credentials(string InstallationId,string Secret);
+    private sealed record Credentials(string InstallationId,string Secret,string? Device=null);
     private sealed record Report(string InstallationId,string Secret,string Device,string AppVersion,string OsVersion,string CpuModel,long RamBytes,string MachineName);
-    private sealed record Reply(string? Status);
+    public sealed record SiteReply(string? Status,string? Token);
     private static readonly JsonSerializerOptions JsonOptions=new(JsonSerializerDefaults.Web);
     private static readonly object Gate=new();
-    private static Credentials Identity()
+    private static Credentials Identity(string device)
     {
         lock(Gate)
         {
@@ -26,30 +26,34 @@ public static class SiteReporting
             {
                 if(new FileInfo(path).Length>8192)throw new InvalidDataException("شناسه گزارش نامعتبر است.");
                 var plain=ProtectedData.Unprotect(File.ReadAllBytes(path),null,DataProtectionScope.CurrentUser);
-                try {return JsonSerializer.Deserialize<Credentials>(plain) ?? throw new InvalidDataException("شناسه گزارش نامعتبر است.");} finally {CryptographicOperations.ZeroMemory(plain);}
+                try {var old=JsonSerializer.Deserialize<Credentials>(plain) ?? throw new InvalidDataException("شناسه گزارش نامعتبر است.");if(old.Device is null || old.Device==device)return old;} finally {CryptographicOperations.ZeroMemory(plain);}
             }
-            var c=new Credentials(Guid.NewGuid().ToString("D"),Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant());
+            var c=new Credentials(Guid.NewGuid().ToString("D"),Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant(),device);
             var bytes=JsonSerializer.SerializeToUtf8Bytes(c);var encrypted=ProtectedData.Protect(bytes,null,DataProtectionScope.CurrentUser);CryptographicOperations.ZeroMemory(bytes);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);string temp=path+"."+Guid.NewGuid().ToString("N")+".tmp";
-            try {File.WriteAllBytes(temp,encrypted);File.Move(temp,path,false);} finally {if(File.Exists(temp))File.Delete(temp);}
+            try {File.WriteAllBytes(temp,encrypted);File.Move(temp,path,true);} finally {if(File.Exists(temp))File.Delete(temp);}
             return c;
         }
     }
     private static string Clean(string? s,int max) {s=(s ?? "").Trim();s=new string(s.Where(c=>!char.IsControl(c)).ToArray());while(System.Text.Encoding.UTF8.GetByteCount(s)>max)s=s[..^1];return s;}
     private static Report Collect()
     {
-        var device=HardwareIdentity.ReadDeviceId();var identity=Identity();string cpu="";long memory=0;
+        var device=HardwareIdentity.ReadDeviceId();var identity=Identity(device);string cpu="";long memory=0;
         using(var search=new ManagementObjectSearcher("SELECT Name FROM Win32_Processor"))
         using(var results=search.Get()) foreach(ManagementObject item in results) using(item) {cpu=Clean(item["Name"] as string,160);break;}
         using(var search=new ManagementObjectSearcher("SELECT TotalPhysicalMemory FROM Win32_ComputerSystem"))
         using(var results=search.Get()) foreach(ManagementObject item in results) using(item) {if(item["TotalPhysicalMemory"] is not null)memory=Convert.ToInt64(item["TotalPhysicalMemory"]);break;}
         return new(identity.InstallationId,identity.Secret,device,Clean(AppVersion.Display,50),Clean(Environment.OSVersion.VersionString,150),cpu,memory,Clean(Environment.MachineName,100));
     }
-    public static async Task<string> SendAsync()
+    public static async Task<SiteReply> RequestAsync()
     {
         var data=await Task.Run(Collect);
         using var response=await Client.PostAsJsonAsync(Endpoint,data,JsonOptions);response.EnsureSuccessStatusCode();
-        var reply=await response.Content.ReadFromJsonAsync<Reply>(JsonOptions);return reply?.Status switch {"pending"=>"درخواست در انتظار بررسی است.","approved"=>"درخواست در پنل تأیید شده است؛ فعال‌سازی هنوز آماده نیست.","blocked"=>"درخواست در پنل مسدود شده است؛ کنترل لایسنس هنوز فعال نیست.",_=>"پاسخ سایت نامعتبر است."};
+        return await response.Content.ReadFromJsonAsync<SiteReply>(JsonOptions) ?? throw new InvalidDataException("پاسخ سایت نامعتبر است.");
+    }
+    public static async Task<string> SendAsync()
+    {
+        var reply=await RequestAsync();return reply.Status switch {"pending"=>"درخواست در انتظار بررسی است.","approved"=>reply.Token is null ? "درخواست تأیید شده اما کلید صدور روی سایت تنظیم نشده است." : "درخواست تأیید شده است. برای فعال‌سازی از پنجره ورود به برنامه استفاده کنید.","blocked"=>"درخواست در پنل مسدود شده است.",_=>"پاسخ سایت نامعتبر است."};
     }
     public static async Task SendOnStartupAsync()
     {

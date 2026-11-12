@@ -36,7 +36,7 @@ public partial class ModuleWindow : Window
     private readonly WeaveBank bank = new();
     private static readonly (ModuleKind kind, string name, string icon, string color, string subtitle)[] Types = {
         (ModuleKind.ExportData,"خروجی تصویر و جدول","\uE74E","#8DBAF0","IMAGE & TABLE EXPORT"),
-        (ModuleKind.BinaryLoad,"نقشه بافت آماده","\uE8B7","#47D4B3","BINARY MAP"),
+        (ModuleKind.BinaryLoad,"بارگذاری فایل ماشین","\uE8B7","#47D4B3","BINARY MAP"),
         (ModuleKind.BinaryConvert,"تبدیل سیاه‌وسفید","\uE790","#E2A766","BINARY CONVERSION"),
         (ModuleKind.SeamCheck,"بررسی درز راپورت","\uE9D9","#72C8C5","SEAM CHECK"),
         (ModuleKind.Compare,"مقایسه دو طرح","\uE8A5","#61A9F7","COMPARISON"),
@@ -208,32 +208,28 @@ public partial class ModuleWindow : Window
             title.Children.Add(new TextBlock {Text=string.IsNullOrWhiteSpace(node.Label)?spec.name:node.Label,FlowDirection=FlowDirection.RightToLeft,TextAlignment=TextAlignment.Center,TextWrapping=TextWrapping.Wrap,MaxHeight=38,FontWeight=FontWeights.SemiBold,FontSize=10,Margin=new Thickness(0,4,0,0),TextTrimming=TextTrimming.CharacterEllipsis});
             header.Children.Add(title);
             inner.Children.Add(new Border {Background=Brushes.Transparent,Child=header});
-            var portGrid=new Grid();inner.Children.Add(portGrid);var inputs=ModuleGraph.Inputs(node.Kind).Keys.ToArray();
-            for(int i=0;i<inputs.Length;i++)
-            {
-                string port=inputs[i];var inputButton=PortButton(SocketColor(ModuleGraph.Inputs(node.Kind)[port]),"اتصال ورودی "+PortName(port));
-                inputButton.HorizontalAlignment=HorizontalAlignment.Left;inputButton.VerticalAlignment=VerticalAlignment.Top;inputButton.Margin=new Thickness(0,PortCenter(i,inputs.Length)-9,0,0);
-                inputButton.AllowDrop=true; inputButton.DragOver+=(_,e)=>{e.Effects=!busy && e.Data.GetDataPresent("JacquardModuleOutput") ? DragDropEffects.Link : DragDropEffects.None; e.Handled=true;};
-                inputButton.Drop+=(_,e)=>{ if(!busy && e.Data.GetData("JacquardModuleOutput") is string text && Guid.TryParse(text,out var source)) { try { graph.Connect(source,node.Id,port); connecting=null; selected=node.Id; selectedWire=null; Changed(node.Id); RenderGraph(); Inspect(); Status.Text="اتصال برقرار شد."; } catch(ArgumentException ex) {Status.Text=ModuleErrors.Explain(ex);} } e.Handled=true; };
-                inputButton.Click += (_,e) => { e.Handled=true; if (busy) return; selectedWire=null; if (connecting is not Guid from) { selected=node.Id; DrawWires(); RenderSelection(); Inspect(); Status.Text="ابتدا نقطه خروجی یک ماژول و سپس این ورودی را انتخاب کنید."; return; } try { graph.Connect(from,node.Id,port); connecting=null; selected=node.Id; selectedWire=null; Changed(); RenderGraph(); Inspect(); Status.Text="اتصال برقرار شد."; } catch (ArgumentException ex) { Status.Text=ModuleErrors.Explain(ex); } };
-                inputButton.ContextMenu = new ContextMenu();
-                if (port=="report") foreach(var edge in graph.Edges.Where(e=>e.To==node.Id && e.Port==port).ToArray())
-                {
-                    var sourceNode=graph.Nodes.Single(n=>n.Id==edge.From); var disconnect=new MenuItem { Header="قطع: " + (string.IsNullOrWhiteSpace(sourceNode.Label) ? Spec(sourceNode.Kind).name : sourceNode.Label) };
-                    disconnect.Click+=(_,_)=>{ if(busy)return; graph.Disconnect(edge.From,node.Id,port); Changed(node.Id); RenderGraph(); Inspect(); }; inputButton.ContextMenu.Items.Add(disconnect);
-                }
-                var removeWire = new MenuItem { Header=port=="report" ? "قطع همه ورودی‌های گزارش" : "قطع اتصال ورودی" }; removeWire.Click += (_,_) => { if(busy)return; graph.Disconnect(node.Id,port); Changed(node.Id); RenderGraph(); Inspect(); }; inputButton.ContextMenu.Items.Add(removeWire); portGrid.Children.Add(inputButton);
-            }
-            var output=PortButton(SocketColor(ModuleGraph.Output(node.Kind)),"انتخاب خروجی یا کشیدن برای اتصال");output.HorizontalAlignment=HorizontalAlignment.Right;output.VerticalAlignment=VerticalAlignment.Top;output.Margin=new Thickness(0,NodeDiameter/2-9,0,0);bool wireDragged=false;Point wireStart=default;
-            output.PreviewMouseLeftButtonDown+=(_,e)=>{wireDragged=false;wireStart=e.GetPosition(output);};
-            output.PreviewMouseMove+=(_,e)=>{if(busy || wireDragged || e.LeftButton!=MouseButtonState.Pressed)return;var p=e.GetPosition(output);if(Math.Abs(p.X-wireStart.X)<SystemParameters.MinimumHorizontalDragDistance && Math.Abs(p.Y-wireStart.Y)<SystemParameters.MinimumVerticalDragDistance)return;wireDragged=true;output.ReleaseMouseCapture();DragDrop.DoDragDrop(output,new DataObject("JacquardModuleOutput",node.Id.ToString()),DragDropEffects.Link);e.Handled=true;};
-            output.Click+=(_,e)=>{e.Handled=true;if(wireDragged)return;if(busy)return;connecting=node.Id;selected=node.Id;selectedWire=null;RenderGraph();Inspect();Status.Text="خروجی انتخاب شد؛ اکنون روی ورودی سازگار باکس مقصد بزنید.";};portGrid.Children.Add(output);
             card.Child=inner; Canvas.SetLeft(card,node.X); Canvas.SetTop(card,node.Y); NodeLayer.Children.Add(card); cards[node.Id]=card;
-            card.MouseLeftButtonDown += (_,e) => { if (busy || e.OriginalSource is DependencyObject source && FindButton(source)) return; selected=node.Id; if(selectedWire is not null) {selectedWire=null; DrawWires();} if (e.ClickCount == 2) { dragging=null; RenderSelection(); _ = EditModuleAsync(node); e.Handled=true; return; } dragging=node.Id; dragStart=e.GetPosition(NodeLayer); dragX=node.X; dragY=node.Y; card.CaptureMouse(); RenderSelection(); Inspect(); e.Handled=true; };
-            card.MouseMove += (_,e) => { if (dragging!=node.Id || e.LeftButton!=MouseButtonState.Pressed) return; var now=e.GetPosition(NodeLayer); node.X=Math.Clamp(dragX+now.X-dragStart.X,0,Math.Max(0,GraphCanvas.Width-NodeDiameter)); node.Y=Math.Clamp(dragY+now.Y-dragStart.Y,0,Math.Max(0,GraphCanvas.Height-NodeDiameter)); Canvas.SetLeft(card,node.X); Canvas.SetTop(card,node.Y); DrawWires(); };
-            card.MouseLeftButtonUp += (_,e) => { if (dragging != node.Id) return; dragging=null; card.ReleaseMouseCapture(); if (node.X != dragX || node.Y != dragY) { dirty=true; UpdateTitle(); } e.Handled=true; };
-            card.LostMouseCapture += (_,_) => { dragging=null; };
-            card.ContextMenu=new ContextMenu(); var editAction=new MenuItem { Header="تنظیمات ماژول" }; editAction.Click+=(_,_)=>{if(!busy){selected=node.Id;selectedWire=null;RenderSelection();Inspect();_=EditModuleAsync(node);}}; card.ContextMenu.Items.Add(editAction); var delete=new MenuItem { Header="حذف ماژول" }; delete.Click+=(_,_)=>RemoveNode(node.Id); card.ContextMenu.Items.Add(delete);
+            card.MouseLeftButtonDown+=(_,e)=>{
+                if(busy)return;if(connecting is Guid from && from!=node.Id){connecting=null;ConnectNodes(graph.Nodes.Single(n=>n.Id==from),node,null);e.Handled=true;return;}
+                selected=node.Id;if(selectedWire is not null){selectedWire=null;DrawWires();}if(e.ClickCount==2){dragging=null;RenderSelection();_=EditModuleAsync(node);e.Handled=true;return;}
+                dragging=node.Id;dragStart=e.GetPosition(NodeLayer);dragX=node.X;dragY=node.Y;card.CaptureMouse();RenderSelection();Inspect();e.Handled=true;
+            };
+            card.MouseMove+=(_,e)=>{
+                if(dragging!=node.Id || e.LeftButton!=MouseButtonState.Pressed)return;var now=e.GetPosition(NodeLayer);var target=NodeAt(now,node.Id);
+                if(target is null){node.X=Math.Clamp(dragX+now.X-dragStart.X,0,Math.Max(0,GraphCanvas.Width-NodeDiameter));node.Y=Math.Clamp(dragY+now.Y-dragStart.Y,0,Math.Max(0,GraphCanvas.Height-NodeDiameter));}
+                else {node.X=dragX;node.Y=dragY;}
+                Canvas.SetLeft(card,node.X);Canvas.SetTop(card,node.Y);DrawWires();
+                if(target is not null){var line=new System.Windows.Shapes.Line {X1=dragX+NodeDiameter/2,Y1=dragY+NodeDiameter/2,X2=now.X,Y2=now.Y,Stroke=Brush("#F1AC52"),StrokeThickness=2,StrokeDashArray=new DoubleCollection {3,3},IsHitTestVisible=false};WireLayer.Children.Add(line);} };
+            card.MouseLeftButtonUp+=(_,e)=>{
+                if(dragging!=node.Id)return;var target=NodeAt(e.GetPosition(NodeLayer),node.Id);dragging=null;card.ReleaseMouseCapture();
+                if(target is not null){node.X=dragX;node.Y=dragY;Canvas.SetLeft(card,node.X);Canvas.SetTop(card,node.Y);DrawWires();ConnectNodes(node,target,null);}
+                else if(node.X!=dragX || node.Y!=dragY){dirty=true;UpdateTitle();}e.Handled=true;
+            };
+            card.LostMouseCapture+=(_,_)=>{dragging=null;};
+            card.ContextMenu=new ContextMenu();var editAction=new MenuItem {Header="تنظیمات ماژول"};editAction.Click+=(_,_)=>{if(!busy){selected=node.Id;selectedWire=null;RenderSelection();Inspect();_=EditModuleAsync(node);}};card.ContextMenu.Items.Add(editAction);
+            var connectAction=new MenuItem {Header="شروع اتصال؛ سپس گره مقصد را انتخاب کنید"};connectAction.Click+=(_,_)=>{if(busy)return;connecting=node.Id;Status.Text="گره مقصد را انتخاب کنید.";};card.ContextMenu.Items.Add(connectAction);
+            foreach(var edge in graph.Edges.Where(x=>x.To==node.Id).ToArray()){var source=graph.Nodes.Single(n=>n.Id==edge.From);var cut=new MenuItem {Header="قطع ورودی "+PortName(edge.Port)+" از "+Spec(source.Kind).name};cut.Click+=(_,_)=>{if(busy)return;graph.Disconnect(edge.From,edge.To,edge.Port);Changed(node.Id);RenderGraph();Inspect();};card.ContextMenu.Items.Add(cut);}
+            var delete=new MenuItem {Header="حذف ماژول"};delete.Click+=(_,_)=>RemoveNode(node.Id);card.ContextMenu.Items.Add(delete);
         }
         RenderSelection(); DrawWires();
     }
@@ -243,7 +239,21 @@ public partial class ModuleWindow : Window
         (ModuleData.Mask,true)=>"#6A5078", (ModuleData.Mask,false)=>"#D7A9E6", (ModuleData.Image,true)=>"#8A6414", (ModuleData.Palette,true)=>"#8E6132", (ModuleData.Weaves,true)=>"#7651A5", (ModuleData.Fabric,true)=>"#426D8C", (ModuleData.Preview,true)=>"#467A54",
         (ModuleData.Image,false)=>"#D7B25B", (ModuleData.Palette,false)=>"#D4A477", (ModuleData.Weaves,false)=>"#BC9BE4", (ModuleData.Fabric,false)=>"#83B0CD", (ModuleData.Any,true)=>"#555555", (ModuleData.Report,true)=>"#555555", (ModuleData.Any,false)=>"#DDDDDD", (ModuleData.Report,false)=>"#DDDDDD", _=>"#91C9A0"
     };
-    private static Button PortButton(string color,string tooltip) {var button=new Button { Width=18,Height=18,Padding=new Thickness(0),Margin=new Thickness(0),Background=Brush(color),BorderBrush=ResourceBrush("PrimaryText"),BorderThickness=new Thickness(1),ToolTip=tooltip };System.Windows.Automation.AutomationProperties.SetName(button,tooltip);return button;}
+    private ModuleNode? NodeAt(Point point,Guid exclude) => graph.Nodes.LastOrDefault(n=>n.Id!=exclude && Math.Pow(point.X-(n.X+NodeDiameter/2),2)+Math.Pow(point.Y-(n.Y+NodeDiameter/2),2)<=NodeDiameter*NodeDiameter/4);
+    private bool ConnectNodes(ModuleNode source,ModuleNode target,string? requestedPort)
+    {
+        var ports=ModuleGraph.Inputs(target.Kind).Where(p=>ModuleGraph.Accepts(ModuleGraph.Output(source.Kind),p.Value)).Select(p=>p.Key).ToArray();
+        if(source.Id==target.Id || ports.Length==0){Status.Text="ورودی سازگاری برای این اتصال وجود ندارد.";return false;}
+        string? port=requestedPort;
+        if(port is null && ports.Length==1)port=ports[0];
+        else if(port is null)
+        {
+            var dialog=new Window {Title="انتخاب ورودی مقصد",Width=390,Height=250,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,FlowDirection=FlowDirection.RightToLeft};dialog.SetResourceReference(Window.BackgroundProperty,"Surface");dialog.SetResourceReference(Window.ForegroundProperty,"PrimaryText");
+            var panel=new StackPanel {Margin=new Thickness(18)};panel.Children.Add(new TextBlock {Text="ورودی مقصد را انتخاب کنید:",Margin=new Thickness(0,0,0,8)});foreach(var choice in ports){var button=new Button {Content=PortName(choice),Margin=new Thickness(3)};button.Click+=(_,_)=>{port=choice;dialog.DialogResult=true;};panel.Children.Add(button);}dialog.Content=new ScrollViewer {Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};if(dialog.ShowDialog()!=true)return false;
+        }
+        if(port is null || !ports.Contains(port)){Status.Text="ورودی انتخاب‌شده سازگار نیست.";return false;}
+        try{graph.Connect(source.Id,target.Id,port);connecting=null;selected=target.Id;selectedWire=null;Changed(target.Id);RenderGraph();Inspect();Status.Text="اتصال برقرار شد: "+PortName(port);return true;}catch(ArgumentException ex){Status.Text=ModuleErrors.Explain(ex);return false;}
+    }
     private void RenderSelection()
     {
         foreach(var pair in cards)
@@ -267,9 +277,11 @@ public partial class ModuleWindow : Window
         WireLayer.Children.Clear(); foreach (var edge in graph.Edges)
         {
             var from=graph.Nodes.Single(n=>n.Id==edge.From); var to=graph.Nodes.Single(n=>n.Id==edge.To); int port=ModuleGraph.Inputs(to.Kind).Keys.ToList().IndexOf(edge.Port);
-            var start=new Point(from.X+NodeDiameter-9,from.Y+NodeDiameter/2); var end=new Point(to.X+9,to.Y+PortCenter(port,ModuleGraph.Inputs(to.Kind).Count)); double bend=Math.Max(60,Math.Abs(end.X-start.X)*.45);
+            double offset=PortCenter(port,ModuleGraph.Inputs(to.Kind).Count)-NodeDiameter/2;double edgeX=NodeDiameter/2-Math.Sqrt(Math.Max(0,NodeDiameter*NodeDiameter/4-offset*offset));
+            var start=new Point(from.X+NodeDiameter,from.Y+NodeDiameter/2); var end=new Point(to.X+edgeX,to.Y+NodeDiameter/2+offset); double bend=Math.Max(60,Math.Abs(end.X-start.X)*.45);
             var figure=new PathFigure { StartPoint=start }; figure.Segments.Add(new BezierSegment(new Point(start.X+bend,start.Y),new Point(end.X-bend,end.Y),end,true));
             var geometry=new PathGeometry(); geometry.Figures.Add(figure); var wire=new System.Windows.Shapes.Path { Data=geometry, Stroke=Brush(edge==selectedWire ? "#F39A4A" : SocketColor(ModuleGraph.Output(from.Kind))), StrokeThickness=edge==selectedWire ? 4 : 2.5, StrokeStartLineCap=PenLineCap.Round, StrokeEndLineCap=PenLineCap.Round, Opacity=.9, IsHitTestVisible=false }; if(edge.Port=="report") wire.StrokeDashArray=new DoubleCollection { 4,3 }; WireLayer.Children.Add(wire);
+            var arrowFigure=new PathFigure {StartPoint=new Point(end.X-10,end.Y-5),IsClosed=true,IsFilled=true};arrowFigure.Segments.Add(new LineSegment(end,true));arrowFigure.Segments.Add(new LineSegment(new Point(end.X-10,end.Y+5),true));var arrow=new System.Windows.Shapes.Path {Data=new PathGeometry(new[]{arrowFigure}),Fill=wire.Stroke,IsHitTestVisible=false};WireLayer.Children.Add(arrow);
             var hit=new System.Windows.Shapes.Path { Data=geometry,Stroke=Brushes.Transparent,StrokeThickness=16,Cursor=Cursors.Hand,ToolTip="انتخاب اتصال؛ Delete برای حذف" }; hit.MouseLeftButtonDown+=(_,e)=>{if(busy)return; selectedWire=edge; selected=null; connecting=null; Focus(); DrawWires(); RenderSelection(); Inspect(); Status.Text="اتصال انتخاب شد؛ کلید Delete را برای حذف بزنید."; e.Handled=true;}; WireLayer.Children.Add(hit);
             var add=new Button {Content="+",Width=26,Height=26,Padding=new Thickness(0),FontSize=18,FontWeight=FontWeights.Bold,ToolTip="درج ماژول سازگار در این اتصال",Background=ResourceBrush("Surface"),Foreground=ResourceBrush("PrimaryText"),BorderBrush=ResourceBrush("Border")};
             Canvas.SetLeft(add,(start.X+end.X)/2-13); Canvas.SetTop(add,(start.Y+end.Y)/2-13); add.Click+=(_,e)=>{e.Handled=true;if(!busy)InsertOnWire(edge);}; WireLayer.Children.Add(add);
