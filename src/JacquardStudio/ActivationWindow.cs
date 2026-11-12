@@ -57,7 +57,7 @@ public sealed class ActivationWindow : Window
     {
         try
         {
-            busy=true;RefreshButtons();message.Text="در حال شناسایی دستگاه…";key=ActivationStore.PublicKey();device=await Task.Run(HardwareIdentity.ReadDeviceId);if(!IsVisible)return;identity.Text=device;
+            busy=true;RefreshButtons();message.Text="در حال شناسایی دستگاه…";try{key=ActivationStore.PublicKey();}catch(Exception ex) when(ex is CryptographicException or InvalidDataException or ArgumentException){key=null;}device=await Task.Run(HardwareIdentity.ReadDeviceId);if(!IsVisible)return;identity.Text=device;
             var saved=SiteReporting.LoadContact();if(saved is not null){customerName.Text=saved.CustomerName;phone.Text=saved.Phone;city.Text=saved.City;}
             message.Text=key is null ? "این نسخه کلید عمومی صدور ندارد؛ ثبت درخواست ممکن است، ولی فعال‌سازی به نسخه دارای کلید صحیح نیاز دارد." : "برای ارسال درخواست آنلاین مشخصات را کامل کنید یا کد دستی را وارد کنید.";
             if(preferences.TelemetryEnabled)await CheckOnlineAsync(false);
