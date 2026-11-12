@@ -27,17 +27,8 @@ jobs:
             Write-Output "::error title=Build details::$message"
             exit $code
           }
-          try {
-            $testKey = [System.Security.Cryptography.ECDsa]::Create()
-            $testKey.GenerateKey([System.Security.Cryptography.ECCurve]::CreateFromFriendlyName('nistP256'))
-            $testPublic = Join-Path $env:RUNNER_TEMP 'jacquard-test-public.pem'
-            [System.IO.File]::WriteAllText($testPublic, $testKey.ExportSubjectPublicKeyInfoPem())
-            $testKey.Dispose()
-          } catch {
-            Write-Output "::error title=Test key setup::$($_.Exception.Message)"
-            exit 1
-          }
-          dotnet run --project tests/JacquardStudio.Smoke/JacquardStudio.Smoke.csproj -c Release "-p:LicensePublicKeyFile=$testPublic" *> smoke-log.txt
+          $env:JACQUARD_EXPECTED_LICENSE_KEY = (Resolve-Path 'Docs/private-key.public.pem').Path
+          dotnet run --project tests/JacquardStudio.Smoke/JacquardStudio.Smoke.csproj -c Release *> smoke-log.txt
           $code = $LASTEXITCODE
           Get-Content smoke-log.txt
           if ($code -ne 0) {
@@ -49,6 +40,10 @@ jobs:
         run: |
           dotnet publish src/JacquardStudio/JacquardStudio.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $pem = [System.IO.File]::ReadAllText((Resolve-Path 'Docs/private-key.public.pem').Path)
+          $published = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes((Resolve-Path 'artifacts/publish/JacquardStudio.dll').Path))
+          if (-not $published.Contains($pem)) { throw 'Published application does not contain the expected public key.' }
+          Write-Host 'Published application contains the owner public key.'
       - name: Publish license issuer prototype
         run: |
           dotnet publish src/LicenseIssuer/LicenseIssuer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o artifacts/license-issuer

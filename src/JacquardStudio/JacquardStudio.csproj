@@ -6,13 +6,15 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>JacquardStudio</AssemblyName>
-    <Version>40.0.0.0</Version>
-    <AssemblyVersion>40.0.0.0</AssemblyVersion>
-    <FileVersion>40.0.0.0</FileVersion>
+    <Version>41.0.0.0</Version>
+    <AssemblyVersion>41.0.0.0</AssemblyVersion>
+    <FileVersion>41.0.0.0</FileVersion>
     <InformationalVersion>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/../../version.txt').Trim())</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Product>Jacquard Studio</Product>
     <ApplicationIcon>Assets/app.ico</ApplicationIcon>
+    <!-- Public verification key only; the private signing key must never be included. -->
+    <LicensePublicKeyFile Condition="'$(LicensePublicKeyFile)' == ''">$(MSBuildProjectDirectory)/../../Docs/private-key.public.pem</LicensePublicKeyFile>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../LicenseCore/LicenseCore.csproj" />

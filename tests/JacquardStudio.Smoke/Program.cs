@@ -305,7 +305,18 @@ internal static class Program
                 var parts=signed.Split('.');parts[1]=(parts[1][0]=='A'?"B":"A")+parts[1][1..];Check(!JacquardLicensing.LicenseToken.TryVerify(publicKey,string.Join(".",parts),deviceId,now,out _),"tampered signed payload rejected");
                 Expect<ArgumentException>(()=>JacquardLicensing.LicenseToken.Issue(signing,deviceId,id,now,TimeSpan.FromDays(8)));
                 Expect<ArgumentException>(()=>JacquardLicensing.LicenseToken.DeviceDigest("UNKNOWN","DISK-789012"));
-                using(var embeddedKey=ActivationStore.PublicKey())Check(embeddedKey is not null,"configured public key is embedded for the activation build");
+                using(var embeddedKey=ActivationStore.PublicKey())
+                {
+                    Check(embeddedKey is not null,"configured public key is embedded for the activation build");
+                    string? expectedKeyFile=Environment.GetEnvironmentVariable("JACQUARD_EXPECTED_LICENSE_KEY");
+                    if(!string.IsNullOrWhiteSpace(expectedKeyFile))
+                    {
+                        using var expectedKey=System.Security.Cryptography.ECDsa.Create();expectedKey.ImportFromPem(File.ReadAllText(expectedKeyFile));
+                        Check(embeddedKey!.ExportSubjectPublicKeyInfo().SequenceEqual(expectedKey.ExportSubjectPublicKeyInfo()),"embedded public key matches the owner's public key");
+                        string fingerprint=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(embeddedKey.ExportSubjectPublicKeyInfo()));
+                        Check(fingerprint=="A57EACD7B17820C2BD088DF085BEE2905A6B18561B3211AF3DECD21A9DAF6F33","expected owner key fingerprint");
+                    }
+                }
                 string contactPath=Path.Combine(dir,"contact.dat");var contact=new SiteReporting.Contact("آزمایش","09123456789","تهران");SiteReporting.SaveContact(contact,contactPath);Check(SiteReporting.LoadContact(contactPath)==contact,"contact profile persists with DPAPI");
                 string testActivationPath=Path.Combine(dir,"activation-test.dat");
                 Check(ActivationStore.Accept(publicKey,deviceId,signed,now,path:testActivationPath) && ActivationStore.Valid(publicKey,deviceId,now,testActivationPath),"activation accepts a signed device-bound lease");
@@ -912,7 +923,7 @@ internal static class Program
             try{soloTimer.Start();var soloCard=(System.Windows.Controls.Border)nodeLayer.Children[nodeLayer.Children.Count-1];soloCard.ContextMenu.Items.OfType<System.Windows.Controls.MenuItem>().Single(x=>Equals(x.Header,"تنظیمات ماژول")).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));if(soloFrame.Continue)System.Windows.Threading.Dispatcher.PushFrame(soloFrame);}finally{soloTimer.Stop();System.Threading.SynchronizationContext.SetSynchronizationContext(soloOldContext);}
             Check(sawSetup && sawDesign && liveSolo.DesignStandalone && liveSolo.DesignWidth==12 && liveSolo.DesignHeight==8 && liveSolo.DesignWeftDensity==20 && ModuleExecutor.Run(moduleGraph,liveSolo.Id)[liveSolo.Id].Image!.PixelWidth==12,"unconnected design card creates a white project canvas and stores requested density");
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "040.0.0.0-a1", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "041.0.0.0-a1", "QAVNS version from version.txt");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));
