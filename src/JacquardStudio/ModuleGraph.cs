@@ -17,6 +17,8 @@ public sealed class ModuleNode
     public double X { get; set; } public double Y { get; set; }
     public string Label { get; set; } = "";
     public bool Configured { get; set; }
+    // Non-null means a module inserted on an existing wire is a transparent bypass until explicitly applied.
+    public string? PendingInsertionPort { get; set; }
     public string? VectorPdfBase64 { get; set; }
     public int SourcePage { get; set; }
     public string Manufacturer { get; set; } = "Other";
@@ -107,13 +109,37 @@ public sealed class ModuleGraph
         for(int i=0;i<Nodes.Count;i++) { Nodes[i].X=80+(i%columns)*250; Nodes[i].Y=80+(i/columns)*(Nodes.Any(n=>n.Kind==ModuleKind.AiEdit) ? 320 : 180); }
     }
     public void Remove(Guid id) { Nodes.RemoveAll(n => n.Id == id); Edges.RemoveAll(e => e.From == id || e.To == id); }
+    public static bool Accepts(ModuleData source,ModuleData target) => target==ModuleData.Any || target==source || target==ModuleData.Visual && source is ModuleData.Image or ModuleData.Fabric;
+    public IReadOnlyList<string> InsertionPorts(ModuleEdge edge,ModuleKind kind)
+    {
+        if(!Edges.Contains(edge) || !Enum.IsDefined(kind))return Array.Empty<string>();
+        var source=Nodes.Single(n=>n.Id==edge.From);var target=Nodes.Single(n=>n.Id==edge.To);var targetType=Inputs(target.Kind)[edge.Port];
+        if(Output(kind)!=Output(source.Kind) || !Accepts(Output(kind),targetType))return Array.Empty<string>();
+        return Inputs(kind).Where(p=>Accepts(Output(source.Kind),p.Value)).Select(p=>p.Key).ToArray();
+    }
+    /// <summary>Atomically splice one compatible module into exactly one existing connection.</summary>
+    public ModuleNode InsertBetween(ModuleEdge edge,ModuleKind kind,string inputPort,double x,double y)
+    {
+        if(!InsertionPorts(edge,kind).Contains(inputPort))throw new ArgumentException("این ماژول و ورودی با اتصال انتخاب‌شده سازگار نیستند.");
+        var draft=new ModuleGraph {Nodes=Nodes.ToList(),Edges=Edges.ToList()};var node=draft.Add(kind,x,y);node.PendingInsertionPort=inputPort;
+        draft.Disconnect(edge.From,edge.To,edge.Port);draft.Connect(edge.From,node.Id,inputPort);draft.Connect(node.Id,edge.To,edge.Port);draft.Validate();
+        Nodes=draft.Nodes;Edges=draft.Edges;return node;
+    }
+    /// <summary>Remove a pending splice and restore the original edge, if it still has one input and one output.</summary>
+    public bool RemovePendingSplice(Guid id)
+    {
+        var node=Nodes.SingleOrDefault(n=>n.Id==id);if(node?.PendingInsertionPort is null)return false;
+        var input=Edges.Where(e=>e.To==id).ToArray();var output=Edges.Where(e=>e.From==id).ToArray();if(input.Length!=1 || output.Length!=1 || input[0].Port!=node.PendingInsertionPort)return false;
+        var draft=new ModuleGraph {Nodes=Nodes.ToList(),Edges=Edges.ToList()};draft.Remove(id);try {draft.Connect(input[0].From,output[0].To,output[0].Port);draft.Validate();}catch(ArgumentException){return false;}
+        Nodes=draft.Nodes;Edges=draft.Edges;return true;
+    }
     public void Disconnect(Guid to, string port) => Edges.RemoveAll(e => e.To == to && e.Port == port);
     public void Disconnect(Guid from, Guid to, string port) => Edges.RemoveAll(e => e.From == from && e.To == to && e.Port == port);
     public void Connect(Guid from, Guid to, string port)
     {
         var source = Nodes.SingleOrDefault(n => n.Id == from) ?? throw new ArgumentException("Source module not found.");
         var target = Nodes.SingleOrDefault(n => n.Id == to) ?? throw new ArgumentException("Target module not found.");
-        if (!Inputs(target.Kind).TryGetValue(port, out var type) || type != ModuleData.Any && !(type == ModuleData.Visual && Output(source.Kind) is ModuleData.Image or ModuleData.Fabric) && Output(source.Kind) != type || from == to) throw new ArgumentException("Incompatible ports.");
+        if (!Inputs(target.Kind).TryGetValue(port, out var type) || !Accepts(Output(source.Kind),type) || target.PendingInsertionPort==port && Output(source.Kind)!=Output(target.Kind) || from == to) throw new ArgumentException("Incompatible ports.");
         // Replacing one incoming wire must be atomic, including on a cycle error.
         var edges = type == ModuleData.Any ? Edges.ToList() : Edges.Where(e => !(e.To == to && e.Port == port)).ToList();
         if (type == ModuleData.Any && edges.Any(e => e.To == to && e.Port == port && e.From == from)) return;
@@ -130,6 +156,7 @@ public sealed class ModuleGraph
         foreach (var n in Nodes) {
             if(n.DesignFields is null || n.DesignFields.Count>50 || n.DesignFields.Any(f=>f is null || string.IsNullOrWhiteSpace(f.Title) || f.Title.Length>100 || f.Text is null || f.Text.Length>2000) || n.Manufacturer is null || n.Manufacturer.Length>100 || n.AiPrompt is null || n.AiPrompt.Length>4000 || n.SourcePage<0 || n.SourcePage>=ImageLoader.MaxFrames) throw new InvalidDataException("Invalid module metadata.");
             if(n.Kind==ModuleKind.DesignEditor && n.DesignStandalone) { try {new DesignBlankSettings(n.DesignWidth,n.DesignHeight,n.DesignWarpDensity,n.DesignWeftDensity).Validate();} catch(ArgumentException ex){throw new InvalidDataException("Invalid blank design settings.",ex);} }
+            if(n.PendingInsertionPort is { } pending && (pending.Length>32 || !Inputs(n.Kind).ContainsKey(pending)))throw new InvalidDataException("Invalid pending insertion port.");
             if(n.DesignEditDocument is { } doc && (n.Kind!=ModuleKind.DesignEditor || n.DesignEditInputHash is null || n.DesignEditInputHash.Length!=64 || doc.Layers is null || doc.Layers.Count is <1 or >DesignCanvas.MaxLayers || doc.Active<0 || doc.Active>=doc.Layers.Count || doc.Layers.Any(l=>l is null || string.IsNullOrWhiteSpace(l.Name) || l.Name.Length>80 || l.Opacity is <0 or >100 || string.IsNullOrEmpty(l.Png) || l.Png.Length>ImageLoader.MaxFileBytes*2) || doc.TraceOpacity is <0 or >100 || doc.TraceWidth is <0 or >16000 || doc.TraceHeight is <0 or >16000 || Math.Abs((long)doc.TraceX)>16000 || Math.Abs((long)doc.TraceY)>16000 || doc.TracePng?.Length>ImageLoader.MaxFileBytes*2)) throw new InvalidDataException("Invalid design document.");
             if (n.Kind == ModuleKind.Colors && n.ColorDistance is <0 or >441) throw new InvalidDataException("Invalid color threshold.");
             if (n.Kind == ModuleKind.RectangleMask && (n.MaskX < 0 || n.MaskY < 0 || n.MaskWidth < 0 || n.MaskHeight < 0)) throw new InvalidDataException("Invalid mask coordinates.");
@@ -155,7 +182,7 @@ public sealed record ModuleValue(ModuleData Type, BitmapSource? Image = null, Pa
 /// <summary>Demand-driven DAG execution. Each run has its own cache; independent branches never share mutable results.</summary>
 public static class ModuleExecutor
 {
-    public static IReadOnlyDictionary<Guid, ModuleValue> Run(ModuleGraph graph, Guid target)
+    public static IReadOnlyDictionary<Guid, ModuleValue> Run(ModuleGraph graph, Guid target, Guid? previewPending = null)
     {
         graph.Validate(); var values = new Dictionary<Guid,ModuleValue>(); var nodes = graph.Nodes.ToDictionary(n => n.Id);
         ModuleValue Evaluate(Guid id)
@@ -165,6 +192,11 @@ public static class ModuleExecutor
             {
                 var edge = graph.Edges.SingleOrDefault(e => e.To == id && e.Port == port) ?? throw new InvalidOperationException($"Connect input '{port}' of {node.Kind}.");
                 return Evaluate(edge.From);
+            }
+            if(node.PendingInsertionPort is { } pending && id!=previewPending)
+            {
+                // The old wire continues to carry its original value until this node is explicitly accepted.
+                result=Input(pending);values[id]=result;return result;
             }
             switch (node.Kind)
             {

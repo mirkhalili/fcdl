@@ -25,7 +25,9 @@ public sealed class DesignEditorWindow : Window
     private readonly TextBlock status=new() {Margin=new Thickness(4),TextWrapping=TextWrapping.Wrap};
     private readonly ComboBox tool=new() {ItemsSource=new[]{"قلم", "خط", "مستطیل", "مستطیل پر", "پرکردن", "قطره‌چکان", "انتخاب مستطیلی", "انتخاب آزاد", "جابه‌جایی انتخاب", "پاک‌کن", "کانتور رنگ", "بیضی", "بیضی پر", "انتخاب رنگ یکسان", "رسم کمان"},SelectedIndex=0,Width=175,Margin=new Thickness(4)};
     private readonly ComboBox brushSize=new() {ItemsSource=new[]{1,2,3,4,5,8,12,16,24,32},SelectedIndex=0,Width=65,Margin=new Thickness(4)};
-    private readonly CheckBox arcBottom=new() {Content="کمان پایین",Margin=new Thickness(6),VerticalAlignment=VerticalAlignment.Center};
+    private readonly ComboBox arcMode=new() {ItemsSource=new[]{"نیم‌کمان بالا", "نیم‌کمان پایین", "نیم‌کمان راست", "نیم‌کمان چپ", "ربع بالا راست", "ربع پایین راست", "ربع پایین چپ", "ربع بالا چپ"},SelectedIndex=0,Width=155,Margin=new Thickness(4),ToolTip="حالت کمان؛ مستطیل محیطی را با ماوس بکشید"};
+    private readonly PixelGridOverlay pixelGrid=new() {IsHitTestVisible=false,Visibility=Visibility.Collapsed};
+    private ScrollViewer? workspace;
     private readonly CheckBox repeat=new() {Content="کانتور در راپورت",Margin=new Thickness(6),VerticalAlignment=VerticalAlignment.Center};
     private readonly ListBox layers=new() {MinHeight=145,MaxHeight=230,Margin=new Thickness(4)};
     private readonly TextBox layerName=new() {Margin=new Thickness(4),ToolTip="نام لایه انتخاب‌شده"};
@@ -47,9 +49,10 @@ public sealed class DesignEditorWindow : Window
         Title="استودیو طراحی طرح";Width=1250;Height=850;MinWidth=820;MinHeight=580;WindowStartupLocation=WindowStartupLocation.CenterOwner;FlowDirection=FlowDirection.RightToLeft;
         SetResourceReference(BackgroundProperty,"AppBackground");SetResourceReference(ForegroundProperty,"PrimaryText");
         var root=new DockPanel {Margin=new Thickness(10)};var bar=new WrapPanel();DockPanel.SetDock(bar,Dock.Top);root.Children.Add(bar);bar.Children.Add(new TextBlock {Text="اندازه:",VerticalAlignment=VerticalAlignment.Center});bar.Children.Add(brushSize);
-        colorButton.Click+=(_,_)=>{var chosen=ColorChooser.Pick(this,$"#{color.R:X2}{color.G:X2}{color.B:X2}");if(chosen is not null)color=(Color)ColorConverter.ConvertFromString(chosen);UpdateColor();};bar.Children.Add(colorButton);UpdateColor();bar.Children.Add(repeat);bar.Children.Add(arcBottom);
+        colorButton.Click+=(_,_)=>{var chosen=ColorChooser.Pick(this,$"#{color.R:X2}{color.G:X2}{color.B:X2}");if(chosen is not null)color=(Color)ColorConverter.ConvertFromString(chosen);UpdateColor();};bar.Children.Add(colorButton);UpdateColor();bar.Children.Add(repeat);bar.Children.Add(new TextBlock {Text="کمان:",VerticalAlignment=VerticalAlignment.Center});bar.Children.Add(arcMode);
         void Add(Panel panel,string label,Action action,string? tip=null) {var b=new Button {Content=label,Margin=new Thickness(3),Padding=new Thickness(7,5,7,5),ToolTip=tip};b.Click+=(_,_)=>action();panel.Children.Add(b);}
-        Add(bar,"−",()=>Zoom(zoom/1.5));Add(bar,"+",()=>Zoom(zoom*1.5));Add(bar,"۱۰۰٪",()=>Zoom(1));
+        var gridToggle=new CheckBox {Content="شبکه",Margin=new Thickness(6),VerticalAlignment=VerticalAlignment.Center};gridToggle.Click+=(_,_)=>{pixelGrid.Visibility=gridToggle.IsChecked==true?Visibility.Visible:Visibility.Collapsed;UpdateGrid();};bar.Children.Add(gridToggle);
+        Add(bar,"جای‌دادن صفحه",()=>FitPage());Add(bar,"−",()=>Zoom(zoom/1.5));Add(bar,"+",()=>Zoom(zoom*1.5));Add(bar,"۱۰۰٪",()=>Zoom(1));
         Add(bar,"بازگشت",()=>History(undo,redo));Add(bar,"بازانجام",()=>History(redo,undo));
         Add(bar,"اعمال و بستن",Apply);Add(bar,"انصراف",()=>DialogResult=false);
         // Vector icons are drawn locally; names and tooltips remain accessible to keyboard/screen readers.
@@ -74,14 +77,17 @@ public sealed class DesignEditorWindow : Window
         var traceGeometry=new WrapPanel();panel.Children.Add(new TextBlock {Text="مرجع: X، Y، عرض، ارتفاع (پیکسل)",Margin=new Thickness(4)});traceXText.Text=traceX.ToString();traceYText.Text=traceY.ToString();traceWText.Text=(traceW==0?doc.Width:traceW).ToString();traceHText.Text=(traceH==0?doc.Height:traceH).ToString();traceGeometry.Children.Add(traceXText);traceGeometry.Children.Add(traceYText);traceGeometry.Children.Add(traceWText);traceGeometry.Children.Add(traceHText);Add(traceGeometry,"اعمال ابعاد",()=>{if(!NumberInput.TryInt(traceXText.Text,out int x)||!NumberInput.TryInt(traceYText.Text,out int y)||!NumberInput.TryInt(traceWText.Text,out int w)||!NumberInput.TryInt(traceHText.Text,out int h)||Math.Abs((long)x)>16000||Math.Abs((long)y)>16000||w<1||h<1||w>16000||h>16000){MessageBox.Show(this,"مختصات باید بین ۱۶۰۰۰- و ۱۶۰۰۰ و ابعاد بین ۱ و ۱۶۰۰۰ باشد.");return;}traceX=x;traceY=y;traceW=w;traceH=h;Refresh();});panel.Children.Add(traceGeometry);
         var traceRow=new WrapPanel();traceRow.Children.Add(new TextBlock {Text="نمایانی مرجع ٪",VerticalAlignment=VerticalAlignment.Center});traceOpacity.Text=traceAlpha.ToString();traceRow.Children.Add(traceOpacity);Add(traceRow,"ثبت",()=>{if(!NumberInput.TryInt(traceOpacity.Text,out int n)||n<0||n>100){MessageBox.Show(this,"درصد مرجع باید بین ۰ تا ۱۰۰ باشد.");return;}traceAlpha=n;Refresh();});panel.Children.Add(traceRow);
         panel.Children.Add(info);DockPanel.SetDock(status,Dock.Bottom);root.Children.Add(status);
-        view.ClipToBounds=true;view.Children.Add(picture);view.Children.Add(tracing);view.Children.Add(selectionImage);view.Children.Add(path);foreach(var img in new[]{picture,tracing,selectionImage})RenderOptions.SetBitmapScalingMode(img,BitmapScalingMode.NearestNeighbor);
-        var scroll=new ScrollViewer {Content=view,FlowDirection=FlowDirection.LeftToRight,HorizontalScrollBarVisibility=ScrollBarVisibility.Auto,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};scroll.SetResourceReference(BackgroundProperty,"CanvasBackground");scroll.PreviewMouseWheel+=(_,e)=>{if((Keyboard.Modifiers & ModifierKeys.Control)==0)return;Zoom(zoom*(e.Delta>0?1.25:.8));e.Handled=true;};root.Children.Add(scroll);Content=root;
+        view.ClipToBounds=true;view.Children.Add(picture);view.Children.Add(tracing);view.Children.Add(selectionImage);view.Children.Add(pixelGrid);view.Children.Add(path);foreach(var img in new[]{picture,tracing,selectionImage})RenderOptions.SetBitmapScalingMode(img,BitmapScalingMode.NearestNeighbor);
+        var page=new Border {Child=view,BorderBrush=Brushes.DodgerBlue,BorderThickness=new Thickness(2),Margin=new Thickness(42),HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Top,Background=Brushes.White,Effect=new System.Windows.Media.Effects.DropShadowEffect {BlurRadius=15,ShadowDepth=4,Opacity=.38}};
+        var scroll=new ScrollViewer {Content=page,FlowDirection=FlowDirection.LeftToRight,HorizontalScrollBarVisibility=ScrollBarVisibility.Auto,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};workspace=scroll;scroll.ScrollChanged+=(_,_)=>UpdateGrid();scroll.SizeChanged+=(_,_)=>UpdateGrid();scroll.SetResourceReference(BackgroundProperty,"CanvasBackground");scroll.PreviewMouseWheel+=(_,e)=>{if((Keyboard.Modifiers & ModifierKeys.Control)==0)return;Zoom(zoom*(e.Delta>0?1.25:.8));e.Handled=true;};root.Children.Add(scroll);Content=root;
         view.MouseLeftButtonDown+=Down;view.MouseMove+=Move;view.MouseLeftButtonUp+=Up;view.LostMouseCapture+=(_,_)=>{if(start is not null){if(before is not null)doc=before;before=null;start=last=null;pathPoints.Clear();path.Points.Clear();Refresh();}};
         PreviewKeyDown+=Keys;zoom=Math.Min(1,Math.Min(850.0/doc.Width,570.0/doc.Height));Refresh();
     }
     private int Size => (int)brushSize.SelectedItem;
     private void UpdateColor(){colorButton.Background=new SolidColorBrush(color);colorButton.Foreground=(color.R*299+color.G*587+color.B*114)/1000<128?Brushes.White:Brushes.Black;}
     private void Zoom(double n){zoom=Math.Clamp(n,.05,24);Refresh();}
+    private void FitPage(){if(workspace is null || workspace.ViewportWidth<=90 || workspace.ViewportHeight<=90)return;Zoom(Math.Min((workspace.ViewportWidth-90)/doc.Width,(workspace.ViewportHeight-90)/doc.Height));}
+    private void UpdateGrid(){if(workspace is null || !view.IsLoaded || pixelGrid.Visibility!=Visibility.Visible)return;var p=workspace.TranslatePoint(new Point(0,0),view);pixelGrid.PixelsWide=doc.Width;pixelGrid.PixelsHigh=doc.Height;pixelGrid.Zoom=1;pixelGrid.VisibleImage=new Rect(p.X,p.Y,Math.Max(0,workspace.ViewportWidth),Math.Max(0,workspace.ViewportHeight));pixelGrid.InvalidateVisual();}
     private void RefreshLayers()
     {
         updating=true;layers.Items.Clear();for(int i=doc.Layers.Count-1;i>=0;i--){var l=doc.Layers[i];layers.Items.Add($"{(l.Visible?"◉":"○")} {(l.Locked?"🔒":"")} {l.Name} · {l.Opacity}٪");}layers.SelectedIndex=doc.Layers.Count-1-doc.Active;layerName.Text=doc.Current.Name;layerOpacity.Text=doc.Current.Opacity.ToString();updating=false;
@@ -89,7 +95,7 @@ public sealed class DesignEditorWindow : Window
     private void Refresh()
     {
         picture.Source=doc.Composite();tracing.Visibility=traceVisible && tracePng is not null?Visibility.Visible:Visibility.Collapsed;tracing.Opacity=traceAlpha/100.0;tracing.Width=(traceW==0?doc.Width:traceW)*zoom;tracing.Height=(traceH==0?doc.Height:traceH)*zoom;tracing.RenderTransform=new TranslateTransform(traceX*zoom,traceY*zoom);
-        view.Width=Math.Max(1,doc.Width*zoom);view.Height=Math.Max(1,doc.Height*zoom);RefreshSelection();RefreshLayers();
+        view.Width=Math.Max(1,doc.Width*zoom);view.Height=Math.Max(1,doc.Height*zoom);RefreshSelection();RefreshLayers();Dispatcher.BeginInvoke(new Action(UpdateGrid));
         status.Text=$"{doc.Width} × {doc.Height} پیکسل | زوم {zoom*100:0}% | انتخاب: {doc.SelectedCount} پیکسل | بازگشت: {undo.Count} | لایه فعال: {doc.Current.Name}";
         info.Text=(blank is null ? "" : $"بوم: {blank.Width} تار × {blank.Height} پود · تراکم {blank.WarpDensity:0.##} / {blank.WeftDensity:0.##} در سانتی‌متر · اندازه تقریبی {blank.Width/blank.WarpDensity:0.##} × {blank.Height/blank.WeftDensity:0.##} سانتی‌متر. تراکم در تنظیمات شبیه‌سازی مستقل است.\n\n") + "Tracing: تصویر مرجع فقط روی صفحه دیده می‌شود و در خروجی نیست. برای رسم مستقل لایه خالی بسازید. محل و اندازه مرجع برحسب پیکسل قابل تنظیم است. رنگ‌برداری و کانتور از لایه فعال است.";
     }
@@ -137,8 +143,13 @@ public sealed class DesignEditorWindow : Window
         if(start is null || e.LeftButton!=MouseButtonState.Pressed)return;var p=Pixel(e);if(p is null)return;int t=tool.SelectedIndex;
         if(t==7){AddPath(p.Value);last=p;return;}
         if(t is 0 or 9 && last is { } prev)doc.Line(prev.X,prev.Y,p.Value.X,p.Value.Y,t==9?Colors.Transparent:color,Size);
-        else if(t is 1 or 2 or 3 or 11 or 12 or 14 && before is not null){doc=before.Clone();if(t==1)doc.Line(start.Value.X,start.Value.Y,p.Value.X,p.Value.Y,color,Size);else if(t==14)doc.Arc(start.Value.X,start.Value.Y,p.Value.X,p.Value.Y,color,Size,arcBottom.IsChecked==true);else if(t is 11 or 12)doc.Ellipse(start.Value.X,start.Value.Y,p.Value.X,p.Value.Y,color,Size,t==12);else doc.Rectangle(start.Value.X,start.Value.Y,p.Value.X,p.Value.Y,color,Size,t==3);}
+        else if(t is 1 or 2 or 3 or 11 or 12 or 14 && before is not null){doc=before.Clone();if(t==1)doc.Line(start.Value.X,start.Value.Y,p.Value.X,p.Value.Y,color,Size);else if(t==14)DrawArc(start.Value.X,start.Value.Y,p.Value.X,p.Value.Y);else if(t is 11 or 12)doc.Ellipse(start.Value.X,start.Value.Y,p.Value.X,p.Value.Y,color,Size,t==12);else doc.Rectangle(start.Value.X,start.Value.Y,p.Value.X,p.Value.Y,color,Size,t==3);}
         last=p;if(t is 0 or 1 or 2 or 3 or 9 or 11 or 12 or 14)Refresh();
+    }
+    private void DrawArc(int x0,int y0,int x1,int y1)
+    {
+        var angles=new (double start,double sweep)[]{(180,180),(0,180),(270,180),(90,180),(270,90),(0,90),(90,90),(180,90)};
+        var a=angles[Math.Clamp(arcMode.SelectedIndex,0,angles.Length-1)];doc.ArcSection(x0,y0,x1,y1,color,Size,a.start,a.sweep);
     }
     private void Up(object sender,MouseButtonEventArgs e)
     {
