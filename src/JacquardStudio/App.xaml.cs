@@ -4,8 +4,11 @@ using System.Windows;
 namespace JacquardStudio;
 public partial class App : Application
 {
+    // Component-only WPF tests initialize resources but do not launch the application.
+    internal bool SuppressStartupForComponentTests;
     protected override async void OnStartup(StartupEventArgs e)
     {
+        if(SuppressStartupForComponentTests)return;
         base.OnStartup(e);
         ShutdownMode=ShutdownMode.OnExplicitShutdown;
         StartupSplashWindow? splash=null;

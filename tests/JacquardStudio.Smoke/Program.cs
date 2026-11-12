@@ -797,7 +797,7 @@ internal static class Program
             var pure = DesignProcessor.ReadPattern(image);
             Check(pure.Width == 3 && pure.Height == 2 && pure.Values.SequenceEqual(pixels), "binary pattern");
             File.Delete(bmpPath); // decoder must not retain a file handle
-            var app = new SmokeApp { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
+            var app = new App { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown }; typeof(App).GetField("SuppressStartupForComponentTests",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!.SetValue(app,true); app.InitializeComponent();
             var blankDialog=new DesignBlankWindow(new DesignBlankSettings(120,80,32.5,25));var blankRoot=(System.Windows.Controls.DockPanel)blankDialog.Content;var blankForm=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)blankRoot.Children[1]).Content;var blankFields=blankForm.Children.OfType<System.Windows.Controls.TextBox>().ToArray();blankFields[0].Text="۱۲۰";blankFields[1].Text="۸۰";blankFields[2].Text="۳۲٫۵";blankFields[3].Text="۲۵";var blankButtons=(System.Windows.Controls.WrapPanel)blankRoot.Children[0];var blankApply=blankButtons.Children.OfType<System.Windows.Controls.Button>().Single(x=>Equals(x.Content,"ایجاد صفحه"));blankDialog.Loaded+=(_,_)=>blankDialog.Dispatcher.BeginInvoke(new Action(()=>blankApply.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent))));Check(blankDialog.ShowDialog()==true && blankDialog.Result is {Width:120,Height:80,WarpDensity:32.5,WeftDensity:25},"blank canvas dialog accepts Persian dimensions and densities");
             var designWindow=new DesignEditorWindow(blank);var designRoot=(System.Windows.Controls.DockPanel)designWindow.Content;var designBar=(System.Windows.Controls.WrapPanel)designRoot.Children[0];var designSide=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)designRoot.Children[2]).Content;var designLayerButtons=designSide.Children.OfType<System.Windows.Controls.WrapPanel>().First();
             var iconToolbar=(System.Windows.Controls.WrapPanel)designRoot.Children[1];Check(iconToolbar.Children.OfType<System.Windows.Controls.Primitives.ToggleButton>().Count()==15 && iconToolbar.Children.OfType<System.Windows.Controls.Primitives.ToggleButton>().Any(x=>Equals(x.ToolTip,"رسم کمان")),"icon toolbar exposes all tools including arc");
@@ -1091,11 +1091,4 @@ internal sealed class FakeImageHandler : System.Net.Http.HttpMessageHandler
         var payload=System.Text.Json.JsonSerializer.Serialize(new { data=new[]{new { b64_json=png }} });
         return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content=new System.Net.Http.StringContent(payload) });
     }
-}
-
-// WPF dispatches Startup during modal smoke dialogs even without Application.Run.
-// Load application resources without launching the real activation flow in UI component tests.
-internal sealed class SmokeApp : App
-{
-    protected override void OnStartup(System.Windows.StartupEventArgs e) { }
 }
