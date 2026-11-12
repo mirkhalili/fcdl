@@ -7,7 +7,7 @@ namespace JacquardStudio;
 /// <summary>Signed short-lived authorization; a missing pinned public key is never treated as a valid license.</summary>
 public static class ActivationStore
 {
-    private sealed record Saved(string Token,long LastSeen,bool Revoked=false);
+    private sealed record Saved(string Token,long LastSeen,bool Revoked=false,bool Manual=false);
     private static string DefaultPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"JacquardStudio","activation.dat");
     public static ECDsa? PublicKey()
     {
@@ -15,9 +15,9 @@ public static class ActivationStore
         if(stream is null)return null;using var reader=new StreamReader(stream);var pem=reader.ReadToEnd();if(pem.Length>4096)throw new InvalidDataException("کلید عمومی نامعتبر است.");
         var key=ECDsa.Create();try {key.ImportFromPem(pem);return key;}catch {key.Dispose();throw;}
     }
-    public static bool Accept(ECDsa key,string device,string token,DateTimeOffset now,bool allowRevoked=false,string? path=null)
+    public static bool Accept(ECDsa key,string device,string token,DateTimeOffset now,bool allowRevoked=false,string? path=null,bool manual=true)
     {
-        token=token.Trim();if(!allowRevoked && IsRevoked(path))return false;if(!LicenseToken.TryVerify(key,token,device,now,out _))return false;Write(new Saved(token,now.ToUnixTimeSeconds()),path);return true;
+        token=token.Trim();if(!allowRevoked && IsRevoked(path))return false;if(!LicenseToken.TryVerify(key,token,device,now,out _))return false;Write(new Saved(token,now.ToUnixTimeSeconds(),Manual:manual),path);return true;
     }
     public static bool Valid(ECDsa key,string device,DateTimeOffset now,string? path=null)
     {
@@ -27,6 +27,11 @@ public static class ActivationStore
             Write(saved with {LastSeen=Math.Max(saved.LastSeen,now.ToUnixTimeSeconds())},path);return true;
         }
         catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or CryptographicException or JsonException or ArgumentException) {return false;}
+    }
+    public static (LicenseClaims Claims,string? ManualToken)? Details(ECDsa key,string device,DateTimeOffset now,string? path=null)
+    {
+        try {var saved=Read(path);if(saved is null || saved.Revoked || now.ToUnixTimeSeconds()<saved.LastSeen-300 || !LicenseToken.TryVerify(key,saved.Token,device,now,out var claims) || claims is null)return null;return (claims,saved.Manual?saved.Token:null);}
+        catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or CryptographicException or JsonException or ArgumentException){return null;}
     }
     private static Saved? Read(string? path)
     {

@@ -6,7 +6,7 @@ namespace JacquardLicensing;
 
 // Token format JSL1.base64url(UTF8 JSON).base64url(ECDSA P-256/SHA-256 DER signature).
 // The signature covers the exact bytes of the JSON, not a reserialized document.
-public sealed record LicenseClaims(int Version, string Product, string Device, string LicenseId, long IssuedAt, long NotBefore, long ExpiresAt);
+public sealed record LicenseClaims(int Version, string Product, string Device, string LicenseId, long IssuedAt, long NotBefore, long ExpiresAt, string? CustomerName = null);
 
 public static class LicenseToken
 {
@@ -22,11 +22,11 @@ public static class LicenseToken
     }
     private static bool IsP256(ECDsa key) => key.KeySize==256 && key.ExportParameters(false).Curve.Oid.Value=="1.2.840.10045.3.1.7";
     public static bool IsDevice(string? value) => value is {Length:64} && value.All(c => c is >= '0' and <= '9' or >= 'A' and <= 'F');
-    private static bool ValidClaims(LicenseClaims c) => c.Version == 1 && c.Product == Product && IsDevice(c.Device) && Guid.TryParseExact(c.LicenseId,"D",out var licenseId) && licenseId != Guid.Empty && c.IssuedAt > 0 && c.NotBefore >= c.IssuedAt - 300 && c.ExpiresAt > c.IssuedAt && c.ExpiresAt - c.IssuedAt <= MaximumLeaseSeconds && c.NotBefore < c.ExpiresAt;
-    public static string Issue(ECDsa privateKey, string device, Guid licenseId, DateTimeOffset now, TimeSpan validity)
+    private static bool ValidClaims(LicenseClaims c) => (c.CustomerName is null || c.CustomerName.Length <= 120 && !c.CustomerName.Any(char.IsControl)) && c.Version == 1 && c.Product == Product && IsDevice(c.Device) && Guid.TryParseExact(c.LicenseId,"D",out var licenseId) && licenseId != Guid.Empty && c.IssuedAt > 0 && c.NotBefore >= c.IssuedAt - 300 && c.ExpiresAt > c.IssuedAt && c.ExpiresAt - c.IssuedAt <= MaximumLeaseSeconds && c.NotBefore < c.ExpiresAt;
+    public static string Issue(ECDsa privateKey, string device, Guid licenseId, DateTimeOffset now, TimeSpan validity, string? customerName = null)
     {
         if (!IsP256(privateKey) || !IsDevice(device) || licenseId == Guid.Empty || validity <= TimeSpan.Zero || validity > TimeSpan.FromSeconds(MaximumLeaseSeconds)) throw new ArgumentException("Invalid license parameters.");
-        long issued=now.ToUnixTimeSeconds();var claims=new LicenseClaims(1,Product,device,licenseId.ToString("D"),issued,issued-60,issued+(long)validity.TotalSeconds);
+        long issued=now.ToUnixTimeSeconds();var claims=new LicenseClaims(1,Product,device,licenseId.ToString("D"),issued,issued-60,issued+(long)validity.TotalSeconds,customerName?.Trim());
         if(!ValidClaims(claims))throw new ArgumentException("Invalid license times.");
         var payload=JsonSerializer.SerializeToUtf8Bytes(claims,JsonOptions);var signature=privateKey.SignData(payload,HashAlgorithmName.SHA256,DSASignatureFormat.Rfc3279DerSequence);
         return "JSL1."+Encode(payload)+"."+Encode(signature);

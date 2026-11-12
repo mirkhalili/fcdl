@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS devices (
  device_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
  status ENUM('pending','approved','blocked') NOT NULL DEFAULT 'pending',
- expires_at DATETIME NULL,
+ expires_at DATETIME NULL, activation_code TEXT NULL,
  customer_name VARCHAR(120) NOT NULL DEFAULT '', phone VARCHAR(60) NOT NULL DEFAULT '', city VARCHAR(100) NOT NULL DEFAULT '', notes VARCHAR(500) NOT NULL DEFAULT '',
  created_at DATETIME NOT NULL,
  INDEX(status), INDEX(expires_at)

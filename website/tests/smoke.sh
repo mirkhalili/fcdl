@@ -5,6 +5,7 @@ mysql -h 127.0.0.1 -uroot -ptest-only-password -e 'CREATE DATABASE jacquard_migr
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_migration < website/tests/schema-038.sql
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_migration -e "INSERT INTO installations VALUES ('3b01a77c-85a6-491e-94d8-28c4ec5e7138', REPEAT('a',64),REPEAT('A',64),'approved',UTC_TIMESTAMP(),UTC_TIMESTAMP(),'127.0.0.1','v','os','cpu',1,'pc'), ('f6bc3945-7683-4da5-b3c8-4d6e69d845f8',REPEAT('b',64),REPEAT('A',64),'blocked',UTC_TIMESTAMP(),UTC_TIMESTAMP(),'127.0.0.1','v','os','cpu',1,'pc'); INSERT INTO execution_events(installation_id,observed_at,ip) VALUES ('3b01a77c-85a6-491e-94d8-28c4ec5e7138',UTC_TIMESTAMP(),'127.0.0.1');"
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_migration < website/private/migrate-038-to-039.sql
+mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_migration < website/private/migrate-039-to-040.sql
 [[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_migration -e 'SELECT status FROM devices') == blocked ]]
 [[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_migration -e 'SELECT COUNT(*) FROM execution_events WHERE os_version=""') == 1 ]]
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test < website/private/schema.sql
@@ -31,6 +32,7 @@ second=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET status='approved'"
 approved=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
 export APPROVED_REPLY="$approved"
+approved_token=$(python3 -c 'import json,os; print(json.loads(os.environ["APPROVED_REPLY"])["token"])')
 python3 - <<'PYTEST'
 import os,json,base64,pathlib,time
 r=json.loads(os.environ['APPROVED_REPLY']); assert r['status']=='approved'
@@ -75,10 +77,23 @@ curl -fsS -b "$cookies" http://127.0.0.1:18999/admin.php > "$html"
 grep -q 'بارگذاری فایل نصب' "$html"
 csrf=$(sed -n 's/.*name="csrf" value="\([a-f0-9]*\)".*/\1/p' "$html" | head -1)
 device=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-curl -fsS -b "$cookies" --data-urlencode "csrf=$csrf" --data-urlencode 'action=save_device' --data-urlencode "device=$device" --data-urlencode 'status=approved' --data-urlencode 'expiry=2090-01-01' --data-urlencode 'customer_name=Test User' --data-urlencode 'phone=12345' --data-urlencode 'city=Amsterdam' --data-urlencode 'notes=<script>' http://127.0.0.1:18999/admin.php > "$html"
+# A new pending device cannot be approved without a matching signed code.
+mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET status='pending'"
+curl -fsS -b "$cookies" --data-urlencode "csrf=$csrf" --data-urlencode 'action=save_device' --data-urlencode "device=$device" --data-urlencode 'status=approved' http://127.0.0.1:18999/admin.php > "$html"
+grep -q 'کد امضاشده' "$html"
+curl -fsS -b "$cookies" --data-urlencode "csrf=$csrf" --data-urlencode 'action=save_device' --data-urlencode "device=$device" --data-urlencode 'status=approved' --data-urlencode 'activation_code=bad' http://127.0.0.1:18999/admin.php > "$html"
+grep -q 'کد نامعتبر' "$html"
+
+curl -fsS -b "$cookies" --data-urlencode "csrf=$csrf" --data-urlencode 'action=save_device' --data-urlencode "device=$device" --data-urlencode 'status=approved' --data-urlencode "activation_code=$approved_token" --data-urlencode 'expiry=2090-01-01' --data-urlencode 'customer_name=Test User' --data-urlencode 'phone=12345' --data-urlencode 'city=Amsterdam' --data-urlencode 'notes=<script>' http://127.0.0.1:18999/admin.php > "$html"
 grep -q 'Test User' "$html"; grep -q 'Amsterdam' "$html"
 curl -fsS -b "$cookies" "http://127.0.0.1:18999/admin.php?device=$device" > "$html"
 grep -q 'تاریخچه اتصال' "$html";grep -q 'Windows' "$html";grep -q '&lt;script&gt;' "$html";grep -q '2090-01-01' "$html"
+online=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
+export ONLINE_REPLY="$online";python3 - <<'PYTEST'
+import json,os
+r=json.loads(os.environ['ONLINE_REPLY']);assert r['status']=='approved' and r['token']==json.loads(os.environ['APPROVED_REPLY'])['token']
+PYTEST
+
 [[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e "SELECT expires_at FROM devices") == '2090-01-02 00:00:00' ]]
 code=$(curl -sS -o /dev/null -w '%{http_code}' --data "csrf=$csrf&action=delete_device&device=$device" http://127.0.0.1:18999/admin.php)
 [[ "$code" == 403 ]]
@@ -96,5 +111,18 @@ curl -fsS -b "$cookies" -X POST -d "csrf=$csrf&action=delete_device&device=$devi
 [[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events') == 0 ]]
 new=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
 [[ "$new" == *'"status":"pending"'* ]]
+# Valid manual code creates/activates a pending record; blocked status is never overridden.
+export REQUEST_JSON="$request" MANUAL_TOKEN="$approved_token"
+manual_request=$(python3 - <<'PYTEST'
+import os,json
+r=json.loads(os.environ['REQUEST_JSON']);r['manualToken']=os.environ['MANUAL_TOKEN'];print(json.dumps(r))
+PYTEST
+)
+manual_reply=$(curl -fsS -H 'Content-Type: application/json' --data "$manual_request" http://127.0.0.1:18999/api.php)
+[[ "$manual_reply" == *'"status":"approved"'* ]]
+mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET status='blocked'"
+manual_reply=$(curl -fsS -H 'Content-Type: application/json' --data "$manual_request" http://127.0.0.1:18999/api.php)
+[[ "$manual_reply" == *'"status":"blocked"'* ]]
+
 rm -f "$cookies" "$html" "$fake" "$downloaded"
 echo 'Website API smoke tests passed.'

@@ -27,7 +27,11 @@ jobs:
             Write-Output "::error title=Build details::$message"
             exit $code
           }
-          dotnet run --project tests/JacquardStudio.Smoke/JacquardStudio.Smoke.csproj -c Release *> smoke-log.txt
+          $testKey = [System.Security.Cryptography.ECDsa]::Create([System.Security.Cryptography.ECCurve]::NamedCurves.nistP256)
+          $testPublic = Join-Path $env:RUNNER_TEMP 'jacquard-test-public.pem'
+          [System.IO.File]::WriteAllText($testPublic, $testKey.ExportSubjectPublicKeyInfoPem())
+          $testKey.Dispose()
+          dotnet run --project tests/JacquardStudio.Smoke/JacquardStudio.Smoke.csproj -c Release "-p:LicensePublicKeyFile=$testPublic" *> smoke-log.txt
           $code = $LASTEXITCODE
           Get-Content smoke-log.txt
           if ($code -ne 0) {

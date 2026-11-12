@@ -8,6 +8,7 @@
   <TextBlock Margin="0,12" TextWrapping="Wrap" Text="این ابزار فقط برای مدیر است. کلید خصوصی را محرمانه و خارج از سایت عمومی نگه دارید. رشته صادرشده حداکثر هفت روز اعتبار دارد؛ تمدید و لغو از راه دور به سامانه سایت نیاز دارد."/>
   <Button Content="ساخت جفت‌کلید جدید" Click="GenerateKey" Padding="12,6" HorizontalAlignment="Right"/>
   <TextBlock Margin="0,16,0,4" Text="فایل کلید خصوصی PEM"/><DockPanel><Button DockPanel.Dock="Left" Content="انتخاب فایل" Click="BrowseKey"/><TextBox x:Name="KeyPath" FlowDirection="LeftToRight" IsReadOnly="True"/></DockPanel>
+  <TextBlock Margin="0,16,0,4" Text="نام صاحب مجوز (اختیاری)"/><TextBox x:Name="CustomerName" MaxLength="120"/>
   <TextBlock Margin="0,16,0,4" Text="شناسه دستگاه (۶۴ نویسه)"/><TextBox x:Name="Device" MaxLength="64" FlowDirection="LeftToRight"/>
   <TextBlock Margin="0,16,0,4" Text="شناسه لایسنس (GUID؛ برای تمدید همان شناسه قبلی را وارد کنید)"/><DockPanel><Button DockPanel.Dock="Left" Content="شناسه جدید" Click="NewId"/><TextBox x:Name="LicenseId" FlowDirection="LeftToRight"/></DockPanel>
   <TextBlock Margin="0,16,0,4" Text="اعتبار (روز، حداکثر ۷)"/><TextBox x:Name="Days" Text="7" FlowDirection="LeftToRight"/>

@@ -13,7 +13,7 @@ public static class SiteReporting
     private static readonly Uri Endpoint=new("https://www.mirkhalili.com/app/api.php");
     private static readonly HttpClient Client=new(new HttpClientHandler { AllowAutoRedirect=false }) {Timeout=TimeSpan.FromSeconds(12),MaxResponseContentBufferSize=4096};
     private sealed record Credentials(string InstallationId,string Secret,string? Device=null);
-    private sealed record Report(string InstallationId,string Secret,string Device,string AppVersion,string OsVersion,string CpuModel,long RamBytes,string MachineName,string CustomerName,string Phone,string City);
+    private sealed record Report(string InstallationId,string Secret,string Device,string AppVersion,string OsVersion,string CpuModel,long RamBytes,string MachineName,string CustomerName,string Phone,string City,string? ManualToken);
     public sealed record Contact(string CustomerName,string Phone,string City);
     public sealed record SiteReply(string? Status,string? Token);
     private static readonly JsonSerializerOptions JsonOptions=new(JsonSerializerDefaults.Web);
@@ -37,18 +37,29 @@ public static class SiteReporting
         }
     }
     private static string Clean(string? s,int max) {s=(s ?? "").Trim();s=new string(s.Where(c=>!char.IsControl(c)).ToArray());while(System.Text.Encoding.UTF8.GetByteCount(s)>max)s=s[..^1];return s;}
-    private static Report Collect(Contact? contact)
+    private static string ContactPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"JacquardStudio","contact.dat");
+    public static void SaveContact(Contact contact,string? path=null)
+    {
+        var plain=JsonSerializer.SerializeToUtf8Bytes(contact);byte[] encrypted;try{encrypted=ProtectedData.Protect(plain,null,DataProtectionScope.CurrentUser);}finally{CryptographicOperations.ZeroMemory(plain);}
+        path ??= ContactPath;Directory.CreateDirectory(Path.GetDirectoryName(path)!);string temp=path+"."+Guid.NewGuid().ToString("N")+".tmp";try{File.WriteAllBytes(temp,encrypted);File.Move(temp,path,true);}finally{if(File.Exists(temp))File.Delete(temp);}
+    }
+    public static Contact? LoadContact(string? path=null)
+    {
+        path ??= ContactPath;if(!File.Exists(path))return null;if(new FileInfo(path).Length>8192)throw new InvalidDataException("اطلاعات تماس نامعتبر است.");
+        var plain=ProtectedData.Unprotect(File.ReadAllBytes(path),null,DataProtectionScope.CurrentUser);try{return JsonSerializer.Deserialize<Contact>(plain);}finally{CryptographicOperations.ZeroMemory(plain);}
+    }
+    private static Report Collect(Contact? contact,string? manualToken)
     {
         var device=HardwareIdentity.ReadDeviceId();var identity=Identity(device);string cpu="";long memory=0;
         using(var search=new ManagementObjectSearcher("SELECT Name FROM Win32_Processor"))
         using(var results=search.Get()) foreach(ManagementObject item in results) using(item) {cpu=Clean(item["Name"] as string,160);break;}
         using(var search=new ManagementObjectSearcher("SELECT TotalPhysicalMemory FROM Win32_ComputerSystem"))
         using(var results=search.Get()) foreach(ManagementObject item in results) using(item) {if(item["TotalPhysicalMemory"] is not null)memory=Convert.ToInt64(item["TotalPhysicalMemory"]);break;}
-        return new(identity.InstallationId,identity.Secret,device,Clean(AppVersion.Display,50),Clean(Environment.OSVersion.VersionString,150),cpu,memory,Clean(Environment.MachineName,100),Clean(contact?.CustomerName,120),Clean(contact?.Phone,60),Clean(contact?.City,100));
+        return new(identity.InstallationId,identity.Secret,device,Clean(AppVersion.Display,50),Clean(Environment.OSVersion.VersionString,150),cpu,memory,Clean(Environment.MachineName,100),Clean(contact?.CustomerName,120),Clean(contact?.Phone,60),Clean(contact?.City,100),manualToken);
     }
-    public static async Task<SiteReply> RequestAsync(Contact? contact=null)
+    public static async Task<SiteReply> RequestAsync(Contact? contact=null,string? manualToken=null)
     {
-        var data=await Task.Run(()=>Collect(contact));
+        var data=await Task.Run(()=>Collect(contact,manualToken));
         using var response=await Client.PostAsJsonAsync(Endpoint,data,JsonOptions);response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<SiteReply>(JsonOptions) ?? throw new InvalidDataException("پاسخ سایت نامعتبر است.");
     }
