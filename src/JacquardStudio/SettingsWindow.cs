@@ -8,7 +8,7 @@ public sealed class SettingsWindow : Window
     public UserPreferences Result { get; }
     public SettingsWindow(UserPreferences initial,IEnumerable<(ModuleKind Kind,string Name)> types)
     {
-        Result=new UserPreferences {Theme=initial.Theme,HiddenModules=initial.HiddenModules.ToList(),TelemetryEnabled=initial.TelemetryEnabled,PasswordSalt=initial.PasswordSalt,PasswordHash=initial.PasswordHash};
+        Result=new UserPreferences {Theme=initial.Theme,HiddenModules=initial.HiddenModules.ToList(),TelemetryEnabled=initial.TelemetryEnabled,SiteLicenseCheckEnabled=initial.SiteLicenseCheckEnabled,SiteLicenseCheckPrompted=initial.SiteLicenseCheckPrompted,PasswordSalt=initial.PasswordSalt,PasswordHash=initial.PasswordHash};
         Title="تنظیمات برنامه";Width=760;Height=800;MinWidth=540;MinHeight=500;WindowStartupLocation=WindowStartupLocation.CenterOwner;FlowDirection=FlowDirection.RightToLeft;SetResourceReference(BackgroundProperty,"Surface");
         var root=new DockPanel {Margin=new Thickness(22)}; var top=new StackPanel {Orientation=Orientation.Horizontal,Margin=new Thickness(0,0,0,12)};DockPanel.SetDock(top,Dock.Top);root.Children.Add(top);
         var apply=new Button {Content="اعمال تنظیمات و بستن",Margin=new Thickness(4)}; var cancel=new Button {Content="انصراف",Margin=new Thickness(4),IsCancel=true};top.Children.Add(apply);top.Children.Add(cancel);
@@ -43,8 +43,10 @@ public sealed class SettingsWindow : Window
             finally{licenseInfo.IsEnabled=true;}
         }
         Loaded+=async (_,_)=>await RefreshLicenseInfoAsync();licenseInfo.Click+=async (_,_)=>await RefreshLicenseInfoAsync();
-        Heading("اتصال به سایت و گزارش اجرا");body.Children.Add(new TextBlock {Text="در صورت فعال‌کردن این گزینه، هنگام هر اجرا نام، تلفن و شهر ثبت‌شده، شناسه نرم‌افزار و هش دستگاه، نسخه برنامه و ویندوز، مدل پردازنده، ظرفیت RAM و نام دستگاه به mirkhalili.com/app فرستاده می‌شود. سایت IP و زمان دریافت را ثبت می‌کند. سریال خام سخت‌افزار ارسال نمی‌شود. هنگام رضایت، وضعیت مجوز نیز بررسی می‌شود.",TextWrapping=TextWrapping.Wrap});
-        var reporting=new CheckBox {Content="با ارسال اطلاعات بالا در هر اجرا موافقم",IsChecked=initial.TelemetryEnabled,Margin=new Thickness(0,10,0,0)};body.Children.Add(reporting);
+        Heading("استعلام مجوز آنلاین");body.Children.Add(new TextBlock {Text="با فعال‌کردن این گزینه، هنگام شروع برنامه شناسه نصب و کلید تصادفی آن، هش شناسه دستگاه و نسخه برنامه برای استعلام مجوز به mirkhalili.com/app فرستاده می‌شود؛ سایت IP و زمان را ثبت می‌کند. نام، تلفن، شهر و جزئیات سخت‌افزار در این استعلام ارسال نمی‌شوند. اگر شناسه در سایت مجوز فعال داشته باشد، مجوز امضاشده دریافت و برنامه فعال می‌شود. در صورت قطع اینترنت، مجوز ذخیره‌شده تا پایان مهلت آفلاین قابل استفاده است.",TextWrapping=TextWrapping.Wrap});
+        var licenseCheck=new CheckBox {Content="استعلام خودکار مجوز در شروع برنامه",IsChecked=initial.SiteLicenseCheckEnabled,Margin=new Thickness(0,10,0,0)};body.Children.Add(licenseCheck);
+        Heading("اتصال به سایت و گزارش اجرا");body.Children.Add(new TextBlock {Text="این گزینه جداگانه و اختیاری است. در صورت فعال‌کردن، هنگام هر اجرا نام، تلفن و شهر ثبت‌شده، شناسه نرم‌افزار و هش دستگاه، نسخه برنامه و ویندوز، مدل پردازنده، ظرفیت RAM و نام دستگاه به mirkhalili.com/app فرستاده می‌شود. سایت IP و زمان دریافت را ثبت می‌کند. سریال خام سخت‌افزار ارسال نمی‌شود؛ همراه گزارش، وضعیت مجوز نیز بررسی خواهد شد.",TextWrapping=TextWrapping.Wrap});
+        var reporting=new CheckBox {Content="با ارسال اطلاعات گزارش بالا در هر اجرا موافقم",IsChecked=initial.TelemetryEnabled,Margin=new Thickness(0,10,0,0)};body.Children.Add(reporting);
         var testReport=new Button {Content="ارسال آزمایشی گزارش",HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,8,0,0)};body.Children.Add(testReport);
         testReport.Click+=async (_,_)=>{if(reporting.IsChecked!=true){MessageBox.Show(this,"ابتدا رضایت ارسال اطلاعات را انتخاب کنید.");return;}testReport.IsEnabled=false;try {MessageBox.Show(this,await SiteReporting.SendAsync(),"پاسخ سایت");}catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or System.Net.Http.HttpRequestException or TaskCanceledException or System.Management.ManagementException or InvalidOperationException or ArgumentException or System.Security.Cryptography.CryptographicException or System.Text.Json.JsonException or System.Runtime.InteropServices.COMException){MessageBox.Show(this,"ارسال به سایت ممکن نیست. سرور باید نصب و پیکربندی شده باشد.\n"+ex.Message,"ارتباط با سایت");}finally {testReport.IsEnabled=true;}};
         apply.Click+=(_,_)=>{
@@ -55,7 +57,7 @@ public sealed class SettingsWindow : Window
                 if(remove.IsChecked==true && (pass.Password.Length>0 || repeat.Password.Length>0))throw new ArgumentException("یا رمز را حذف کنید یا رمز جدید تعیین کنید.");
                 if(remove.IsChecked==true){Result.PasswordSalt=null;Result.PasswordHash=null;}
                 else if(pass.Password.Length>0 || repeat.Password.Length>0){if(pass.Password!=repeat.Password)throw new ArgumentException("تکرار رمز جدید یکسان نیست.");Result.SetPassword(pass.Password);}
-                Result.TelemetryEnabled=reporting.IsChecked==true; Result.Theme=keys[theme.SelectedIndex]; Result.HiddenModules=checks.Where(x=>x.Value.IsChecked!=true).Select(x=>x.Key.ToString()).ToList();Result.Save();DialogResult=true;
+                Result.TelemetryEnabled=reporting.IsChecked==true;Result.SiteLicenseCheckEnabled=licenseCheck.IsChecked==true;Result.SiteLicenseCheckPrompted=true; Result.Theme=keys[theme.SelectedIndex]; Result.HiddenModules=checks.Where(x=>x.Value.IsChecked!=true).Select(x=>x.Key.ToString()).ToList();Result.Save();DialogResult=true;
             }
             catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or ArgumentException) {MessageBox.Show(this,ex.Message,"خطای تنظیمات",MessageBoxButton.OK,MessageBoxImage.Warning);}
         };

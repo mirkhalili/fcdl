@@ -26,6 +26,14 @@ request='{"installationId":"3b01a77c-85a6-491e-94d8-28c4ec5e7138","secret":"aaaa
 first=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
 [[ "$first" == *'"status":"pending"'* ]]
 [[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT customer_name FROM devices') == 'First User' ]]
+export REQUEST_JSON="$request"
+lookup_pending=$(python3 - <<'PYTEST'
+import os,json
+r=json.loads(os.environ['REQUEST_JSON']);r['checkOnly']=True;print(json.dumps(r))
+PYTEST
+)
+pending_lookup=$(curl -fsS -H 'Content-Type: application/json' --data "$lookup_pending" http://127.0.0.1:18999/api.php)
+[[ "$pending_lookup" == *'"status":"not_licensed"'* && $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events') == 1 ]]
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET status='blocked'"
 second=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
 [[ "$second" == *'"status":"blocked"'* ]]
@@ -45,6 +53,28 @@ assert r['activationCode']=='arbitrary-unchecked-code' and c['activationHash']==
 p=pathlib.Path(os.environ['JACQUARD_TEST_RELEASES']); (p/'payload').write_bytes(payload);(p/'signature').write_bytes(signature)
 PYTEST
 openssl dgst -sha256 -verify "$JACQUARD_TEST_RELEASES/public.pem" -signature "$JACQUARD_TEST_RELEASES/signature" "$JACQUARD_TEST_RELEASES/payload"
+lookup_request=$(python3 - <<'PYTEST'
+import os,json
+r=json.loads(os.environ['REQUEST_JSON']);r.update(checkOnly=True,customerName='Lookup must not update',phone='999',city='Nowhere',osVersion='Do not store',cpuModel='Do not store',ramBytes=0,machineName='Do not store');print(json.dumps(r))
+PYTEST
+)
+lookup=$(curl -fsS -H 'Content-Type: application/json' --data "$lookup_request" http://127.0.0.1:18999/api.php)
+export LOOKUP_REPLY="$lookup"
+python3 - <<'PYTEST'
+import os,json,base64
+r=json.loads(os.environ['LOOKUP_REPLY']);assert r['status']=='approved' and r['activationCode']=='arbitrary-unchecked-code'
+p=r['token'].split('.')[1];c=json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4)))
+assert c['device']=='A'*64 and c['licenseId']=='3b01a77c-85a6-491e-94d8-28c4ec5e7138'
+PYTEST
+[[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT customer_name FROM devices') == 'First User' ]]
+[[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events') == 3 ]]
+unknown_lookup=$(python3 - <<'PYTEST'
+import os,json
+r=json.loads(os.environ['REQUEST_JSON']);r.update(installationId='f6bc3945-7683-4da5-b3c8-4d6e69d845f8',secret='b'*64,device='B'*64,checkOnly=True);print(json.dumps(r))
+PYTEST
+)
+unknown_reply=$(curl -fsS -H 'Content-Type: application/json' --data "$unknown_lookup" http://127.0.0.1:18999/api.php)
+[[ "$unknown_reply" == *'"status":"not_licensed"'* && $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM devices') == 1 ]]
 
 wrong=${request/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb}
 code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data "$wrong" http://127.0.0.1:18999/api.php)

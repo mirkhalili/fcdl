@@ -9,6 +9,8 @@ public sealed class UserPreferences
     public string Theme { get; set; }="dark";
     public List<string> HiddenModules { get; set; }=new();
     public bool TelemetryEnabled { get; set; }
+    public bool SiteLicenseCheckEnabled { get; set; }
+    public bool SiteLicenseCheckPrompted { get; set; }
     public string? PasswordSalt { get; set; }
     public string? PasswordHash { get; set; }
     public bool HasPassword => PasswordSalt is not null && PasswordHash is not null;
