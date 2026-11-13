@@ -1,10 +1,12 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
-/// <summary>Vector module symbols shared by the workspace and library.</summary>
+/// <summary>User-supplied module artwork with vector fallback, shared by the workspace and library.</summary>
 public static class ModuleIcons
 {
     public static string PathFor(ModuleKind kind) => kind switch
@@ -43,8 +45,40 @@ public static class ModuleIcons
         ModuleKind.BlankDesign => "M4,4 H20 V20 H4 Z M12,8 V16 M8,12 H16",
         _ => "M4,4 H20 V20 H4 Z"
     };
-    public static FrameworkElement Create(ModuleKind kind,double size)
+    // Only map artwork to capabilities actually represented by the module.
+    public static string? ResourceName(ModuleKind kind) => kind switch
     {
+        ModuleKind.ExportData => "ExportData", ModuleKind.BinaryLoad => "BinaryLoad",
+        ModuleKind.SeamCheck => "SeamCheck", ModuleKind.Load => "Load", ModuleKind.VectorLoad => "VectorLoad",
+        ModuleKind.MachineDefinition => "MachineDefinition", ModuleKind.Crop => "Crop", ModuleKind.Repeat => "Repeat",
+        ModuleKind.Resize => "Resize", ModuleKind.Weaves => "Weaves", ModuleKind.ApplyWeaves => "ApplyWeaves",
+        ModuleKind.AutoWeaves => "AutoWeaves", ModuleKind.Tension => "Tension", ModuleKind.Weft => "Weft",
+        ModuleKind.MatchPalette => "MatchPalette", ModuleKind.BlankDesign => "BlankDesign", _ => null
+    };
+
+    // Load and decode eagerly so a missing or damaged resource can fall back rather than render a blank image.
+    public static Image? CreateResourceImage(string name,double size)
+    {
+        try
+        {
+            var uri=new Uri($"pack://application:,,,/JacquardStudio;component/Assets/UserIcons/{name}.jpg",UriKind.Absolute);
+            var resource=Application.GetResourceStream(uri);
+            if(resource is null)return null;
+            using var stream=resource.Stream;
+            var bitmap=BitmapFrame.Create(stream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad);
+            bitmap.Freeze();
+            return new Image {Source=bitmap,Width=size,Height=size,Stretch=Stretch.Uniform,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,IsHitTestVisible=false};
+        }
+        catch(Exception ex) when(ex is IOException or NotSupportedException or InvalidOperationException or ArgumentException or System.Runtime.InteropServices.COMException) { return null; }
+    }
+
+    public static FrameworkElement Create(ModuleKind kind,double size) => Create(kind,size,CreateResourceImage);
+
+    // The loader overload also makes the missing-resource fallback testable.
+    public static FrameworkElement Create(ModuleKind kind,double size,Func<string,double,Image?> loader)
+    {
+        var name=ResourceName(kind);
+        if(name is not null && loader(name,size) is { } artwork)return artwork;
         var grid=new Grid {Width=size,Height=size,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,IsHitTestVisible=false};
         grid.Children.Add(new Ellipse {Fill=new SolidColorBrush(Color.FromRgb(17,35,54)),Stroke=new SolidColorBrush(Color.FromRgb(211,162,96)),StrokeThickness=1});
         var weave=new Path {Data=Geometry.Parse("M 3,4 L 9,10 3,16 M 3,9 L 9,15 3,21 M 21,3 L 15,9 21,15 M 21,8 L 15,14 21,20 M 4,3 L 4,21 M 20,3 L 20,21"),Stroke=new SolidColorBrush(Color.FromRgb(60,124,176)),StrokeThickness=1.3,Stretch=Stretch.Fill,Width=size*.84,Height=size*.78,Opacity=.68};grid.Children.Add(weave);

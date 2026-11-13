@@ -75,7 +75,9 @@ public partial class ModuleWindow : Window
     private static Brush CategoryBrush(string hex) => ThemeManager.IsLight ? Brush(hex switch { "#47D4B3"=>"#176B5E", "#61A9F7"=>"#255F99", "#E2A766"=>"#8A4C0D", "#BA91F4" or "#BB94EE"=>"#69459A", "#C89570"=>"#824D29", "#7CAAE3"=>"#345D8A", "#E89B73"=>"#914728", "#72C8C5"=>"#286F6D", "#E2AD69"=>"#80500E", "#8DBAF0"=>"#355F94", _=>"#8B442E" }) : Brush(hex);
     public ModuleWindow()
     {
-        InitializeComponent(); AlertAnimations.Click+=(_,_)=>RenderSelection(); preferences=UserPreferences.Load(); ThemeManager.Apply(preferences.Theme,false);
+        InitializeComponent();
+        if(ModuleIcons.CreateResourceImage("Settings",22) is { } settingsIcon) { var content=new StackPanel {Orientation=Orientation.Horizontal}; content.Children.Add(settingsIcon); content.Children.Add(new TextBlock {Text="تنظیمات",Margin=new Thickness(5,0,0,0),VerticalAlignment=VerticalAlignment.Center}); SettingsButton.Content=content; System.Windows.Automation.AutomationProperties.SetName(SettingsButton,"تنظیمات"); }
+        AlertAnimations.Click+=(_,_)=>RenderSelection(); preferences=UserPreferences.Load(); ThemeManager.Apply(preferences.Theme,false);
         BuildLibrary(); CreateDefaultGraph(); dirty = false; RenderGraph(); Inspect();
         ThemeManager.Changed += OnThemeChanged; Closed += (_,_) => ThemeManager.Changed -= OnThemeChanged;
     }
@@ -107,7 +109,7 @@ public partial class ModuleWindow : Window
         {
             if(preferences.HiddenModules.Contains(type.kind.ToString())) continue;
             var row = new Grid(); row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(38) });
-            var icon = ModuleIcons.Create(type.kind,26); Grid.SetColumn(icon,1); row.Children.Add(icon);
+            var icon = ModuleIcons.Create(type.kind,30); Grid.SetColumn(icon,1); row.Children.Add(icon);
             var labels = new StackPanel(); labels.Children.Add(new TextBlock { Text = type.name, FontSize = 12, Foreground = ResourceBrush("PrimaryText") }); labels.Children.Add(new TextBlock { Text = type.subtitle, FontSize = 9, Foreground = ResourceBrush("Muted"), FlowDirection = FlowDirection.LeftToRight }); labels.FlowDirection=FlowDirection.RightToLeft; labels.HorizontalAlignment=HorizontalAlignment.Stretch; foreach(var label in labels.Children.OfType<TextBlock>()) label.TextAlignment=TextAlignment.Right; row.Children.Add(labels);
             var kind = type.kind; bool wasDragged=false; var group = new DockPanel { FlowDirection = FlowDirection.LeftToRight, Margin = new Thickness(0,2,0,2) };
             var help = new Button { Content = "?", ToolTip = "راهنمای " + type.name, Width = 28, Padding = new Thickness(0), Margin = new Thickness(3,0,0,0), Background = ResourceBrush("ButtonBackground"), Foreground = ResourceBrush("PrimaryText") }; DockPanel.SetDock(help,Dock.Left); group.Children.Add(help); help.Click += (_,_) => ShowModuleHelp(kind);
@@ -202,7 +204,8 @@ public partial class ModuleWindow : Window
             var title=new StackPanel {HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Width=82,IsHitTestVisible=false};
             if(results.TryGetValue(node.Id,out var value) && value.Image is { } picture)
             {
-                var thumb=new Border {Width=45,Height=45,CornerRadius=new CornerRadius(22.5),ClipToBounds=true,Background=ResourceBrush("GraphPreview"),HorizontalAlignment=HorizontalAlignment.Center,Child=new Image {Source=picture,Stretch=Stretch.UniformToFill}};title.Children.Add(thumb);
+                var thumb=new Border {Width=42,Height=42,CornerRadius=new CornerRadius(21),ClipToBounds=true,Background=ResourceBrush("GraphPreview"),Child=new Image {Source=picture,Stretch=Stretch.UniformToFill}};
+                var previews=new StackPanel {Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Center};previews.Children.Add(thumb);previews.Children.Add(ModuleIcons.Create(node.Kind,30));title.Children.Add(previews);
             }
             else title.Children.Add(ModuleIcons.Create(node.Kind,32));
             title.Children.Add(new TextBlock {Text=string.IsNullOrWhiteSpace(node.Label)?spec.name:node.Label,FlowDirection=FlowDirection.RightToLeft,TextAlignment=TextAlignment.Center,TextWrapping=TextWrapping.Wrap,MaxHeight=38,FontWeight=FontWeights.SemiBold,FontSize=10,Margin=new Thickness(0,4,0,0),TextTrimming=TextTrimming.CharacterEllipsis});
