@@ -57,6 +57,35 @@ public static class ModuleIcons
         ModuleKind.MatchPalette => "MatchPalette", ModuleKind.BlankDesign => "BlankDesign", _ => null
     };
 
+    private static readonly object BackgroundCacheLock=new();
+    private static readonly Dictionary<ModuleKind,Color?> BackgroundCache=new();
+
+    /// <summary>Returns the artwork's corner/background color so its workspace node blends into the icon tile.</summary>
+    public static Color? BackgroundColor(ModuleKind kind)
+    {
+        lock(BackgroundCacheLock) if(BackgroundCache.TryGetValue(kind,out var cached)) return cached;
+        Color? color=null; var name=ResourceName(kind);
+        if(name is not null)
+        {
+            try
+            {
+                var uri=new Uri($"pack://application:,,,/JacquardStudio;component/Assets/UserIcons/{name}.jpg",UriKind.Absolute);
+                var resource=Application.GetResourceStream(uri);
+                if(resource is not null)
+                {
+                    using var stream=resource.Stream;
+                    var bitmap=BitmapFrame.Create(stream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad);
+                    var bgra=new FormatConvertedBitmap(bitmap,PixelFormats.Bgra32,null,0);
+                    var pixel=new byte[4]; bgra.CopyPixels(new Int32Rect(0,0,1,1),pixel,4,0);
+                    if(pixel[3]>0) color=Color.FromRgb(pixel[2],pixel[1],pixel[0]);
+                }
+            }
+            catch(Exception ex) when(ex is IOException or NotSupportedException or InvalidOperationException or ArgumentException or System.Runtime.InteropServices.COMException) { }
+        }
+        lock(BackgroundCacheLock) BackgroundCache[kind]=color;
+        return color;
+    }
+
     // Load and decode eagerly so a missing or damaged resource can fall back rather than render a blank image.
     public static Image? CreateResourceImage(string name,double size)
     {

@@ -6,9 +6,12 @@
 
 فایل‌های انتشار در [GitHub Releases](https://github.com/mirkhalili/fcdl/releases) نگهداری می‌شوند. لینک‌های زیر به آخرین انتشار رسمی اشاره می‌کنند و با انتشار نسخه‌های بعدی ثابت می‌مانند:
 
-| پروژه | دریافت مستقیم |
+| مورد | دریافت مستقیم |
 |---|---|
-| برنامهٔ ویندوز | [نصب‌کنندهٔ Jacquard Studio](https://github.com/mirkhalili/fcdl/releases/latest/download/JacquardStudio-Setup.exe) |
+| برنامهٔ ویندوز | [دانلود نصب‌کنندهٔ Jacquard Studio](https://github.com/mirkhalili/fcdl/releases/latest/download/JacquardStudio-Setup.exe) |
+| شمارهٔ نسخه | [دانلود فایل version.txt](https://github.com/mirkhalili/fcdl/releases/latest/download/version.txt) |
+| چک‌سام MD5 نصب‌کننده | [دانلود فایل MD5.txt](https://github.com/mirkhalili/fcdl/releases/latest/download/MD5.txt) |
+| چک‌سام SHA-256 نصب‌کننده | [دانلود فایل SHA256.txt](https://github.com/mirkhalili/fcdl/releases/latest/download/SHA256.txt) |
 | وب‌سایت و پنل مدیریت | [بستهٔ سایت (ZIP)](https://github.com/mirkhalili/fcdl/releases/latest/download/JacquardStudio-website-updated.zip) |
 | ابزار صدور لایسنس | [License Issuer برای ویندوز](https://github.com/mirkhalili/fcdl/releases/latest/download/Jacquard-LicenseIssuer.exe) |
 | لوگوی نهایی برنامه | [PNG شفاف با وضوح اصلی](https://github.com/mirkhalili/fcdl/releases/latest/download/sam-emblem-high-resolution.png) |
