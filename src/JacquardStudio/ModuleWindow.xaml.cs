@@ -446,7 +446,7 @@ public partial class ModuleWindow : Window
             bool failed=failedNodes.Contains(node.Id);string? invalid=NodeInvalidReason(node,new HashSet<Guid>(),validationCache);bool hasError=failed || invalid is not null;
             var frame=new SolidColorBrush(hasError ? Color.FromRgb(0xF1,0x60,0x69) : Color.FromRgb(0x55,0xCE,0x93));
             pair.Value.BorderBrush=frame;pair.Value.BorderThickness=new Thickness(node.Id==selected ? 4 : 2);pair.Value.Effect=null;
-            if(hasError && AlertAnimations.IsChecked==true)frame.BeginAnimation(Brush.OpacityProperty,new DoubleAnimation(.2,1,new Duration(TimeSpan.FromMilliseconds(850))) {AutoReverse=true,RepeatBehavior=RepeatBehavior.Forever});
+            if(hasError && AlertAnimations.IsChecked==true)frame.BeginAnimation(System.Windows.Media.Brush.OpacityProperty,new DoubleAnimation(.2,1,new Duration(TimeSpan.FromMilliseconds(850))) {AutoReverse=true,RepeatBehavior=RepeatBehavior.Forever});
             string state=failed ? "اجرای ماژول ناموفق بود؛ جزئیات در پیام خطا آمده است." : invalid ?? "تنظیمات و ورودی‌های این ماژول معتبر است.";
             pair.Value.ToolTip=state+" · دوبار کلیک برای تنظیمات";System.Windows.Automation.AutomationProperties.SetHelpText(pair.Value,state);
         }
