@@ -2,6 +2,19 @@
 
 ### از طرح دیجیتال تا نقشه قابل بررسی برای دستگاه بافندگی
 
+## دانلودها و نسخه‌ها
+
+فایل‌های انتشار در [GitHub Releases](https://github.com/mirkhalili/fcdl/releases) نگهداری می‌شوند. لینک‌های زیر به آخرین انتشار رسمی اشاره می‌کنند و با انتشار نسخه‌های بعدی ثابت می‌مانند:
+
+| پروژه | دریافت مستقیم |
+|---|---|
+| برنامهٔ ویندوز | [نصب‌کنندهٔ Jacquard Studio](https://github.com/mirkhalili/fcdl/releases/latest/download/JacquardStudio-Setup.exe) |
+| وب‌سایت و پنل مدیریت | [بستهٔ سایت (ZIP)](https://github.com/mirkhalili/fcdl/releases/latest/download/JacquardStudio-website-updated.zip) |
+| ابزار صدور لایسنس | [License Issuer برای ویندوز](https://github.com/mirkhalili/fcdl/releases/latest/download/Jacquard-LicenseIssuer.exe) |
+| لوگوی نهایی برنامه | [PNG شفاف با وضوح اصلی](https://github.com/mirkhalili/fcdl/releases/latest/download/sam-emblem-high-resolution.png) |
+
+برای دریافت همهٔ فایل‌ها و نسخه‌های پیشین، به صفحهٔ [Releases](https://github.com/mirkhalili/fcdl/releases) بروید. آرشیو کد منبع نیز در هر انتشار GitHub موجود است. نصب‌کنندهٔ برنامه و ابزار لایسنس فقط پس از موفقیت ساخت و آزمون خودکار منتشر می‌شوند؛ انتشار وب‌سایت هنوز نیازمند تنظیم هاست و کلیدهای خصوصی خودتان است.
+
 این پروژه برای طراحی یک نرم‌افزار دسکتاپ ویندوزی با رابط کاربری حرفه‌ای، فارسی و انگلیسی آغاز شده است. هدف نهایی آن، فراهم‌کردن مسیر تبدیل دوطرفه بین تصاویر **TIFF / BMP** و فایل‌های مورد استفاده کنترلرهای ژاکارد، همراه با بررسی تنظیمات، پیش‌نمایش و گزارش تبدیل است.
 
 > **وضعیت پروژه: مرحله بیست‌ویکم توسعه؛ نسخه آزمایشی.** رندر بدون هموارسازی PDF/AI، کاهش رنگ بر پایه فراوانی، نمایش موضعی رنگ و بهبود ورود PNG افزوده شده‌اند؛ نگاشت فیزیکی و سازگاری صنعتی هنوز تأیید نشده‌اند.

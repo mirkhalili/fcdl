@@ -22,7 +22,7 @@ public sealed class SourcePageWindow : Window
         var root=new DockPanel { Margin=new Thickness(16) }; var controls=new WrapPanel(); DockPanel.SetDock(controls,Dock.Top); root.Children.Add(controls); controls.Children.Add(apply);
         var cancel=new Button { Content="انصراف", Margin=new Thickness(4), IsCancel=true }; controls.Children.Add(cancel); controls.Children.Add(previous); controls.Children.Add(next); controls.Children.Add(status);
         root.Children.Add(new Border { Child=image, Background=Brushes.White, Margin=new Thickness(0,12,0,0) }); Content=root;
-        apply.SetResourceReference(Control.BackgroundProperty,"ActionBackground"); apply.SetResourceReference(Control.ForegroundProperty,"PrimaryText");
+        apply.SetResourceReference(Control.BackgroundProperty,"ActionBackground"); apply.SetResourceReference(Control.ForegroundProperty,"AccentForeground");
         apply.Click+=(_,_)=>{if(!loading) {Result=current; DialogResult=true;}}; previous.Click+=async (_,_)=>await ChangeAsync(current.PageIndex-1); next.Click+=async (_,_)=>await ChangeAsync(current.PageIndex+1);
         Closing+=(_,e)=>{if(loading)e.Cancel=true;}; Refresh();
     }

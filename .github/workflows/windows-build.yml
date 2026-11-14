@@ -2,9 +2,10 @@ name: Windows preview and installer
 on:
   push:
     branches: ["arena/d188298f-fcdl"]
+    tags: ["v*"]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
   actions: read
 jobs:
   build:
@@ -57,7 +58,13 @@ jobs:
           $version = (Get-Content version.txt -Raw).Trim()
           & $iscc "/DAppVersion=$version" packaging/JacquardStudio.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Get-FileHash artifacts/installer/*.exe -Algorithm SHA256 | Format-List | Out-File artifacts/installer/SHA256.txt
+          $setup = Get-ChildItem artifacts/installer/*Setup.exe | Select-Object -First 1
+          if (-not $setup) { throw 'Installer EXE is missing.' }
+          $md5 = (Get-FileHash $setup.FullName -Algorithm MD5).Hash
+          $sha256 = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash
+          Set-Content artifacts/installer/MD5.txt $md5 -NoNewline -Encoding ascii
+          Set-Content artifacts/installer/SHA256.txt $sha256 -NoNewline -Encoding ascii
+          Copy-Item version.txt artifacts/installer/version.txt
       - name: Download previous preview for upgrade test
         uses: actions/download-artifact@v4
         with:
@@ -113,3 +120,40 @@ jobs:
           path: artifacts/license-issuer/LicenseIssuer.exe
           if-no-files-found: error
           retention-days: 30
+
+      - name: Assemble permanent release downloads
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $release = 'artifacts/release'
+          New-Item -ItemType Directory -Force -Path $release | Out-Null
+          Copy-Item 'artifacts/installer/JacquardStudio-Setup.exe' "$release/JacquardStudio-Setup.exe"
+          Copy-Item 'artifacts/installer/version.txt' "$release/version.txt"
+          Copy-Item 'artifacts/installer/MD5.txt' "$release/MD5.txt"
+          Copy-Item 'artifacts/installer/SHA256.txt' "$release/SHA256.txt"
+          Copy-Item 'artifacts/license-issuer/LicenseIssuer.exe' "$release/Jacquard-LicenseIssuer.exe"
+          Copy-Item 'src/JacquardStudio/Assets/sam-emblem.png' "$release/sam-emblem-high-resolution.png"
+          $site = Join-Path $env:RUNNER_TEMP 'JacquardStudio-website'
+          New-Item -ItemType Directory -Force -Path "$site/public", "$site/private" | Out-Null
+          Copy-Item 'website/public/*' "$site/public" -Recurse
+          Copy-Item 'website/private/config.example.php', 'website/private/schema.sql', 'website/private/migrate-038-to-039.sql', 'website/private/migrate-039-to-040.sql' "$site/private"
+          Copy-Item 'website/راهنمای-نصب.md' "$site/راهنمای-نصب.md"
+          Compress-Archive -Path "$site/*" -DestinationPath "$release/JacquardStudio-website-updated.zip" -CompressionLevel Optimal
+
+      - name: Publish permanent GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Jacquard Studio ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          make_latest: true
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/release/JacquardStudio-Setup.exe
+            artifacts/release/version.txt
+            artifacts/release/MD5.txt
+            artifacts/release/SHA256.txt
+            artifacts/release/Jacquard-LicenseIssuer.exe
+            artifacts/release/JacquardStudio-website-updated.zip
+            artifacts/release/sam-emblem-high-resolution.png

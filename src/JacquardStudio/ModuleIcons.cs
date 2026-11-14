@@ -81,9 +81,9 @@ public static class ModuleIcons
         var name=ResourceName(kind);
         if(name is not null && loader(name,size) is { } artwork)return artwork;
         var grid=new Grid {Width=size,Height=size,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,IsHitTestVisible=false};
-        grid.Children.Add(new Ellipse {Fill=new SolidColorBrush(Color.FromRgb(17,35,54)),Stroke=new SolidColorBrush(Color.FromRgb(211,162,96)),StrokeThickness=1});
-        var weave=new Path {Data=Geometry.Parse("M 3,4 L 9,10 3,16 M 3,9 L 9,15 3,21 M 21,3 L 15,9 21,15 M 21,8 L 15,14 21,20 M 4,3 L 4,21 M 20,3 L 20,21"),Stroke=new SolidColorBrush(Color.FromRgb(60,124,176)),StrokeThickness=1.3,Stretch=Stretch.Fill,Width=size*.84,Height=size*.78,Opacity=.68};grid.Children.Add(weave);
-        var under=new Path {Data=Geometry.Parse(PathFor(kind)),Stroke=new SolidColorBrush(Color.FromRgb(17,35,54)),StrokeThickness=3.6,StrokeLineJoin=PenLineJoin.Round,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,Stretch=Stretch.Uniform,Width=size*.66,Height=size*.66};grid.Children.Add(under);
-        var symbol=new Path {Data=Geometry.Parse(PathFor(kind)),Stroke=new SolidColorBrush(Color.FromRgb(245,190,112)),StrokeThickness=1.55,StrokeLineJoin=PenLineJoin.Round,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,Stretch=Stretch.Uniform,Width=size*.66,Height=size*.66};grid.Children.Add(symbol);return grid;
+        var circle=new Ellipse {StrokeThickness=1};circle.SetResourceReference(Shape.FillProperty,"GraphNode");circle.SetResourceReference(Shape.StrokeProperty,"Border");grid.Children.Add(circle);
+        var weave=new Path {Data=Geometry.Parse("M 3,4 L 9,10 3,16 M 3,9 L 9,15 3,21 M 21,3 L 15,9 21,15 M 21,8 L 15,14 21,20 M 4,3 L 4,21 M 20,3 L 20,21"),StrokeThickness=1.3,Stretch=Stretch.Fill,Width=size*.84,Height=size*.78,Opacity=.45};weave.SetResourceReference(Shape.StrokeProperty,"GraphSelection");grid.Children.Add(weave);
+        var under=new Path {Data=Geometry.Parse(PathFor(kind)),StrokeThickness=3.6,StrokeLineJoin=PenLineJoin.Round,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,Stretch=Stretch.Uniform,Width=size*.66,Height=size*.66};under.SetResourceReference(Shape.StrokeProperty,"GraphNode");grid.Children.Add(under);
+        var symbol=new Path {Data=Geometry.Parse(PathFor(kind)),StrokeThickness=1.55,StrokeLineJoin=PenLineJoin.Round,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,Stretch=Stretch.Uniform,Width=size*.66,Height=size*.66};symbol.SetResourceReference(Shape.StrokeProperty,"Accent");grid.Children.Add(symbol);return grid;
     }
 }

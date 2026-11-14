@@ -9,3 +9,45 @@ body{background:var(--bg);color:var(--text);font-family:PortfolioVazir,Vazirmatn
 .device-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:20px 0}.device-form label{display:grid;gap:4px}.device-form input,.device-form select{width:100%;max-width:none}.device-form p{grid-column:1/-1;color:var(--muted);margin:0}.device-form button{justify-self:start}.delete-link{align-self:center;color:#b82e17;text-decoration:underline}.device-detail code{overflow-wrap:anywhere}.device-detail{margin-bottom:20px}.table-scroll code{overflow-wrap:anywhere;max-width:220px}
 
 .device-form textarea{width:100%;background:#fffdf8;color:var(--text);border:1px solid #b7ad9e;padding:10px;font:inherit;resize:vertical;overflow-wrap:anywhere}
+
+/* پنل مدیریت: فرم‌های خوانا، شفاف و سازگار با زبان بصری سایت */
+.admin-main{max-width:1320px;margin-inline:auto}
+.admin-title{gap:24px;margin-bottom:18px}
+.admin-title .badge{align-self:flex-start;margin-top:14px}
+.admin-main>.notice{line-height:1.9}
+.table-card{box-shadow:0 12px 32px #211b1008}
+.table-heading h2{margin:5px 0}
+.release-card{margin:22px 0 24px;padding:clamp(20px,3vw,34px);background:#efebe2}
+.release-card .table-heading{align-items:center;gap:18px}
+.release-card .table-heading .eyebrow{font-size:11px}
+.release-card .table-heading a{border-bottom:1px solid var(--gold);padding:5px 0}
+.release-card>p{max-width:920px;color:var(--muted);font-size:13px;line-height:2;margin:14px 0 20px}
+.release-card>p code{direction:ltr;color:#5d5144;background:#e2ddd2;padding:2px 6px}
+.release-current{display:flex;flex-wrap:wrap;align-items:center;gap:10px 26px;padding:14px 16px;margin:0 0 18px;background:#f7f4ed;border:1px solid var(--line);border-right:3px solid var(--gold);font-size:12px}
+.release-current strong{font-size:14px}
+.release-current span{color:var(--muted)}
+.release-current code{display:inline-block;max-width:100%;overflow-wrap:anywhere;color:#3f3930}
+.release-empty{padding:10px 14px;border-right:2px solid var(--line);background:#f7f4ed}
+.release-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.upload-field{display:grid;gap:8px;min-width:0;padding:14px;background:#f7f4ed;border:1px solid var(--line);font-size:13px;font-weight:700}
+.upload-field>span{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.upload-field small{color:var(--muted);font-size:11px;font-weight:400}
+.upload-field input[type=file]{width:100%;min-width:0;padding:7px;background:#fffdf8}
+.upload-field input[type=file]::file-selector-button{margin-inline-end:10px;padding:7px 11px;border:1px solid #c9c0b2;background:#ece7dc;color:var(--text);font:inherit;cursor:pointer}
+.md5-field{grid-column:1/-1}
+.md5-field input{width:100%;font-family:ui-monospace,Consolas,monospace;letter-spacing:.04em}
+.release-form>.button{justify-self:start;align-self:center;min-height:46px}
+.device-detail{margin-top:24px}
+.device-form{gap:14px;margin:22px 0;padding:20px;background:#efebe2;border:1px solid var(--line)}
+.device-form label{align-content:start;gap:7px;font-size:12px;font-weight:700;color:#4c463e}
+.device-form input,.device-form select,.device-form textarea{min-height:44px;font-size:14px;box-shadow:inset 0 1px 2px #20180a08;transition:border-color .15s,box-shadow .15s}
+.device-form select{width:100%;max-width:none}
+.device-form .activation-field{grid-column:1/-1}
+.device-form textarea{min-height:126px;line-height:1.7}
+.device-form>p{padding:12px 14px;background:#f7f4ed;border-right:2px solid #c8bead;font-size:12px;line-height:1.9}
+.device-form .button{min-height:44px;align-self:center}
+.device-form .delete-link{justify-self:start;align-self:center;padding:8px 12px;border:1px solid #d6b0a5}
+.table-card input:focus-visible,.table-card select:focus-visible,.table-card textarea:focus-visible,.login-card input:focus-visible{outline:0;border-color:var(--gold);box-shadow:0 0 0 3px #e4471c24}
+.table-card :is(button,a,input,select,textarea):focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media(max-width:720px){.release-form{grid-template-columns:1fr}.md5-field{grid-column:auto}.release-form>.button{justify-self:stretch}.release-card .table-heading{align-items:flex-start;flex-direction:column}.release-current{align-items:flex-start;flex-direction:column;gap:6px}.device-form{grid-template-columns:1fr;padding:14px}.device-form .activation-field,.device-form>p{grid-column:auto}.admin-title .badge{margin:10px 0}}
+@media(max-width:480px){.release-card{padding:18px}.upload-field>span{align-items:flex-start;flex-direction:column;gap:1px}.release-current code{font-size:11px}.device-form .button{justify-self:stretch}}

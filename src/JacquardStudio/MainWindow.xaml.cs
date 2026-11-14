@@ -560,6 +560,13 @@ public partial class MainWindow : Window
         else return;
         e.Handled = true;
     }
+    private async void CheckUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        Button? button = sender as Button;
+        if (button is not null) button.IsEnabled = false;
+        try { await ReleaseUpdater.CheckForUpdatesAsync(this, manual: true); }
+        finally { if (button is not null && IsLoaded) button.IsEnabled = true; }
+    }
     private void Help_Click(object sender, RoutedEventArgs e)
     {
         try { new GuideWindow(english) { Owner = this }.ShowDialog(); }

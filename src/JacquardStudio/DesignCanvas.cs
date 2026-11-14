@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.IO;
+using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -31,7 +33,7 @@ public sealed class DesignCanvas
 {
     public const int MaxLayers=8;
     // Total uncompressed layer storage is capped independently of the per-image pixel limit.
-    private const long MaxLayerPixels=16000000;
+    public const long MaxLayerPixels=16000000;
     private static readonly (int X,int Y)[] Directions = {(-1,0),(1,0),(0,-1),(0,1)};
     public sealed class Layer
     {
@@ -90,6 +92,14 @@ public sealed class DesignCanvas
     {
         if(Layers.Count>=MaxLayers || (long)(Layers.Count+1)*Width*Height>MaxLayerPixels)throw new InvalidOperationException("حداکثر ۸ لایه و ۱۶ میلیون پیکسل مجموع لایه‌ها مجاز است.");
         Layers.Insert(Active+1,new Layer { Name=Name(name),Pixels=new byte[checked(Width*Height*4)] });Active++;
+    }
+    public void ImportLayer(BitmapSource image,int x,int y,string name)
+    {
+        if(image.PixelWidth<1 || image.PixelHeight<1 || (long)image.PixelWidth*image.PixelHeight>DesignProcessor.MaxPixels)throw new ArgumentException("ابعاد تصویر واردشده مجاز نیست.");
+        AddLayer(name);var source=new byte[checked(image.PixelWidth*image.PixelHeight*4)];new FormatConvertedBitmap(image,PixelFormats.Bgra32,null,0).CopyPixels(source,image.PixelWidth*4,0);
+        long left=Math.Max(0L,x),top=Math.Max(0L,y),right=Math.Min((long)Width,(long)x+image.PixelWidth),bottom=Math.Min((long)Height,(long)y+image.PixelHeight);
+        if(right<=left || bottom<=top)return;int sx=(int)(left-x),sy=(int)(top-y),count=(int)(right-left);
+        for(int row=0;row<(int)(bottom-top);row++){int destination=(((int)top+row)*Width+(int)left)*4;Buffer.BlockCopy(source,((sy+row)*image.PixelWidth+sx)*4,Current.Pixels,destination,count*4);}
     }
     public static string Name(string text) {text=text.Trim();if(text.Length<1 || text.Length>80)throw new ArgumentException("نام لایه باید بین ۱ تا ۸۰ نویسه باشد.");return text;}
     public void DeleteLayer() {if(Layers.Count==1)throw new InvalidOperationException("آخرین لایه قابل حذف نیست.");Layers.RemoveAt(Active);Active=Math.Min(Active,Layers.Count-1);}
@@ -158,6 +168,11 @@ public sealed class DesignCanvas
     public void SelectAll() => Selection=null;
     public void InvertSelection() {var m=new bool[Width*Height];for(int i=0;i<m.Length;i++)m[i]=Selection is not null && !Selection[i];Selection=m;}
     public void SelectRectangle(int x0,int y0,int x1,int y1) {Check(x0,y0);Check(x1,y1);var m=new bool[Width*Height];for(int y=Math.Min(y0,y1);y<=Math.Max(y0,y1);y++)for(int x=Math.Min(x0,x1);x<=Math.Max(x0,x1);x++)m[y*Width+x]=true;Selection=m;}
+    public void CombineRectangleSelection(int x0,int y0,int x1,int y1,bool subtract=false)
+    {
+        Check(x0,y0);Check(x1,y1);var mask=Selection is null?Enumerable.Repeat(true,Width*Height).ToArray():(bool[])Selection.Clone();
+        for(int y=Math.Min(y0,y1);y<=Math.Max(y0,y1);y++)for(int x=Math.Min(x0,x1);x<=Math.Max(x0,x1);x++)mask[y*Width+x]=!subtract;Selection=mask;
+    }
     public void SelectPolygon(IReadOnlyList<(int X,int Y)> points)
     {
         if(points.Count<3 || points.Count>2048)throw new ArgumentException("انتخاب آزاد حداقل سه و حداکثر ۲۰۴۸ نقطه لازم دارد.");foreach(var p in points)Check(p.X,p.Y);
@@ -186,6 +201,98 @@ public sealed class DesignCanvas
     {
         Editable();var clip=Copy();int x=clip.X+dx,y=clip.Y+dy;if(x<0 || y<0 || (long)x+clip.Width>Width || (long)y+clip.Height>Height)throw new ArgumentException("انتقال به بیرون تصویر مجاز نیست؛ هیچ پیکسلی تغییر نکرد.");
         ClearSelected();Paste(clip,x,y);
+    }
+    public void AlignSelection(int horizontal,int vertical)
+    {
+        if(horizontal is <0 or >2 || vertical is <0 or >2)throw new ArgumentOutOfRangeException(nameof(horizontal));
+        var clip=Copy();int x=horizontal switch {0=>0,1=>(Width-clip.Width)/2,_=>Width-clip.Width};int y=vertical switch {0=>0,1=>(Height-clip.Height)/2,_=>Height-clip.Height};MoveSelection(x-clip.X,y-clip.Y);
+    }
+    public void ClearOutsideSelection()
+    {
+        Editable();if(Selection is null)throw new InvalidOperationException("ابتدا ناحیه‌ای را انتخاب کنید.");for(int p=0;p<Selection.Length;p++)if(!Selection[p])Array.Clear(Current.Pixels,p*4,4);
+    }
+    public void ResizeActiveLayer(int width,int height,int x,int y)
+    {
+        Editable();if(width<1 || height<1 || (long)width*height>DesignProcessor.MaxPixels || Math.Abs((long)x)>16000 || Math.Abs((long)y)>16000)throw new ArgumentException("ابعاد تغییر اندازه یا مختصات جای‌گذاری معتبر نیست.");
+        var source=(byte[])Current.Pixels.Clone();var resized=new byte[source.Length];long right=(long)x+width,bottom=(long)y+height;int left=Math.Max(0,x),top=Math.Max(0,y),endX=(int)Math.Min(Width,right),endY=(int)Math.Min(Height,bottom);
+        if(endX<=left || endY<=top)throw new ArgumentException("لایه پس از تغییر اندازه از بوم بیرون می‌افتد.");
+        for(int py=top;py<endY;py++){int sy=(int)((long)(py-y)*Height/height);for(int px=left;px<endX;px++){int sx=(int)((long)(px-x)*Width/width),src=(sy*Width+sx)*4,dst=(py*Width+px)*4;Buffer.BlockCopy(source,src,resized,dst,4);}}
+        Current.Pixels=resized;Selection=null;
+    }
+    public void FlipActiveLayer(bool horizontal,bool vertical)
+    {
+        Editable();if(!horizontal && !vertical)return;var source=(byte[])Current.Pixels.Clone();var output=new byte[source.Length];
+        for(int y=0;y<Height;y++)for(int x=0;x<Width;x++){int nx=horizontal?Width-1-x:x,ny=vertical?Height-1-y:y;Buffer.BlockCopy(source,(y*Width+x)*4,output,(ny*Width+nx)*4,4);}Current.Pixels=output;
+        if(Selection is not null){var mask=new bool[Selection.Length];for(int y=0;y<Height;y++)for(int x=0;x<Width;x++){int nx=horizontal?Width-1-x:x,ny=vertical?Height-1-y:y;mask[ny*Width+nx]=Selection[y*Width+x];}Selection=mask;}
+    }
+    public void RotateActiveLayer(int quarterTurnsClockwise)
+    {
+        Editable();int turns=((quarterTurnsClockwise%4)+4)%4;if(turns==0)return;var source=(byte[])Current.Pixels.Clone();var output=new byte[source.Length];
+        for(int y=0;y<Height;y++)for(int x=0;x<Width;x++)
+        {
+            int nx,ny;switch(turns){case 1:nx=Height-1-y;ny=x;break;case 2:nx=Width-1-x;ny=Height-1-y;break;default:nx=y;ny=Width-1-x;break;}
+            // Keep the document dimensions fixed; a non-square quarter-turn is centered and clipped.
+            int transformedWidth=turns%2==0?Width:Height,transformedHeight=turns%2==0?Height:Width;
+            nx+=(Width-transformedWidth)/2;ny+=(Height-transformedHeight)/2;if((uint)nx<(uint)Width && (uint)ny<(uint)Height)Buffer.BlockCopy(source,(y*Width+x)*4,output,(ny*Width+nx)*4,4);
+        }
+        Current.Pixels=output;
+        if(Selection is not null)
+        {
+            var mask=new bool[Selection.Length];for(int y=0;y<Height;y++)for(int x=0;x<Width;x++)
+            {
+                int nx,ny;switch(turns){case 1:nx=Height-1-y;ny=x;break;case 2:nx=Width-1-x;ny=Height-1-y;break;default:nx=y;ny=Width-1-x;break;}
+                int transformedWidth=turns%2==0?Width:Height,transformedHeight=turns%2==0?Height:Width;nx+=(Width-transformedWidth)/2;ny+=(Height-transformedHeight)/2;if((uint)nx<(uint)Width && (uint)ny<(uint)Height)mask[ny*Width+nx]=Selection[y*Width+x];
+            }Selection=mask;
+        }
+    }
+    public void RepeatActiveLayer(int columns,int rows,bool mirrorAlternateColumns,bool mirrorAlternateRows)
+    {
+        Editable();if(columns<1 || rows<1 || columns>32 || rows>32)throw new ArgumentOutOfRangeException(nameof(columns),"تعداد تکرار باید بین ۱ تا ۳۲ باشد.");
+        var source=(byte[])Current.Pixels.Clone();var output=new byte[source.Length];int tileWidth=(Width+columns-1)/columns,tileHeight=(Height+rows-1)/rows;
+        for(int y=0;y<Height;y++)for(int x=0;x<Width;x++)
+        {
+            int column=x/tileWidth,row=y/tileHeight,sx=x%tileWidth,sy=y%tileHeight;if(mirrorAlternateColumns && (column&1)!=0)sx=tileWidth-1-sx;if(mirrorAlternateRows && (row&1)!=0)sy=tileHeight-1-sy;
+            if(sx<Width && sy<Height)Buffer.BlockCopy(source,(sy*Width+sx)*4,output,(y*Width+x)*4,4);
+        }
+        Current.Pixels=output;Selection=null;
+    }
+    public void MergeDown()
+    {
+        Editable();if(Active<=0)throw new InvalidOperationException("لایه فعال، لایه‌ای برای ترکیب در زیر خود ندارد.");var upper=Layers[Active];var lower=Layers[Active-1];
+        if(lower.Locked)throw new InvalidOperationException("لایه زیرین قفل است؛ ابتدا قفل را باز کنید.");if(!upper.Visible || !lower.Visible)throw new InvalidOperationException("برای حفظ ظاهر، هر دو لایه باید قابل مشاهده باشند.");
+        var merged=new byte[checked(Width*Height*4)];
+        for(int i=0;i<merged.Length;i+=4)
+        {
+            int a=(upper.Pixels[i+3]*upper.Opacity+50)/100,da=(lower.Pixels[i+3]*lower.Opacity+50)/100,oa=a+(da*(255-a)+127)/255;if(oa==0)continue;
+            for(int c=0;c<3;c++)merged[i+c]=(byte)Math.Clamp((upper.Pixels[i+c]*a*255+lower.Pixels[i+c]*da*(255-a)+oa*127)/(oa*255),0,255);merged[i+3]=(byte)oa;
+        }
+        lower.Pixels=merged;lower.Opacity=100;lower.Visible=true;lower.Locked=false;string mergedName=lower.Name+" + "+upper.Name;lower.Name=Name(mergedName.Length>80?mergedName[..80]:mergedName);Layers.RemoveAt(Active);Active--;
+    }
+    public void DrawText(int x,int y,string text,Color ink,int fontSize)
+    {
+        Editable();Check(x,y);
+        if(string.IsNullOrWhiteSpace(text) || text.Length>512)throw new ArgumentException("متن باید بین ۱ تا ۵۱۲ نویسه باشد.");
+        if(fontSize<6 || fontSize>128)throw new ArgumentOutOfRangeException(nameof(fontSize),"اندازه قلم باید بین ۶ تا ۱۲۸ پیکسل باشد.");
+        var visual=new DrawingVisual();
+        using(var context=visual.RenderOpen())
+        {
+            context.PushClip(new RectangleGeometry(new Rect(x,y,Width-x,Height-y)));
+            var formatted=new FormattedText(text,CultureInfo.CurrentCulture,FlowDirection.RightToLeft,new Typeface("Segoe UI"),fontSize,new SolidColorBrush(ink),1.0)
+            {
+                MaxTextWidth=Math.Max(1,Width-x),
+                MaxTextHeight=Math.Max(1,Height-y),
+                Trimming=TextTrimming.CharacterEllipsis
+            };
+            context.DrawText(formatted,new Point(x,y));context.Pop();
+        }
+        var target=new RenderTargetBitmap(Width,Height,96,96,PixelFormats.Pbgra32);target.Render(visual);
+        var converted=new FormatConvertedBitmap(target,PixelFormats.Bgra32,null,0);var overlay=new byte[checked(Width*Height*4)];converted.CopyPixels(overlay,Width*4,0);
+        for(int p=0;p<Width*Height;p++)
+        {
+            if(!Selected(p))continue;int i=p*4,sa=overlay[i+3];if(sa==0)continue;int da=Current.Pixels[i+3],oa=sa+(da*(255-sa)+127)/255;
+            for(int c=0;c<3;c++)Current.Pixels[i+c]=(byte)Math.Clamp((overlay[i+c]*sa*255+Current.Pixels[i+c]*da*(255-sa)+oa*127)/(oa*255),0,255);
+            Current.Pixels[i+3]=(byte)oa;
+        }
     }
     public void Contour(Color target,Color ink,int thickness,bool repeat)
     {

@@ -20,21 +20,22 @@ public sealed class Fabric3DWindow : Window
         SetResourceReference(FontFamilyProperty, "VazirFont");
         string T(string fa, string en) => english ? en : fa;
         Title = T("نمای سه‌بعدی بافت", "3D weave detail"); Width = 1200; Height = 760; MinWidth = 740; MinHeight = 500; WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var root = new DockPanel { Background = new SolidColorBrush(Color.FromRgb(24, 37, 45)) };
-        var hint = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12), Foreground = Brushes.White };
+        var root = new DockPanel();
+        root.SetResourceReference(Panel.BackgroundProperty,"AppBackground");
+        var hint = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };hint.SetResourceReference(TextBlock.ForegroundProperty,"PrimaryText");
         DockPanel.SetDock(hint, Dock.Top); root.Children.Add(hint);
         var bar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(6), FlowDirection = FlowDirection.LeftToRight };
         var left = new Button { Content = "◀ X", Margin = new Thickness(3) }; var right = new Button { Content = "X ▶", Margin = new Thickness(3) };
         var up = new Button { Content = "▲ Y", Margin = new Thickness(3) }; var down = new Button { Content = "Y ▼", Margin = new Thickness(3) }; var flip = new Button { Content = T("پشت / رو", "Front / back"), Margin = new Thickness(3) };
         bar.Children.Add(left); bar.Children.Add(right); bar.Children.Add(up); bar.Children.Add(down); bar.Children.Add(flip); DockPanel.SetDock(bar, Dock.Bottom); root.Children.Add(bar);
         var side = new StackPanel { Margin = new Thickness(12), FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft };
-        var scroll = new ScrollViewer { Width = 270, Content = side, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = new SolidColorBrush(Color.FromRgb(17, 27, 41)) }; DockPanel.SetDock(scroll, Dock.Right); root.Children.Add(scroll);
-        var viewport = new HelixViewport3D { ShowViewCube = true, ShowCoordinateSystem = false, Background = new SolidColorBrush(Color.FromRgb(35, 48, 55)) };
+        var scroll = new ScrollViewer { Width = 270, Content = side, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };scroll.SetResourceReference(ScrollViewer.BackgroundProperty,"Surface");DockPanel.SetDock(scroll, Dock.Right); root.Children.Add(scroll);
+        var viewport = new HelixViewport3D { ShowViewCube = true, ShowCoordinateSystem = false, Background = (Brush)Application.Current.FindResource("CanvasBackground") };
         root.Children.Add(viewport); Content = root;
-        TextBlock Label(string text) => new() { FontFamily = FontFamily, Text = text, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 9, 0, 3) };
+        TextBlock Label(string text) { var label=new TextBlock { FontFamily=FontFamily,Text=text,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,9,0,3) };label.SetResourceReference(TextBlock.ForegroundProperty,"PrimaryText");return label; }
         TextBox Input(string value) => new() { FontFamily = FontFamily, Text = value, FlowDirection = FlowDirection.LeftToRight, Padding = new Thickness(6) };
         ComboBox Unit() => new() { FontFamily = FontFamily, ItemsSource = YarnGeometry.Units, SelectedIndex = 0, Margin = new Thickness(0, 4, 0, 0) };
-        side.Children.Add(new TextBlock { Text = T("تنظیم نخ و تراکم", "Yarn & density"), Foreground = Brushes.White, FontSize = 17, FontWeight = FontWeights.SemiBold });
+        var sideHeading=new TextBlock {Text=T("تنظیم نخ و تراکم","Yarn & density"),FontSize=17,FontWeight=FontWeights.SemiBold};sideHeading.SetResourceReference(TextBlock.ForegroundProperty,"PrimaryText");side.Children.Add(sideHeading);
         side.Children.Add(Label(T("نمره نخ تار", "Warp yarn count"))); var warpCount = Input(settings.WarpCount); side.Children.Add(warpCount); var warpUnit = Unit(); warpUnit.SelectedIndex = settings.WarpUnit; side.Children.Add(warpUnit);
         side.Children.Add(Label(T("نمره نخ پود", "Weft yarn count"))); var weftCount = Input(FabricSimulation.YarnFor(settings, "1").Count); side.Children.Add(weftCount); var weftUnit = Unit(); weftUnit.SelectedIndex = FabricSimulation.YarnFor(settings, "1").Unit; side.Children.Add(weftUnit);
         side.Children.Add(Label(T("تراکم تار (نخ در سانتی‌متر)", "Warp ends per cm"))); var warpDensity = Input(settings.WarpDensity); side.Children.Add(warpDensity);
@@ -51,7 +52,9 @@ public sealed class Fabric3DWindow : Window
             var input = new ColorSwatch(colorSet[i], T("رنگ پود", "Weft color")); colorInputs.Add(input); side.Children.Add(input);
         }
         var apply = new Button { Content = T("اعمال تنظیمات", "Apply settings"), Margin = new Thickness(0, 12, 0, 0) }; side.Children.Add(apply);
-        side.Children.Add(new TextBlock { Text = T("قطر از نمره و چگالی مؤثر تخمین زده می‌شود؛ نتیجه اندازه‌گیری فیزیکی نیست.", "Diameter is estimated from count and effective density; this is not a physical measurement."), TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, Margin = new Thickness(0, 10, 0, 0), FontSize = 11 });
+        var note=new TextBlock {Text=T("قطر از نمره و چگالی مؤثر تخمین زده می‌شود؛ نتیجه اندازه‌گیری فیزیکی نیست.","Diameter is estimated from count and effective density; this is not a physical measurement."),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,10,0,0),FontSize=11};note.SetResourceReference(TextBlock.ForegroundProperty,"Muted");side.Children.Add(note);
+        void ApplyTheme(object? sender,EventArgs args){root.Background=(Brush)Application.Current.FindResource("AppBackground");scroll.Background=(Brush)Application.Current.FindResource("Surface");viewport.Background=(Brush)Application.Current.FindResource("CanvasBackground");}
+        ThemeManager.Changed+=ApplyTheme;Closed+=(_,_)=>ThemeManager.Changed-=ApplyTheme;
         if (overview is not null) scroll.Visibility = Visibility.Collapsed; // Simulation geometry is controlled by its main panel.
         int offsetX = 0, offsetY = 0; bool back = false;
         double warpSpacing = YarnGeometry.SpacingMm(FabricSimulation.Number(settings.WarpDensity)), weftSpacing = YarnGeometry.SpacingMm(FabricSimulation.Number(settings.WeftDensity)), warpDiameter = FabricSimulation.WarpDiameter(settings), weftDiameter = FabricSimulation.WeftDiameter(settings, FabricSimulation.YarnFor(settings, "1")); Color warp = FabricSimulation.ParseColor(settings.WarpColor); Color[] colors = colorSet.Select(FabricSimulation.ParseColor).ToArray();

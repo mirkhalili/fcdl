@@ -104,13 +104,13 @@ legacy_reply=$(curl -fsS -H 'Content-Type: application/json' --data "$legacy" ht
 
 [[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM devices') == 1 ]]
 
-cookies=$(mktemp); html=$(mktemp); fake=$(mktemp); downloaded=$(mktemp)
+cookies=$(mktemp); html=$(mktemp); fake=$(mktemp); downloaded=$(mktemp); version_file=$(mktemp)
 curl -fsS -c "$cookies" http://127.0.0.1:18999/admin.php > "$html"
 csrf=$(sed -n 's/.*name="csrf" value="\([a-f0-9]*\)".*/\1/p' "$html" | head -1)
 [[ ${#csrf} == 64 ]]
 curl -fsS -b "$cookies" -c "$cookies" -X POST -d "csrf=$csrf&action=login&username=test-admin&password=test-only-admin-password" http://127.0.0.1:18999/admin.php -o /dev/null
 curl -fsS -b "$cookies" http://127.0.0.1:18999/admin.php > "$html"
-grep -q 'بارگذاری فایل نصب' "$html"
+grep -q 'انتشار نسخهٔ تازه' "$html";grep -q 'MD5 فایل نصب' "$html"
 csrf=$(sed -n 's/.*name="csrf" value="\([a-f0-9]*\)".*/\1/p' "$html" | head -1)
 device=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 # Site accepts an opaque code without checking its signature or device; date is mandatory.
@@ -120,7 +120,7 @@ grep -q 'تاریخ پایان اعتبار' "$html"
 curl -fsS -b "$cookies" --data-urlencode "csrf=$csrf" --data-urlencode 'action=save_device' --data-urlencode "device=$device" --data-urlencode 'status=pending' --data-urlencode 'activation_code=not-a-signed-code' --data-urlencode 'expiry=2090-01-01' --data-urlencode 'customer_name=Test User' --data-urlencode 'phone=12345' --data-urlencode 'city=Amsterdam' --data-urlencode 'notes=<script>' http://127.0.0.1:18999/admin.php > "$html"
 grep -q 'Test User' "$html"; grep -q 'Amsterdam' "$html"
 curl -fsS -b "$cookies" "http://127.0.0.1:18999/admin.php?device=$device" > "$html"
-grep -q 'تاریخچه اتصال' "$html";grep -q 'Windows' "$html";grep -q '&lt;script&gt;' "$html";grep -q '2090-01-01' "$html"
+grep -q 'تاریخچه اتصال' "$html";grep -q 'Windows' "$html";grep -q '&lt;script&gt;' "$html";grep -q '2090-01-01' "$html";grep -q 'not-a-signed-code' "$html"
 online=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
 export ONLINE_REPLY="$online";python3 - <<'PYTEST'
 import json,os
@@ -135,13 +135,28 @@ PYTEST
 code=$(curl -sS -o /dev/null -w '%{http_code}' --data "csrf=$csrf&action=delete_device&device=$device" http://127.0.0.1:18999/admin.php)
 [[ "$code" == 403 ]]
 { printf MZ; head -c 2048 /dev/zero; } > "$fake"
-curl -fsS -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=setup.exe" http://127.0.0.1:18999/admin.php > "$html"
-grep -q 'فایل منتشر شد' "$html"
+printf '044.0.0.0-a2\n' > "$version_file"
+md5=$(md5sum "$fake" | awk '{print $1}')
+curl -fsS -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=setup.exe" -F "version_file=@$version_file;filename=version.txt" --form-string "md5=$md5" http://127.0.0.1:18999/admin.php > "$html"
+grep -q 'نسخهٔ 044.0.0.0-a2 با MD5' "$html"
+manifest=$(curl -fsS 'http://127.0.0.1:18999/download.php?manifest=1')
+export TEST_RELEASE_MANIFEST="$manifest" TEST_INSTALLER="$fake"
+python3 - <<'PYTEST'
+import hashlib,json,os,pathlib
+m=json.loads(os.environ['TEST_RELEASE_MANIFEST']);data=pathlib.Path(os.environ['TEST_INSTALLER']).read_bytes()
+assert m['product']=='JacquardStudio' and m['version']=='044.0.0.0-a2'
+assert m['md5']==hashlib.md5(data).hexdigest() and m['sha256']==hashlib.sha256(data).hexdigest() and m['size']==len(data)
+PYTEST
 curl -fsS http://127.0.0.1:18999/download.php > "$downloaded"
 cmp "$fake" "$downloaded"
+curl -fsS -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=setup.exe" -F "version_file=@$version_file;filename=version.txt" --form-string 'md5=00000000000000000000000000000000' http://127.0.0.1:18999/admin.php > "$html"
+grep -q 'MD5 واردشده با فایل نصب مطابقت ندارد' "$html"
+curl -fsS 'http://127.0.0.1:18999/download.php?manifest=1' > "$html"
+grep -q '044.0.0.0-a2' "$html"
 printf 'not an installer' > "$fake";head -c 2048 /dev/zero >> "$fake"
-curl -fsS -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=evil.php" http://127.0.0.1:18999/admin.php > "$html"
-grep -q 'اجرایی ویندوز نیست' "$html"
+md5=$(md5sum "$fake" | awk '{print $1}')
+curl -fsS -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=evil.php" -F "version_file=@$version_file;filename=version.txt" --form-string "md5=$md5" http://127.0.0.1:18999/admin.php > "$html"
+grep -q 'فایل انتخاب‌شده اجرایی ویندوز نیست' "$html"
 curl -fsS http://127.0.0.1:18999/download.php > "$fake";cmp "$fake" "$downloaded"
 curl -fsS -b "$cookies" "http://127.0.0.1:18999/admin.php?device=$device&delete=1" > "$html";grep -q 'تأیید می‌کنید' "$html"
 curl -fsS -b "$cookies" -X POST -d "csrf=$csrf&action=delete_device&device=$device" http://127.0.0.1:18999/admin.php > "$html"
@@ -162,5 +177,5 @@ mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices 
 manual_reply=$(curl -fsS -H 'Content-Type: application/json' --data "$manual_request" http://127.0.0.1:18999/api.php)
 [[ "$manual_reply" == *'"status":"blocked"'* ]]
 
-rm -f "$cookies" "$html" "$fake" "$downloaded"
+rm -f "$cookies" "$html" "$fake" "$downloaded" "$version_file"
 echo 'Website API smoke tests passed.'

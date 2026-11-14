@@ -1,68 +1,248 @@
 <Application x:Class="JacquardStudio.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
->
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
-        <SolidColorBrush x:Key="AppBackground" Color="#0C1420"/>
-        <SolidColorBrush x:Key="HeaderBackground" Color="#111B29"/>
-        <SolidColorBrush x:Key="CanvasBackground" Color="#0B121D"/>
-        <SolidColorBrush x:Key="PrimaryText" Color="#E5EEF6"/>
-        <SolidColorBrush x:Key="ButtonBackground" Color="#263749"/>
-        <SolidColorBrush x:Key="ButtonBorder" Color="#374C60"/>
-        <SolidColorBrush x:Key="GalleryBackground" Color="#172432"/>
-        <SolidColorBrush x:Key="ListBackground" Color="#111B29"/>
-        <SolidColorBrush x:Key="Surface" Color="#161F2D"/>
-        <SolidColorBrush x:Key="Border" Color="#2B3A4E"/>
-        <SolidColorBrush x:Key="Muted" Color="#9BAFC3"/>
-        <SolidColorBrush x:Key="Accent" Color="#54E0C2"/>
-        <SolidColorBrush x:Key="ActionBackground" Color="#263749"/>
-        <SolidColorBrush x:Key="GraphBackground" Color="#242424"/>
-        <SolidColorBrush x:Key="GraphGrid" Color="#343434"/>
-        <SolidColorBrush x:Key="GraphHeader" Color="#303030"/>
-        <SolidColorBrush x:Key="GraphSurface" Color="#292929"/>
-        <SolidColorBrush x:Key="GraphNode" Color="#383838"/>
-        <SolidColorBrush x:Key="GraphNodeHeader" Color="#303030"/>
-        <SolidColorBrush x:Key="GraphPreview" Color="#252525"/>
-        <SolidColorBrush x:Key="GraphSelection" Color="#F39A4A"/>
-        <SolidColorBrush x:Key="GraphSelectedItem" Color="#485761"/>
+        <!-- Neutral charcoal workspace with a restrained, warm highlight. -->
+        <SolidColorBrush x:Key="AppBackground" Color="#1A1A1A"/>
+        <SolidColorBrush x:Key="HeaderBackground" Color="#202020"/>
+        <SolidColorBrush x:Key="CanvasBackground" Color="#1D1D1D"/>
+        <SolidColorBrush x:Key="PrimaryText" Color="#E9E5E0"/>
+        <SolidColorBrush x:Key="ButtonBackground" Color="#30302F"/>
+        <SolidColorBrush x:Key="ButtonBorder" Color="#464341"/>
+        <SolidColorBrush x:Key="GalleryBackground" Color="#292827"/>
+        <SolidColorBrush x:Key="ListBackground" Color="#1F1F1F"/>
+        <SolidColorBrush x:Key="Surface" Color="#252525"/>
+        <SolidColorBrush x:Key="Border" Color="#3C3A38"/>
+        <SolidColorBrush x:Key="Muted" Color="#ABA59F"/>
+        <SolidColorBrush x:Key="Accent" Color="#C9A58B"/>
+        <SolidColorBrush x:Key="AccentForeground" Color="#211D19"/>
+        <SolidColorBrush x:Key="SelectionFill" Color="#33C9A58B"/>
+        <SolidColorBrush x:Key="ActionBackground" Color="#C9A58B"/>
+        <SolidColorBrush x:Key="DangerBackground" Color="#563638"/>
+        <SolidColorBrush x:Key="GraphBackground" Color="#222222"/>
+        <SolidColorBrush x:Key="GraphGrid" Color="#31302F"/>
+        <SolidColorBrush x:Key="GraphHeader" Color="#1F1F1F"/>
+        <SolidColorBrush x:Key="GraphSurface" Color="#252525"/>
+        <SolidColorBrush x:Key="GraphNode" Color="#343332"/>
+        <SolidColorBrush x:Key="GraphNodeHeader" Color="#2B2A29"/>
+        <SolidColorBrush x:Key="GraphPreview" Color="#202020"/>
+        <SolidColorBrush x:Key="GraphSelection" Color="#C9A58B"/>
+        <SolidColorBrush x:Key="GraphSelectedItem" Color="#3C3936"/>
+
         <ItemsPanelTemplate x:Key="WeaveGalleryPanel"><WrapPanel IsItemsHost="True"/></ItemsPanelTemplate>
-        <DataTemplate x:Key="WeaveGalleryItem"><StackPanel Width="86" Margin="2" ToolTip="{Binding Name}">
-            <Border Width="62" Height="62" Padding="3" Background="White" BorderBrush="#89949B" BorderThickness="1" CornerRadius="3"><Image Source="{Binding Preview}" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor"/></Border>
-            <TextBlock Text="{Binding Name}" TextAlignment="Center" TextTrimming="CharacterEllipsis" FontSize="11" Margin="0,4,0,0"/>
-            <TextBlock Text="{Binding Dimensions}" TextAlignment="Center" FlowDirection="LeftToRight" FontSize="10" Foreground="{DynamicResource Muted}"/>
-        </StackPanel></DataTemplate>
-        <Style x:Key="WeaveGalleryListItem" TargetType="ListBoxItem"><Setter Property="Padding" Value="2"/><Setter Property="Margin" Value="2"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Tile" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Tile" Property="Background" Value="{DynamicResource ButtonBackground}"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="Tile" Property="Background" Value="{DynamicResource GraphSelectedItem}"/><Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource GraphSelection}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
-        <FontFamily x:Key="VazirFont">pack://application:,,,/JacquardStudio;component/Assets/Fonts/#Vazirmatn</FontFamily>
-        <Style TargetType="Window"><Setter Property="FontFamily" Value="{StaticResource VazirFont}"/></Style>
-        <Style TargetType="TextBox"><Setter Property="FontFamily" Value="{StaticResource VazirFont}"/><Setter Property="Background" Value="{DynamicResource ListBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="CaretBrush" Value="{DynamicResource PrimaryText}"/><Setter Property="BorderBrush" Value="{DynamicResource Border}"/></Style>
-        <Style TargetType="CheckBox"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
-        <Style TargetType="RadioButton"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
-        <Style TargetType="ToolTip"><Setter Property="Background" Value="{DynamicResource Surface}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="BorderBrush" Value="{DynamicResource Border}"/></Style>
-        <Style TargetType="ComboBoxItem"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Padding" Value="8,5"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem"><Border x:Name="ItemBorder" Background="Transparent" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsHighlighted" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource GraphSelectedItem}"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ButtonBackground}"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
-        <Style TargetType="ComboBox"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="{DynamicResource ButtonBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource ButtonBorder}"/><Setter Property="MinHeight" Value="30"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBox"><Grid><ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"><ToggleButton.Template><ControlTemplate TargetType="ToggleButton"><Border x:Name="Frame" Background="{Binding Background, RelativeSource={RelativeSource AncestorType=ComboBox}}" BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=ComboBox}}" BorderThickness="1" CornerRadius="4"><TextBlock Text="▾" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,9,0" Foreground="{DynamicResource PrimaryText}"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Opacity" Value="0.85"/></Trigger></ControlTemplate.Triggers></ControlTemplate></ToggleButton.Template></ToggleButton><ContentPresenter Margin="9,4,28,4" VerticalAlignment="Center" HorizontalAlignment="Left" IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"/><Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade"><Border Background="{DynamicResource ListBackground}" BorderBrush="{DynamicResource Border}" BorderThickness="1" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="{TemplateBinding MaxDropDownHeight}"><ScrollViewer CanContentScroll="True" VerticalScrollBarVisibility="Auto"><ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/></ScrollViewer></Border></Popup></Grid><ControlTemplate.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
-        <Style TargetType="Button">
-            <Setter Property="FontFamily" Value="{StaticResource VazirFont}"/>
-            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
-            <Setter Property="Background" Value="{DynamicResource ButtonBackground}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource ButtonBorder}"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontSize" Value="13"/>
+        <DataTemplate x:Key="WeaveGalleryItem">
+            <StackPanel Width="86" Margin="2" ToolTip="{Binding Name}">
+                <Border Width="62" Height="62" Padding="3" Background="White" BorderBrush="#89949B" BorderThickness="1" CornerRadius="3">
+                    <Image Source="{Binding Preview}" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                </Border>
+                <TextBlock Text="{Binding Name}" TextAlignment="Center" TextTrimming="CharacterEllipsis" FontSize="11" Margin="0,4,0,0"/>
+                <TextBlock Text="{Binding Dimensions}" TextAlignment="Center" FlowDirection="LeftToRight" FontSize="10" Foreground="{DynamicResource Muted}"/>
+            </StackPanel>
+        </DataTemplate>
+        <Style x:Key="WeaveGalleryListItem" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="2"/>
+            <Setter Property="Margin" Value="2"/>
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="7" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Tile" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.8"/></Trigger>
-                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.4"/></Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#54E0C2"/></Trigger>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Tile" Property="Background" Value="{DynamicResource ButtonBackground}"/></Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Tile" Property="Background" Value="{DynamicResource GraphSelectedItem}"/>
+                                <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource GraphSelection}"/>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
-        <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
+
+        <FontFamily x:Key="VazirFont">pack://application:,,,/JacquardStudio;component/Assets/Fonts/#Vazirmatn</FontFamily>
+        <Style TargetType="Window">
+            <Setter Property="FontFamily" Value="{StaticResource VazirFont}"/>
+            <Setter Property="Background" Value="{DynamicResource AppBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="FontFamily" Value="{StaticResource VazirFont}"/>
+            <Setter Property="Background" Value="{DynamicResource ListBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="SelectionBrush" Value="{DynamicResource Accent}"/>
+            <Setter Property="MinHeight" Value="28"/>
+        </Style>
+        <Style TargetType="PasswordBox">
+            <Setter Property="FontFamily" Value="{StaticResource VazirFont}"/>
+            <Setter Property="Background" Value="{DynamicResource ListBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="MinHeight" Value="28"/>
+        </Style>
+        <Style TargetType="CheckBox"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
+        <Style TargetType="RadioButton"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
+        <Style TargetType="Expander"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
+        <Style TargetType="Separator"><Setter Property="Background" Value="{DynamicResource Border}"/></Style>
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+        </Style>
+        <Style TargetType="ContextMenu">
+            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="Padding" Value="4"/>
+        </Style>
+        <Style TargetType="MenuItem">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="Padding" Value="8,5"/>
+        </Style>
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="{DynamicResource ListBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+        </Style>
+        <Style TargetType="ListView">
+            <Setter Property="Background" Value="{DynamicResource ListBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="Padding" Value="6,4"/>
+        </Style>
+        <Style TargetType="GridViewColumnHeader">
+            <Setter Property="Background" Value="{DynamicResource HeaderBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="Padding" Value="5,4"/>
+        </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="ItemBorder" Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource GraphSelectedItem}"/></Trigger>
+                            <Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ButtonBackground}"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="Background" Value="{DynamicResource ButtonBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ButtonBorder}"/>
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="Frame"
+                                                Background="{Binding Background, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                BorderThickness="1" CornerRadius="4">
+                                            <TextBlock Text="▾" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,9,0" Foreground="{DynamicResource PrimaryText}"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Opacity" Value="0.85"/></Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter Margin="9,4,28,4" VerticalAlignment="Center" HorizontalAlignment="Left" IsHitTestVisible="False"
+                                              Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"/>
+                            <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
+                                   AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                <Border Background="{DynamicResource ListBackground}" BorderBrush="{DynamicResource Border}"
+                                        BorderThickness="1" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <ScrollViewer CanContentScroll="True" VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ToggleButton">
+            <Setter Property="FontFamily" Value="{StaticResource VazirFont}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="Background" Value="{DynamicResource ButtonBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ButtonBorder}"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="ToggleBorder" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ToggleBorder" Property="Opacity" Value="0.82"/></Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource GraphSelectedItem}"/>
+                                <Setter TargetName="ToggleBorder" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ToggleBorder" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ToggleBorder" Property="Opacity" Value="0.4"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="FontFamily" Value="{StaticResource VazirFont}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="Background" Value="{DynamicResource ButtonBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ButtonBorder}"/>
+            <Setter Property="Padding" Value="14,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.82"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.4"/></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Application.Resources>
 </Application>
