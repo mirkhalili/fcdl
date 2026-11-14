@@ -86,7 +86,7 @@ public partial class ModuleWindow : Window
     {
         InitializeComponent();
         InspectorScrollHost.SizeChanged+=(_,_)=>{if(inspectorTabControl is not null)inspectorTabControl.Height=Math.Max(90,InspectorScrollHost.ActualHeight-8);};
-        if(ModuleIcons.CreateResourceImage("Settings",22) is { } settingsIcon) { var content=new StackPanel {Orientation=Orientation.Horizontal}; content.Children.Add(settingsIcon); content.Children.Add(new TextBlock {Text="تنظیمات",Margin=new Thickness(5,0,0,0),VerticalAlignment=VerticalAlignment.Center}); SettingsButton.Content=content; System.Windows.Automation.AutomationProperties.SetName(SettingsButton,"تنظیمات"); }
+        if(ModuleIcons.CreateResourceImage("Settings",22) is { } settingsIcon) { SettingsRailButton.Content=settingsIcon; System.Windows.Automation.AutomationProperties.SetName(SettingsRailButton,"تنظیمات"); }
         AlertAnimations.Click+=(_,_)=>RenderSelection(); preferences=UserPreferences.Load(); ThemeManager.Apply(preferences.Theme,false);
         BuildLibrary(); CreateDefaultGraph(); dirty = false; RenderGraph(); Inspect();
         ThemeManager.Changed += OnThemeChanged; Closed += (_,_) => ThemeManager.Changed -= OnThemeChanged;
