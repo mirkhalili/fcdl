@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+.vs/
+artifacts/
+*.user
+
+# Private license signing keys must never be committed.
+private-key.pem
+*.private.pem
