@@ -48,31 +48,12 @@
         <Border Grid.Row="0" Background="{DynamicResource GraphHeader}"
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
             <Grid Margin="14,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" FlowDirection="LeftToRight">
                     <Image Source="Assets/sam-emblem.png" Width="37" Height="37" Stretch="Uniform" ToolTip="نشان سام"/>
                     <StackPanel Margin="10,0,0,0">
                         <TextBlock Text="JACQUARD STUDIO" FontWeight="Bold" FontSize="13"/>
                         <TextBlock Text="NODE EDITOR  /  فضای ماژولی" FontSize="9" Foreground="{DynamicResource Muted}"/>
                     </StackPanel>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" FlowDirection="RightToLeft">
-                    <Button Style="{StaticResource GraphButton}" Content="پروژه جدید" Click="New_Click"/>
-                    <Button Style="{StaticResource GraphButton}" Content="باز کردن" Click="Open_Click"/>
-                    <Button Style="{StaticResource GraphButton}" Content="ذخیره" Click="Save_Click"/>
-                    <Button Style="{StaticResource GraphButton}" Content="ذخیره با نام" Click="SaveAs_Click"/>
-                    <Button Style="{StaticResource GraphButton}" x:Name="SettingsButton" Content="تنظیمات" Click="Settings_Click"/>
-                    <Button Style="{StaticResource GraphButton}" Content="راهنما" Click="Guide_Click" ToolTip="راهنمای محیط ماژولی (F1)"/>
-                    <Button x:Name="CheckUpdatesButton" Style="{StaticResource GraphButton}" Content="بررسی نسخه" Click="CheckUpdates_Click" ToolTip="بررسی و دریافت به‌روزرسانی"/>
-                    <Button Style="{StaticResource GraphButton}" Content="درباره" Click="About_Click"/>
-                    <Button x:Name="ThemeToggle" Style="{StaticResource GraphButton}" Content="☼" Click="Theme_Click"
-                            ToolTip="تغییر تم روشن / تیره" AutomationProperties.Name="تغییر تم روشن یا تیره" FontSize="17"/>
-                    <Button Style="{StaticResource GraphButton}" Background="{DynamicResource ActionBackground}"
-                            Foreground="{DynamicResource AccentForeground}" BorderBrush="{DynamicResource Accent}"
-                            Content="▶  اجرای ماژول" Click="Run_Click"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -88,25 +69,33 @@
                     BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
                 <DockPanel Margin="3,6">
                     <StackPanel DockPanel.Dock="Bottom" HorizontalAlignment="Center">
-                        <Button x:Name="HelpRailButton" Style="{StaticResource RailButton}" Content="?"
-                                ToolTip="راهنما" AutomationProperties.Name="راهنما" Click="Guide_Click"/>
                         <Button x:Name="SettingsRailButton" Style="{StaticResource RailButton}" Content="&#xE713;"
                                 FontFamily="Segoe MDL2 Assets" ToolTip="تنظیمات" AutomationProperties.Name="تنظیمات" Click="Settings_Click"/>
+                        <Button x:Name="HelpRailButton" Style="{StaticResource RailButton}" Content="?"
+                                ToolTip="راهنما" AutomationProperties.Name="راهنما" Click="Guide_Click"/>
                         <Button x:Name="AboutRailButton" Style="{StaticResource RailButton}" Content="&#xE946;"
-                                FontFamily="Segoe MDL2 Assets" ToolTip="درباره برنامه" AutomationProperties.Name="درباره برنامه" Click="About_Click"/>
+                                FontFamily="Segoe MDL2 Assets" ToolTip="دربارهٔ برنامه" AutomationProperties.Name="دربارهٔ برنامه" Click="About_Click"/>
                     </StackPanel>
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel HorizontalAlignment="Center">
-                            <Button x:Name="LegacyWorkspaceButton" Style="{StaticResource RailButton}" Content="&#xE80F;"
-                                    FontFamily="Segoe MDL2 Assets" ToolTip="محیط مرحله‌ای" AutomationProperties.Name="محیط مرحله‌ای" Click="Legacy_Click"/>
-                            <Button x:Name="OpenRailButton" Style="{StaticResource RailButton}" Content="&#xE8B7;"
+                            <Button x:Name="NewRailButton" Style="{StaticResource RailButton}" Content="&#xE710;"
+                                    FontFamily="Segoe MDL2 Assets" ToolTip="پروژهٔ جدید" AutomationProperties.Name="پروژهٔ جدید" Click="New_Click"/>
+                            <Button x:Name="OpenRailButton" Style="{StaticResource RailButton}" Content="&#xE8E5;"
                                     FontFamily="Segoe MDL2 Assets" ToolTip="باز کردن پروژه" AutomationProperties.Name="باز کردن پروژه" Click="Open_Click"/>
                             <Button x:Name="SaveRailButton" Style="{StaticResource RailButton}" Content="&#xE74E;"
-                                    FontFamily="Segoe MDL2 Assets" ToolTip="ذخیره پروژه" AutomationProperties.Name="ذخیره پروژه" Click="Save_Click"/>
+                                    FontFamily="Segoe MDL2 Assets" ToolTip="ذخیرهٔ پروژه" AutomationProperties.Name="ذخیرهٔ پروژه" Click="Save_Click"/>
+                            <Button x:Name="SaveAsRailButton" Style="{StaticResource RailButton}" Content="&#xE792;"
+                                    FontFamily="Segoe MDL2 Assets" ToolTip="ذخیره با نام" AutomationProperties.Name="ذخیره با نام" Click="SaveAs_Click"/>
                             <Border Height="1" Background="{DynamicResource Border}" Margin="5,7"/>
-                            <Button x:Name="LibraryRailButton" Style="{StaticResource RailButton}" Content="&#xE8A5;"
-                                    FontFamily="Segoe MDL2 Assets" ToolTip="نمایش یا پنهان کردن فهرست ماژول‌ها"
-                                    AutomationProperties.Name="نمایش یا پنهان کردن فهرست ماژول‌ها" Click="LibraryToggle_Click"/>
+                            <Button x:Name="CheckUpdatesButton" Style="{StaticResource RailButton}" Content="&#xE72C;"
+                                    FontFamily="Segoe MDL2 Assets" ToolTip="بررسی و دریافت به‌روزرسانی"
+                                    AutomationProperties.Name="بررسی نسخهٔ جدید" Click="CheckUpdates_Click"/>
+                            <Button x:Name="ThemeToggle" Style="{StaticResource RailButton}" Content="☼" Click="Theme_Click"
+                                    ToolTip="تغییر تم روشن یا تیره" AutomationProperties.Name="تغییر تم روشن یا تیره" FontSize="17"/>
+                            <Button x:Name="RunRailButton" Style="{StaticResource RailButton}" Content="&#xE768;"
+                                    FontFamily="Segoe MDL2 Assets" Background="{DynamicResource ActionBackground}"
+                                    Foreground="{DynamicResource AccentForeground}" BorderBrush="{DynamicResource Accent}"
+                                    ToolTip="اجرای ماژول انتخاب‌شده" AutomationProperties.Name="اجرای ماژول انتخاب‌شده" Click="Run_Click"/>
                             <Border Height="1" Background="{DynamicResource Border}" Margin="5,7"/>
                             <Button x:Name="FitAllRailButton" Style="{StaticResource RailButton}" Content="⛶"
                                     ToolTip="همهٔ ماژول‌ها در پنجره" AutomationProperties.Name="همهٔ ماژول‌ها در پنجره" Click="FitAll_Click"/>
@@ -122,7 +111,6 @@
                                     ToolTip="ذخیره و استفادهٔ دوباره از زنجیره‌های سفارشی" AutomationProperties.Name="زنجیره‌های سفارشی" Click="CustomPresets_Click"/>
                             <Button x:Name="ClearAllRailButton" Style="{StaticResource RailButton}" Content="&#xE74D;"
                                     FontFamily="Segoe MDL2 Assets" ToolTip="حذف همهٔ ماژول‌ها" AutomationProperties.Name="حذف همهٔ ماژول‌ها" Click="ClearAll_Click"/>
-                            <Border Height="1" Background="{DynamicResource Border}" Margin="5,7"/>
                             <Button x:Name="ZoomOutRailButton" Style="{StaticResource RailButton}" Content="−"
                                     ToolTip="کوچک‌نمایی" AutomationProperties.Name="کوچک‌نمایی" Click="ZoomOut_Click"/>
                             <Button x:Name="ZoomInRailButton" Style="{StaticResource RailButton}" Content="+"
@@ -131,6 +119,13 @@
                                     ToolTip="حذف مورد انتخاب‌شده" AutomationProperties.Name="حذف مورد انتخاب‌شده" Click="Delete_Click"/>
                             <ToggleButton x:Name="AlertAnimations" Style="{StaticResource RailToggleButton}" Content="⚠"
                                           IsChecked="True" ToolTip="چشمک هشدار را خاموش یا روشن کنید" AutomationProperties.Name="چشمک هشدار"/>
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="5,7"/>
+                            <Button x:Name="LegacyWorkspaceButton" Style="{StaticResource RailButton}" Content="&#xE80F;"
+                                    FontFamily="Segoe MDL2 Assets" ToolTip="محیط مرحله‌ای" AutomationProperties.Name="محیط مرحله‌ای" Click="Legacy_Click"/>
+                            <Button x:Name="LibraryRailButton" Style="{StaticResource RailButton}" Content="&#xE8A5;"
+                                    FontFamily="Segoe MDL2 Assets" ToolTip="نمایش یا پنهان کردن فهرست ماژول‌ها"
+                                    AutomationProperties.Name="نمایش یا پنهان کردن فهرست ماژول‌ها" Click="LibraryToggle_Click"/>
+                            <Border Height="1" Background="{DynamicResource Border}" Margin="5,7"/>
                         </StackPanel>
                     </ScrollViewer>
                 </DockPanel>

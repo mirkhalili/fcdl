@@ -1,7 +1,7 @@
 name: Website prototype checks
 on:
   push:
-    branches: ["arena/d188298f-fcdl"]
+    branches: ["arena/**"]
   workflow_dispatch:
 permissions:
   contents: read

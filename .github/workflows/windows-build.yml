@@ -1,7 +1,7 @@
 name: Windows preview and installer
 on:
   push:
-    branches: ["arena/d188298f-fcdl"]
+    branches: ["arena/**"]
     tags: ["v*"]
   workflow_dispatch:
 permissions:
