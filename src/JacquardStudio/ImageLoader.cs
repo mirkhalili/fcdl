@@ -91,7 +91,8 @@ public static class ImageLoader
             existingPalette.Colors.Count is > 0 && existingPalette.Colors.Count <= maximumColors)
             return source;
 
-        BitmapSource opaque = source.Format.HasAlpha ? FlattenTransparencyOnWhite(source) : source;
+        // Converting every raster format to BGRA32 also handles alpha palettes consistently.
+        BitmapSource opaque = FlattenTransparencyOnWhite(source);
         long pixels = (long)opaque.PixelWidth * opaque.PixelHeight;
         int sampleWidth = opaque.PixelWidth;
         int sampleHeight = opaque.PixelHeight;
