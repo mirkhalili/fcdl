@@ -112,7 +112,11 @@ public static class ImageLoader
             throw new InvalidDataException("ساخت پالت ۲۵۶ رنگ ممکن نشد.");
 
         var palette = new BitmapPalette(colors);
-        var indexed = new FormatConvertedBitmap(opaque, PixelFormats.Indexed8, palette, 0);
+        var converted = new FormatConvertedBitmap(opaque, PixelFormats.Indexed8, palette, 0);
+        int stride = opaque.PixelWidth;
+        var indices = new byte[checked(stride * opaque.PixelHeight)];
+        converted.CopyPixels(indices, stride, 0);
+        var indexed = BitmapSource.Create(opaque.PixelWidth, opaque.PixelHeight, opaque.DpiX, opaque.DpiY, PixelFormats.Indexed8, palette, indices, stride);
         indexed.Freeze();
         return indexed;
     }
