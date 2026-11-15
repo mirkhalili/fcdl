@@ -23,6 +23,7 @@ public sealed class SimulationEditorWindow : Window
     private readonly Button cancel=new() {Content="انصراف",Margin=new Thickness(4)};
     private readonly Button detail=new() {Content="نمای جزئیات سه‌بعدی",Margin=new Thickness(4)};
     private readonly Button save=new() {Content="ذخیره تصویر",Margin=new Thickness(4),IsEnabled=false};
+    private readonly Button referencePreset=new() {Content="نمای نمونه: تافته قرمز و سفید",Margin=new Thickness(0,4,0,8),Name="ReferencePresetButton"};
     private readonly TextBox warpCount,warpDensity,weftDensity,materialDensity,repeatX,repeatY;
     private readonly ComboBox warpUnit,warpType,mode,weave;
     private readonly ColorSwatch warpColor;
@@ -53,6 +54,7 @@ public sealed class SimulationEditorWindow : Window
         TextBox Input(string text) {var x=new TextBox {Text=text,Padding=new Thickness(7),FlowDirection=FlowDirection.LeftToRight};settingsPanel.Children.Add(x);return x;}
         ComboBox Select(IEnumerable<string> values,int index) {var x=new ComboBox {ItemsSource=values,SelectedIndex=index};settingsPanel.Children.Add(x);return x;}
         Heading("تنظیمات نمایش");Label("ظاهر نخ");mode=Select(new[]{"معمولی", "پرز و سایه"},Math.Clamp(initial.Mode,0,1));Label("ساختار پیش‌نمایش");weave=Select(new[]{"نقشه ورودی", "تافته نمایشی", "طرح نمایشی چهارگام"},initial.Weave);
+        settingsPanel.Children.Add(referencePreset);
         Label("شدت سایه");shadow=new Slider {Minimum=0,Maximum=100,Value=initial.Shadow,TickFrequency=10,IsSnapToTickEnabled=true};settingsPanel.Children.Add(shadow);
         reverse=new CheckBox {Content="نمای پشت (آینه افقی و وارونگی رو/زیر)",IsChecked=initial.ReverseSide,Margin=new Thickness(0,10,0,0)};settingsPanel.Children.Add(reverse);
         Label("تکرار مستقیم افقی (۱ تا ۱۶)");repeatX=Input(initial.RepeatX.ToString());Label("تکرار مستقیم عمودی (۱ تا ۱۶)");repeatY=Input(initial.RepeatY.ToString());
@@ -71,11 +73,27 @@ public sealed class SimulationEditorWindow : Window
         foreach(var c in settingsPanel.Children.OfType<ComboBox>()) c.SelectionChanged+=(_,_)=>InvalidatePreview();
         foreach(var c in settingsPanel.Children.OfType<ColorSwatch>()) c.ColorChanged+=(_,_)=>InvalidatePreview();
         reverse.Click+=(_,_)=>InvalidatePreview();shadow.ValueChanged+=(_,_)=>InvalidatePreview();
+        referencePreset.Click+=(_,_)=>ApplyReferencePreset();
         render.Click+=async (_,_)=>await RenderAsync(false);apply.Click+=async (_,_)=>await RenderAsync(true);cancel.Click+=(_,_)=>{if(!rendering)DialogResult=false;};
         plus.Click+=(_,_)=>SetZoom(zoom*1.25);minus.Click+=(_,_)=>SetZoom(zoom/1.25);fit.Click+=(_,_)=>Fit();
         save.Click+=(_,_)=>{if(rendered is null)return;var file=new SaveFileDialog {Filter="PNG (*.png)|*.png|BMP (*.bmp)|*.bmp|TIFF (*.tif)|*.tif",FileName="simulation.png",AddExtension=true};if(file.ShowDialog(this)!=true)return;try{GraphExports.SaveImage(rendered,file.FileName,new[]{projectPath}.OfType<string>());}catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException){ModuleErrors.Show(this,ex,"خطای ذخیره تصویر");}};
         detail.Click+=(_,_)=>{try{var s=ReadDraft();FabricSimulation.Validate(s);MessageBox.Show(this,"نمای سه‌بعدی یک نمونه محدود و تقریبی است. تنظیمات آن مستقل از این پیش‌نمایش است؛ تکرار و نمایش پشت دوبعدی به آن منتقل نمی‌شوند.","نمای سه‌بعدی",MessageBoxButton.OK,MessageBoxImage.Information);new Fabric3DWindow(fabric,rows,s with {RepeatX=1,RepeatY=1,ReverseSide=false},false) {Owner=this}.ShowDialog();}catch(ArgumentException ex){ModuleErrors.Show(this,ex,"تنظیمات شبیه‌سازی");}};
         Closing+=(_,e)=>{if(rendering)e.Cancel=true;};Loaded+=async (_,_)=>await RenderAsync(false);
+    }
+    private void ApplyReferencePreset()
+    {
+        try
+        {
+            var preset=FabricSimulation.CreateReferencePreset(ReadDraft(),rows);
+            warpType.SelectedIndex=preset.WarpYarn;warpColor.Value=preset.WarpColor;warpCount.Text=preset.WarpCount;warpUnit.SelectedIndex=preset.WarpUnit;
+            warpDensity.Text=preset.WarpDensity;weftDensity.Text=preset.WeftDensity;materialDensity.Text=preset.MaterialDensity;
+            mode.SelectedIndex=preset.Mode;weave.SelectedIndex=preset.Weave;shadow.Value=preset.Shadow;reverse.IsChecked=preset.ReverseSide;
+            foreach(var (id,controls) in weftControls)
+            {
+                var yarn=FabricSimulation.YarnFor(preset,id);controls.type.SelectedIndex=yarn.Yarn;controls.color.Value=yarn.Color;controls.count.Text=yarn.Count;controls.unit.SelectedIndex=yarn.Unit;
+            }
+        }
+        catch(Exception ex) when(ex is ArgumentException or InvalidOperationException){status.Text=ModuleErrors.Explain(ex);}
     }
     private SimulationSettings ReadDraft()
     {
