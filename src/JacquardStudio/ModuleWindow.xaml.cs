@@ -29,7 +29,7 @@ public partial class ModuleWindow : Window
     private bool panning; private Point panOrigin; private double panX, panY;
     private bool drawingFrame; private Point? frameStart; private Border? framePreview;
     private Point dragStart; private double dragX, dragY, zoom = 1;
-    private bool dirty, busy, closing, inspectorCollapsed;
+    private bool dirty, busy, closing;
     private string? projectPath, projectPassword;
     private bool openedWithRecovery;
     private UserPreferences preferences = new();
@@ -102,14 +102,6 @@ public partial class ModuleWindow : Window
     }
     private void About_Click(object sender,RoutedEventArgs e) => new AboutWindow(false) {Owner=this}.ShowDialog();
     private void LibraryToggle_Click(object sender,RoutedEventArgs e) { bool open=LibraryPanel.Visibility==Visibility.Visible; LibraryPanel.Visibility=open ? Visibility.Collapsed : Visibility.Visible; LibraryColumn.Width=new GridLength(open ? 0 : 260); }
-    private void InspectorToggle_Click(object sender,RoutedEventArgs e)
-    {
-        inspectorCollapsed=!inspectorCollapsed;
-        InspectorHost.Visibility=inspectorCollapsed ? Visibility.Collapsed : Visibility.Visible;
-        InspectorRow.Height=new GridLength(inspectorCollapsed ? 32 : 150);
-        InspectorToggleButton.Content=inspectorCollapsed ? "⌃" : "⌄";
-        InspectorToggleButton.ToolTip=inspectorCollapsed ? "باز کردن بازرس" : "جمع کردن بازرس";
-    }
     private void FitAll_Click(object sender,RoutedEventArgs e)
     {
         if(graph.Nodes.Count==0)return; double left=graph.Nodes.Min(n=>n.X), top=graph.Nodes.Min(n=>n.Y), right=graph.Nodes.Max(n=>n.X+NodeDiameter), bottom=graph.Nodes.Max(n=>n.Y+NodeDiameter);
@@ -132,9 +124,14 @@ public partial class ModuleWindow : Window
         foreach (var type in Types)
         {
             if(preferences.HiddenModules.Contains(type.kind.ToString())) continue;
-            var row = new Grid { FlowDirection=FlowDirection.LeftToRight }; row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(38) });
-            var icon = ModuleIcons.Create(type.kind,30); Grid.SetColumn(icon,1); row.Children.Add(icon);
-            var labels = new StackPanel(); labels.Children.Add(new TextBlock { Text = type.name, FontSize = 12, Foreground = ResourceBrush("PrimaryText") }); labels.Children.Add(new TextBlock { Text = type.subtitle, FontSize = 9, Foreground = ResourceBrush("Muted"), FlowDirection = FlowDirection.LeftToRight }); labels.FlowDirection=FlowDirection.RightToLeft; labels.HorizontalAlignment=HorizontalAlignment.Stretch; foreach(var label in labels.Children.OfType<TextBlock>()) label.TextAlignment=TextAlignment.Right; row.Children.Add(labels);
+            var row = new Grid { FlowDirection=FlowDirection.LeftToRight, HorizontalAlignment=HorizontalAlignment.Stretch };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(1,GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(38) });
+            var icon = ModuleIcons.Create(type.kind,30); Grid.SetColumn(icon,1); icon.HorizontalAlignment=HorizontalAlignment.Center; row.Children.Add(icon);
+            var labels = new StackPanel { FlowDirection=FlowDirection.RightToLeft, HorizontalAlignment=HorizontalAlignment.Stretch };
+            labels.Children.Add(new TextBlock { Text = type.name, FontSize = 12, Foreground = ResourceBrush("PrimaryText"), TextAlignment=TextAlignment.Right });
+            labels.Children.Add(new TextBlock { Text = type.subtitle, FontSize = 9, Foreground = ResourceBrush("Muted"), FlowDirection = FlowDirection.LeftToRight, TextAlignment=TextAlignment.Right });
+            Grid.SetColumn(labels,0); row.Children.Add(labels);
             var kind = type.kind; bool wasDragged=false; var group = new DockPanel { FlowDirection = FlowDirection.LeftToRight, Margin = new Thickness(0,2,0,2) };
             var help = new Button { Content = "?", ToolTip = "راهنمای " + type.name, Width = 28, Padding = new Thickness(0), Margin = new Thickness(3,0,0,0), Background = ResourceBrush("ButtonBackground"), Foreground = ResourceBrush("PrimaryText") }; DockPanel.SetDock(help,Dock.Left); group.Children.Add(help); help.Click += (_,_) => ShowModuleHelp(kind);
             if(kind==ModuleKind.AiEdit) { var config=new Button { Content="⚙",ToolTip="تنظیم اتصال هوش مصنوعی",Width=30,Padding=new Thickness(0),Margin=new Thickness(3,0,0,0) }; DockPanel.SetDock(config,Dock.Left); group.Children.Add(config); config.Click+=(_,_)=>ConfigureAi(); }
@@ -444,8 +441,18 @@ public partial class ModuleWindow : Window
         {
             var node=graph.Nodes.FirstOrDefault(n=>n.Id==pair.Key);if(node is null)continue;
             bool failed=failedNodes.Contains(node.Id);string? invalid=NodeInvalidReason(node,new HashSet<Guid>(),validationCache);bool hasError=failed || invalid is not null;
+            bool isSelected=node.Id==selected;
             var frame=new SolidColorBrush(hasError ? Color.FromRgb(0xF1,0x60,0x69) : Color.FromRgb(0x55,0xCE,0x93));
-            pair.Value.BorderBrush=frame;pair.Value.BorderThickness=new Thickness(node.Id==selected ? 4 : 2);pair.Value.Effect=null;
+            pair.Value.BorderBrush=frame;
+            pair.Value.BorderThickness=new Thickness(isSelected ? 4 : 2);
+            pair.Value.Effect=isSelected ? new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color=((SolidColorBrush)ResourceBrush("GraphSelection")).Color,
+                BlurRadius=18,
+                ShadowDepth=0,
+                Opacity=.95,
+                RenderingBias=System.Windows.Media.Effects.RenderingBias.Performance
+            } : null;
             if(hasError && AlertAnimations.IsChecked==true)frame.BeginAnimation(System.Windows.Media.Brush.OpacityProperty,new DoubleAnimation(.2,1,new Duration(TimeSpan.FromMilliseconds(850))) {AutoReverse=true,RepeatBehavior=RepeatBehavior.Forever});
             string state=failed ? "اجرای ماژول ناموفق بود؛ جزئیات در پیام خطا آمده است." : invalid ?? "تنظیمات و ورودی‌های این ماژول معتبر است.";
             pair.Value.ToolTip=state+" · دوبار کلیک برای تنظیمات";System.Windows.Automation.AutomationProperties.SetHelpText(pair.Value,state);
@@ -627,8 +634,8 @@ public partial class ModuleWindow : Window
     private void Inspect()
     {
         Inspector.Children.Clear(); inspectorResultItems.Clear(); var node=Current;
-        if (node is null) { InspectorSelectionTitle.Text="یک ماژول را انتخاب کنید"; Inspector.Children.Add(Note("برای دیدن تنظیمات، یک گره را انتخاب کنید.")); inspectorTabControl=null; return; }
-        var spec=Spec(node.Kind); InspectorSelectionTitle.Text=spec.name;
+        if (node is null) { Inspector.Children.Add(Note("برای دیدن تنظیمات، یک گره را انتخاب کنید.")); inspectorTabControl=null; return; }
+        var spec=Spec(node.Kind);
         var tabs=new TabControl { FlowDirection=FlowDirection.RightToLeft, Background=ResourceBrush("Surface"), BorderThickness=new Thickness(0), Height=Math.Max(90,InspectorScrollHost.ActualHeight>0 ? InspectorScrollHost.ActualHeight-8 : 100) };
         inspectorTabControl=tabs;
         var pages=new Dictionary<string,WrapPanel>(StringComparer.Ordinal); var pageOrder=new List<string>(); string activeCategory="نمای کلی";
@@ -807,11 +814,12 @@ public partial class ModuleWindow : Window
         var picker=new OpenFileDialog { Filter=vector ? "PDF / AI سازگار با PDF|*.pdf;*.ai" : binary ? "نقشه سیاه‌وسفید یا JC5|*.bmp;*.tif;*.tiff;*.png;*.jc5" : "طرح نقشه‌بیتی|*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr", CheckFileExists=true };
         var owner=Window.GetWindow(Inspector) ?? this; if(picker.ShowDialog(owner)!=true) return;
         string ext=System.IO.Path.GetExtension(picker.FileName).ToLowerInvariant(); if(vector ? ext is not (".pdf" or ".ai") : binary ? ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jc5") : ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".ico" or ".wdp" or ".jxr")) { MessageBox.Show(owner,"پسوند فایل با نوع ماژول سازگار نیست."); return; }
+        bool limitRaster=!binary && !vector;
         try
         {
-            busy=true; Status.Text="در حال بارگذاری طرح…"; var first=await Task.Run(()=>ext==".jc5" ? new ImageResult(Jc5Codec.Load(picker.FileName),1,0,"JC5") : ImageLoader.Load(picker.FileName,0,!binary)); busy=false;
-            ImageResult chosen=first; if(ext!=".jc5") { var pages=new SourcePageWindow(picker.FileName,first,!binary) { Owner=owner }; if(pages.ShowDialog()!=true || pages.Result is not { } selectedPage) return; chosen=selectedPage; } if(binary) await Task.Run(()=> {if((long)chosen.Image.PixelWidth*chosen.Image.PixelHeight>DesignProcessor.MaxPixels)throw new InvalidDataException("نقشه باید حداکثر چهار میلیون پیکسل باشد."); _=DesignAnalysis.ReadBinary(chosen.Image);});
-            busy=true; var png=await Task.Run(()=>ModuleExecutor.EmbedImage(chosen.Image)); node.ImagePng=png; node.VectorPdfBase64=chosen.Vector is null ? null : Convert.ToBase64String(chosen.Vector.PdfBytes); node.SourcePage=chosen.PageIndex; node.Label=System.IO.Path.GetFileName(picker.FileName); Changed(); RenderGraph(); Inspect(); Status.Text=$"صفحه {chosen.PageIndex+1} از {chosen.PageCount} انتخاب شد." + (chosen.OriginalWidth>0 ? $" عرض از {chosen.OriginalWidth} به {chosen.Image.PixelWidth} پیکسل کاهش یافت." : "");
+            busy=true; Status.Text="در حال بارگذاری طرح…"; var first=await Task.Run(()=>ext==".jc5" ? new ImageResult(Jc5Codec.Load(picker.FileName),1,0,"JC5") : ImageLoader.Load(picker.FileName,0,limitRaster,limitRaster)); busy=false;
+            ImageResult chosen=first; if(ext!=".jc5") { var pages=new SourcePageWindow(picker.FileName,first,limitRaster,limitRaster) { Owner=owner }; if(pages.ShowDialog()!=true || pages.Result is not { } selectedPage) return; chosen=selectedPage; } if(binary) await Task.Run(()=> {if((long)chosen.Image.PixelWidth*chosen.Image.PixelHeight>DesignProcessor.MaxPixels)throw new InvalidDataException("نقشه باید حداکثر چهار میلیون پیکسل باشد."); _=DesignAnalysis.ReadBinary(chosen.Image);});
+            busy=true; var png=await Task.Run(()=>ModuleExecutor.EmbedImage(chosen.Image)); node.ImagePng=png; node.VectorPdfBase64=chosen.Vector is null ? null : Convert.ToBase64String(chosen.Vector.PdfBytes); node.SourcePage=chosen.PageIndex; node.Label=System.IO.Path.GetFileName(picker.FileName); Changed(); RenderGraph(); Inspect(); Status.Text=$"صفحه {chosen.PageIndex+1} از {chosen.PageCount} انتخاب شد." + (chosen.OriginalWidth>0 ? $" عرض از {chosen.OriginalWidth} به {chosen.Image.PixelWidth} پیکسل کاهش یافت." : "") + (chosen.ColorLimitApplied ? " پالت ورودی حداکثر ۲۵۶ رنگ دارد." : "");
         }
         catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or UnauthorizedAccessException) { ModuleErrors.Show(owner,ex); }
         finally { busy=false; }

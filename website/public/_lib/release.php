@@ -45,6 +45,7 @@ function jacquard_current_release(array $config, string $configPath): ?array
         'sha256' => strtolower($sha256),
         'size' => $size,
         'installer' => $installer,
+        'filename' => 'JacquardStudio-Setup-' . $version . '.exe',
         'path' => $path,
         'published_at' => is_string($manifest['published_at'] ?? null) ? $manifest['published_at'] : '',
     ];

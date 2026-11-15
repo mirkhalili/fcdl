@@ -142,7 +142,7 @@ public partial class MainWindow : Window
         SetBusy(true); StatusText.Text = T("در حال باز کردن تصویر…", "Loading image…");
         try
         {
-            var result = await Task.Run(() => ImageLoader.Load(filename, page, true));
+            var result = await Task.Run(() => ImageLoader.Load(filename, page, true, true));
             var next = new WorkflowSession(result.Image, result.Vector);
             double scale = Math.Min(1, Math.Sqrt((double)DesignProcessor.MaxPixels / ((long)result.Image.PixelWidth * result.Image.PixelHeight)));
             int initialWidth = Math.Min(DesignProcessor.MaxPixels, Math.Max(1, (int)Math.Floor(result.Image.PixelWidth * scale)));
@@ -152,7 +152,9 @@ public partial class MainWindow : Window
             WidthInput.Text = initialWidth.ToString(); HeightInput.Text = initialHeight.ToString(); ColorInput.Text = "256"; ColorDistanceInput.Text="12";
             FileValue.Text = Path.GetFileName(filename); FormatValue.Text = $"{result.Format} · {result.Image.Format.BitsPerPixel} bpp";
             zoom = 1; SetZoom(1); stage = Stage.Size; projectDirty = true; ShowStage();
-            StatusText.Text = result.OriginalWidth>0 ? T($"عرض تصویر از {result.OriginalWidth} به ۴۰۰۰ پیکسل کاهش یافت." + (scale<1 ? " اندازه پردازشی نیز با سقف چهار میلیون پیکسل متناسب شد." : ""), $"Image width was reduced from {result.OriginalWidth} to 4000 pixels.") : scale < 1 ? T("تصویر بزرگ بود؛ اندازه اولیه متناسب با سقف ۴ میلیون پیکسل کاهش یافت.", "Image was scaled to fit the 4-million-pixel processing limit.") : T("اندازه اولیه اعمال شد؛ در صورت نیاز آن را تغییر دهید.", "Original dimensions applied; change them if needed.");
+            string importStatus = result.OriginalWidth>0 ? T($"عرض تصویر از {result.OriginalWidth} به ۴۰۰۰ پیکسل کاهش یافت." + (scale<1 ? " اندازه پردازشی نیز با سقف چهار میلیون پیکسل متناسب شد." : ""), $"Image width was reduced from {result.OriginalWidth} to 4000 pixels.") : scale < 1 ? T("تصویر بزرگ بود؛ اندازه اولیه متناسب با سقف ۴ میلیون پیکسل کاهش یافت.", "Image was scaled to fit the 4-million-pixel processing limit.") : T("اندازه اولیه اعمال شد؛ در صورت نیاز آن را تغییر دهید.", "Original dimensions applied; change them if needed.");
+            if (result.ColorLimitApplied) importStatus += T(" پالت رنگ تصویر به حداکثر ۲۵۶ رنگ محدود شد.", " The imported bitmap palette was limited to at most 256 colors.");
+            StatusText.Text = importStatus;
         }
         catch (Exception ex)
         {

@@ -24,13 +24,14 @@ if(($_GET['manifest'] ?? '')==='1'){
         'sha256'=>$release['sha256'],
         'size'=>$release['size'],
         'publishedAt'=>$release['published_at'],
+        'filename'=>$release['filename'],
         'download'=>'download.php',
     ],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
     exit;
 }
 
 $release=jacquard_current_release($config,$configPath);
-if($release!==null){$file=$release['path'];$filename='JacquardStudio-Setup-'.$release['version'].'.exe';}
+if($release!==null){$file=$release['path'];$filename=$release['filename'];}
 else {
     // Keep the public download link working for a pre-manifest installation until its first managed release.
     $directory=jacquard_release_directory($config,$configPath);
