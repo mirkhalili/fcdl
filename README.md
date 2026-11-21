@@ -15,13 +15,13 @@
 | وب‌سایت و پنل مدیریت | [بستهٔ سایت (ZIP)](https://github.com/mirkhalili/fcdl/releases/latest/download/JacquardStudio-website-updated.zip) |
 | ابزار صدور لایسنس | [License Issuer برای ویندوز](https://github.com/mirkhalili/fcdl/releases/latest/download/Jacquard-LicenseIssuer.exe) |
 | لوگوی نهایی برنامه | [PNG شفاف با وضوح اصلی](https://github.com/mirkhalili/fcdl/releases/latest/download/sam-emblem-high-resolution.png) |
-| پیش‌نمایش رابط WPF-UI | [صفحهٔ انتشار v045.0.1.1-a2](https://github.com/mirkhalili/fcdl/releases/tag/v045.0.1.1-a2) · [دانلود مستقیم نصب‌کننده](https://github.com/mirkhalili/fcdl/releases/download/v045.0.1.1-a2/JacquardStudio-Setup.exe) |
+| پیش‌نمایش رابط WPF-UI | [صفحهٔ انتشار v045.0.1.1-a3](https://github.com/mirkhalili/fcdl/releases/tag/v045.0.1.1-a3) · [دانلود مستقیم نصب‌کننده](https://github.com/mirkhalili/fcdl/releases/download/v045.0.1.1-a3/JacquardStudio-Setup.exe) |
 
 برای دریافت همهٔ فایل‌ها و نسخه‌های پیشین، به صفحهٔ [Releases](https://github.com/mirkhalili/fcdl/releases) بروید. آرشیو کد منبع نیز در هر انتشار GitHub موجود است. نصب‌کنندهٔ برنامه و ابزار لایسنس فقط پس از موفقیت ساخت و آزمون خودکار منتشر می‌شوند؛ انتشار وب‌سایت هنوز نیازمند تنظیم هاست و کلیدهای خصوصی خودتان است.
 
 این پروژه برای طراحی یک نرم‌افزار دسکتاپ ویندوزی با رابط کاربری حرفه‌ای، فارسی و انگلیسی آغاز شده است. هدف نهایی آن، فراهم‌کردن مسیر تبدیل دوطرفه بین تصاویر **TIFF / BMP** و فایل‌های مورد استفاده کنترلرهای ژاکارد، همراه با بررسی تنظیمات، پیش‌نمایش و گزارش تبدیل است.
 
-> **آخرین انتشار پایدار: [`044.0.0.0-a4`](https://github.com/mirkhalili/fcdl/releases/tag/v044.0.0.0-a4) (آزمایشی).** پیش‌نمایش WPF-UI نسخهٔ [`045.0.1.1-a2`](https://github.com/mirkhalili/fcdl/releases/tag/v045.0.1.1-a2) شامل بهبود محیط ماژولی و چیدمان کارت‌هاست؛ ساخت Windows، آزمون Smoke و آزمون نصب/ارتقای نصب‌کننده در CI موفق شدند. هیچ‌یک از این نسخه‌ها برای سازگاری صنعتی تأیید نشده‌اند و انتشار وب‌سایت روی هاست همچنان جداگانه انجام می‌شود. شرح تغییرات و محدودیت‌ها در [یادداشت تغییرات فضای کار و سایت](Docs/WORKSPACE-SITE-UPDATE.md) آمده است.
+> **آخرین انتشار پایدار: [`044.0.0.0-a4`](https://github.com/mirkhalili/fcdl/releases/tag/v044.0.0.0-a4) (آزمایشی).** پیش‌نمایش WPF-UI نسخهٔ [`045.0.1.1-a3`](https://github.com/mirkhalili/fcdl/releases/tag/v045.0.1.1-a3) شامل کارت‌های مربعی هم‌اندازه و پنجره‌های تنظیمات بازطراحی‌شده است؛ ساخت Windows، آزمون Smoke و آزمون نصب/ارتقای نصب‌کننده در CI موفق شدند. هیچ‌یک از این نسخه‌ها برای سازگاری صنعتی تأیید نشده‌اند و انتشار وب‌سایت روی هاست همچنان جداگانه انجام می‌شود. شرح تغییرات و محدودیت‌ها در [یادداشت تغییرات فضای کار و سایت](Docs/WORKSPACE-SITE-UPDATE.md) آمده است.
 
 ## مسئله‌ای که حل می‌کنیم
 
@@ -110,7 +110,7 @@ JC4، JC5 و JC6 نام کنترلر هستند و لزوماً پسوند فا�
 
 ### نسخهٔ کاری و آخرین انتشار
 
-نسخهٔ کاری فعلی در `version.txt` برابر `045.0.1.1-a2` است و پیش‌انتشار WPF-UI آن در [صفحهٔ انتشار GitHub](https://github.com/mirkhalili/fcdl/releases/tag/v045.0.1.1-a2) قرار دارد. ساخت Windows، آزمون Smoke، انتشار self-contained و آزمون نصب/ارتقای نصب‌کننده در CI موفق شدند. این نسخه آزمایشی است و برای تولید صنعتی تأیید نشده است؛ آخرین انتشار پایدار همچنان [`044.0.0.0-a4`](https://github.com/mirkhalili/fcdl/releases/tag/v044.0.0.0-a4) است.
+نسخهٔ کاری فعلی در `version.txt` برابر `045.0.1.1-a3` است و پیش‌انتشار WPF-UI آن در [صفحهٔ انتشار GitHub](https://github.com/mirkhalili/fcdl/releases/tag/v045.0.1.1-a3) قرار دارد. ساخت Windows، آزمون Smoke، انتشار self-contained و آزمون نصب/ارتقای نصب‌کننده در CI موفق شدند. این نسخه آزمایشی است و برای تولید صنعتی تأیید نشده است؛ آخرین انتشار پایدار همچنان [`044.0.0.0-a4`](https://github.com/mirkhalili/fcdl/releases/tag/v044.0.0.0-a4) است.
 
 ### یادداشت‌های پیش‌نمایش تاریخی
 
