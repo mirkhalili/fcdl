@@ -129,7 +129,7 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="1" x:Name="WorkspaceColumns">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="96"/>
                 <ColumnDefinition Width="*"/>
