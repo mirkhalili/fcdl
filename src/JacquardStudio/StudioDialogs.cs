@@ -8,6 +8,7 @@ using UiMessageBoxResult = Wpf.Ui.Controls.MessageBoxResult;
 using WindowsMessageBoxButton = System.Windows.MessageBoxButton;
 using WindowsMessageBoxImage = System.Windows.MessageBoxImage;
 using WindowsMessageBoxResult = System.Windows.MessageBoxResult;
+using WindowsTextBlock = System.Windows.Controls.TextBlock;
 
 namespace JacquardStudio;
 
@@ -68,7 +69,7 @@ internal static class StudioDialogs
         dialog.SetResourceReference(Window.BackgroundProperty, "Surface");
         dialog.SetResourceReference(Window.ForegroundProperty, "PrimaryText");
 
-        var message = new TextBlock
+        var message = new WindowsTextBlock
         {
             Text = text ?? string.Empty,
             TextWrapping = TextWrapping.Wrap,
@@ -79,7 +80,7 @@ internal static class StudioDialogs
             VerticalAlignment = VerticalAlignment.Center,
             MaxWidth = 470
         };
-        message.SetResourceReference(TextBlock.ForegroundProperty, "PrimaryText");
+        message.SetResourceReference(WindowsTextBlock.ForegroundProperty, "PrimaryText");
 
         var symbol = CreateSymbol(image);
         if (symbol is null)
