@@ -930,12 +930,29 @@ internal static class Program
             Check(moduleWindow.FindName("NodeToolbar") is null && new[]{"NewRailButton","OpenRailButton","SaveRailButton","SaveAsRailButton","FitAllRailButton","AddTextRailButton","AddFrameRailButton","ArrangeRailButton","PresetRailButton","CustomPresetsRailButton","ClearAllRailButton","ZoomInRailButton","ZoomOutRailButton","DeleteRailButton","CheckUpdatesButton","ThemeToggle","RunRailButton"}.All(name=>moduleWindow.FindName(name) is System.Windows.Controls.Button button && railButtons.Contains(button)) && moduleWindow.FindName("AlertAnimations") is System.Windows.Controls.Primitives.ToggleButton alertButton && railButtons.Contains(alertButton) && new[]{"SettingsRailButton","HelpRailButton","AboutRailButton"}.All(name=>moduleWindow.FindName(name) is System.Windows.Controls.Button button && pinnedRailButtons.Contains(button)),"project, stage, and app actions are icon buttons on the left rail, with no upper action toolbar");
             Check(moduleWindow.GetType().BaseType==typeof(Wpf.Ui.Controls.FluentWindow) && moduleWindow.WindowStyle==System.Windows.WindowStyle.None && moduleWindow.FindName("TitleBar") is System.Windows.Controls.Border && new[]{"MinimizeWindowButton","MaximizeWindowButton","CloseWindowButton"}.All(name=>moduleWindow.FindName(name) is System.Windows.Controls.Button),"module workspace uses the app-themed custom Fluent title bar");
             var presetRailButton=(System.Windows.Controls.Button)moduleWindow.FindName("CustomPresetsRailButton");Check(System.Windows.Automation.AutomationProperties.GetName(presetRailButton)=="زنجیره‌های سفارشی" && presetRailButton.ToolTip is string presetTooltip && presetTooltip.Contains("ذخیره"),"local custom-chain management is discoverable and named for assistive technology");
-            var inspectorTabs=((System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector")).Children.OfType<System.Windows.Controls.TabControl>().Single();
-            Check(inspectorTabs.Items.OfType<System.Windows.Controls.TabItem>().Any(tab=>Equals(tab.Header,"نمای کلی")) && inspectorTabs.Items.OfType<System.Windows.Controls.TabItem>().Any(tab=>Equals(tab.Header,"منبع و بارگذاری")),"module settings are grouped into separate overview and settings tabs");
+            var moduleInspector=(System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector");
+            var moduleSummary=moduleInspector.Children.OfType<System.Windows.Controls.Border>().Single(border=>Equals(border.Tag,"module-summary"));
+            var moduleOptions=moduleInspector.Children.OfType<System.Windows.Controls.StackPanel>().Single(panel=>Equals(panel.Tag,"module-options"));
+            var sourceCard=moduleOptions.Children.OfType<System.Windows.Controls.Border>().Single(border=>Equals(border.Tag,"module-source-card"));
+            var sourceActions=(System.Windows.Controls.StackPanel)((System.Windows.Controls.StackPanel)sourceCard.Child).Children.OfType<System.Windows.Controls.StackPanel>().Single();
+            var chooseSourceButton=sourceActions.Children.OfType<System.Windows.Controls.Button>().Single();
+            Check(moduleSummary.Child is System.Windows.Controls.Grid && moduleInspector.Children.OfType<System.Windows.Controls.TabControl>().Count()==0 && Equals(chooseSourceButton.Content,"انتخاب فایل و صفحه"),"module editor opens directly on a clear source action instead of an empty overview tab");
             var statusMetadata=(System.Windows.Controls.TextBlock)moduleWindow.FindName("StatusMetadata");
             Check(statusMetadata.Text.Contains(AppVersion.Display) && statusMetadata.Text.Contains("10") && statusMetadata.Text.Contains("میرخلیلی"),"status bar shows application version, module count, and software owner");
             Check(moduleWindow.FindName("InspectorToggleButton") is null && inspectorPanel.Visibility==System.Windows.Visibility.Collapsed,"permanent inspector and collapse toggle are removed from the workspace");
             var moduleGraph = (ModuleGraph)typeof(ModuleWindow).GetField("graph",moduleFlags)!.GetValue(moduleWindow)!;
+            var sourceNode=moduleGraph.Nodes[0];var savedSourcePng=sourceNode.ImagePng;var savedSourceLabel=sourceNode.Label;int savedSourcePage=sourceNode.SourcePage;
+            sourceNode.ImagePng=ModuleExecutor.EmbedImage(inputImage);sourceNode.Label="preview-test.png";sourceNode.SourcePage=0;typeof(ModuleWindow).GetMethod("Inspect",moduleFlags)!.Invoke(moduleWindow,null);
+            moduleOptions=moduleInspector.Children.OfType<System.Windows.Controls.StackPanel>().Single(panel=>Equals(panel.Tag,"module-options"));
+            var loadedSourceCard=moduleOptions.Children.OfType<System.Windows.Controls.Border>().Single(border=>Equals(border.Tag,"module-source-card"));var loadedSourceBody=(System.Windows.Controls.StackPanel)loadedSourceCard.Child;
+            var sourcePreviewFrame=loadedSourceBody.Children.OfType<System.Windows.Controls.Border>().SingleOrDefault(border=>border.Child is System.Windows.Controls.Image);
+            Check(Equals(((System.Windows.Controls.StackPanel)loadedSourceBody.Children.OfType<System.Windows.Controls.StackPanel>().Single()).Children.OfType<System.Windows.Controls.Button>().Single().Content,"تغییر فایل و صفحه") && sourcePreviewFrame?.Child is System.Windows.Controls.Image sourcePreview && sourcePreview.Source is System.Windows.Media.Imaging.BitmapSource previewBitmap && previewBitmap.PixelWidth==inputImage.PixelWidth && previewBitmap.PixelHeight==inputImage.PixelHeight,"loaded source module shows a correctly sized preview and a clear replace action");
+            sourceNode.ImagePng=savedSourcePng;sourceNode.Label=savedSourceLabel;sourceNode.SourcePage=savedSourcePage;typeof(ModuleWindow).GetMethod("Inspect",moduleFlags)!.Invoke(moduleWindow,null);
+            var selectedModuleField=typeof(ModuleWindow).GetField("selected",moduleFlags)!;var selectedModuleBefore=selectedModuleField.GetValue(moduleWindow);
+            var temporaryMachine=moduleGraph.Add(ModuleKind.MachineDefinition,1200,650);selectedModuleField.SetValue(moduleWindow,temporaryMachine.Id);typeof(ModuleWindow).GetMethod("Inspect",moduleFlags)!.Invoke(moduleWindow,null);
+            var groupedModuleTabs=moduleInspector.Children.OfType<System.Windows.Controls.TabControl>().Single();
+            Check(groupedModuleTabs.Items.OfType<System.Windows.Controls.TabItem>().Select(tab=>tab.Header?.ToString()).SequenceEqual(new[]{"ابعاد ماشین","سازنده و فایل ماشین"}) && groupedModuleTabs.SelectedItem is System.Windows.Controls.TabItem activeMachinePage && Equals(activeMachinePage.Header,"سازنده و فایل ماشین"),"multi-section module options are grouped into clear tabs and open on the active settings section");
+            moduleGraph.Remove(temporaryMachine.Id);selectedModuleField.SetValue(moduleWindow,selectedModuleBefore);typeof(ModuleWindow).GetMethod("Inspect",moduleFlags)!.Invoke(moduleWindow,null);
             static double Brightness(Brush brush) { var c=((SolidColorBrush)brush).Color; return .2126*c.R+.7152*c.G+.0722*c.B; }
             ThemeManager.Apply(false,false); Check(Brightness((Brush)app.FindResource("PrimaryText")) > Brightness((Brush)app.FindResource("GraphNode")) + 100, "dark theme text contrasts with graph nodes");
             Check(((SolidColorBrush)app.FindResource("GraphBackground")).Color==Color.FromRgb(0x22,0x22,0x22) && ((SolidColorBrush)app.FindResource("Accent")).Color==Color.FromRgb(0xC9,0xA5,0x8B),"dark theme uses charcoal graph surfaces and a restrained warm highlight");
@@ -948,14 +965,17 @@ internal static class Program
             var themedCombo=new System.Windows.Controls.ComboBox { ItemsSource=new[]{"one", "two"}, SelectedIndex=0 }; ((System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector")).Children.Add(themedCombo); themedCombo.ApplyTemplate(); Check(themedCombo.Template.FindName("Popup",themedCombo) is System.Windows.Controls.Primitives.Popup, "themed combo retains dropdown popup");
             ThemeManager.Apply(false,false); Check(Brightness(themedInput.Foreground) > Brightness(themedInput.Background)+100, "existing inputs update on dark theme change");
             var moduleLibrary = (System.Windows.Controls.Primitives.UniformGrid)moduleWindow.FindName("ModuleLibrary");
-            Check(moduleLibrary.Columns==2 && moduleLibrary.Children.Count==32 && moduleGraph.Nodes.Count==10 && moduleGraph.Edges.Count==9 && ((System.Windows.Controls.ScrollViewer)moduleWindow.FindName("ModuleLibraryScroll")).VerticalScrollBarVisibility==System.Windows.Controls.ScrollBarVisibility.Hidden && workspaceColumns.ColumnDefinitions[2].Width.Value==312,"module library uses two columns of square cards with a hidden scrollbar and a connected starter graph");
-            var resizeTile=(System.Windows.Controls.Grid)moduleLibrary.Children[15];
-            resizeTile.Children.OfType<System.Windows.Controls.Button>().Single(button=>button.Tag is ModuleKind).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            var moduleLibraryScroll=(System.Windows.Controls.ScrollViewer)moduleWindow.FindName("ModuleLibraryScroll");
+            var libraryCards=moduleLibrary.Children.OfType<System.Windows.Controls.Border>().ToArray();
+            Check(moduleLibrary.Columns==2 && moduleLibrary.Children.Count==32 && libraryCards.Length==32 && libraryCards.All(card=>Math.Abs(card.Width-card.Height)<.1) && libraryCards.Select(card=>card.Width).Distinct().Count()==1 && moduleGraph.Nodes.Count==10 && moduleGraph.Edges.Count==9 && moduleLibraryScroll.VerticalScrollBarVisibility==System.Windows.Controls.ScrollBarVisibility.Hidden && workspaceColumns.ColumnDefinitions[2].Width.Value==312,"module library uses equal square cards in two columns with a hidden scrollbar and a connected starter graph");
+            var resizeTile=(System.Windows.Controls.Border)moduleLibrary.Children[15];var resizeSurface=(System.Windows.Controls.Grid)resizeTile.Child;
+            resizeSurface.Children.OfType<System.Windows.Controls.Button>().Single(button=>button.Tag is ModuleKind).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             var addedResize = moduleGraph.Nodes.Last(); Check(moduleGraph.Nodes.Count == 11 && addedResize.Kind == ModuleKind.Resize, "adding a second independent module through a library tile");
-            var firstLibraryTile=(System.Windows.Controls.Grid)moduleLibrary.Children[0];var aiLibraryTile=(System.Windows.Controls.Grid)moduleLibrary.Children[10];
-            var moduleHelp=firstLibraryTile.Children.OfType<System.Windows.Controls.Button>().Single(button=>System.Windows.Automation.AutomationProperties.GetName(button)=="راهنمای خروجی تصویر و جدول");
-            var aiConfigure=aiLibraryTile.Children.OfType<System.Windows.Controls.Button>().Single(button=>System.Windows.Automation.AutomationProperties.GetName(button)=="تنظیم اتصال هوش مصنوعی");
-            Check(moduleHelp.HorizontalAlignment==System.Windows.HorizontalAlignment.Left && moduleHelp.VerticalAlignment==System.Windows.VerticalAlignment.Top && aiConfigure.HorizontalAlignment==System.Windows.HorizontalAlignment.Right && aiConfigure.VerticalAlignment==System.Windows.VerticalAlignment.Top,"module help and conditional settings actions occupy opposite upper card corners");
+            var firstLibraryTile=(System.Windows.Controls.Border)moduleLibrary.Children[0];var firstLibrarySurface=(System.Windows.Controls.Grid)firstLibraryTile.Child;
+            var aiLibraryTile=(System.Windows.Controls.Border)moduleLibrary.Children[10];var aiLibrarySurface=(System.Windows.Controls.Grid)aiLibraryTile.Child;
+            var moduleHelp=firstLibrarySurface.Children.OfType<System.Windows.Controls.Button>().Single(button=>System.Windows.Automation.AutomationProperties.GetName(button)=="راهنمای خروجی تصویر و جدول");
+            var aiConfigure=aiLibrarySurface.Children.OfType<System.Windows.Controls.Button>().Single(button=>System.Windows.Automation.AutomationProperties.GetName(button)=="تنظیم اتصال هوش مصنوعی");
+            Check(moduleHelp.Parent==firstLibrarySurface && aiConfigure.Parent==aiLibrarySurface && moduleHelp.HorizontalAlignment==System.Windows.HorizontalAlignment.Left && moduleHelp.VerticalAlignment==System.Windows.VerticalAlignment.Top && moduleHelp.Margin.Left>=5 && aiConfigure.HorizontalAlignment==System.Windows.HorizontalAlignment.Right && aiConfigure.VerticalAlignment==System.Windows.VerticalAlignment.Top && aiConfigure.Margin.Right>=5,"help and settings buttons sit inside the visible card frame at opposite upper corners");
             var nodeLayer = (System.Windows.Controls.Canvas)moduleWindow.FindName("NodeLayer");
             var startupVisual=new StartupSplashWindow();var splashGrid=(System.Windows.Controls.Grid)startupVisual.Content;var samLabel=splashGrid.Children.OfType<System.Windows.Controls.TextBlock>().Single(t=>t.Text=="SAM");Check(samLabel.Foreground is LinearGradientBrush sheen && sheen.RelativeTransform.HasAnimatedProperties,"startup SAM text uses an animated light sweep");startupVisual.Close();
             var nodeVisual=(System.Windows.Controls.Border)nodeLayer.Children[0];var visualNode=moduleGraph.Nodes[0];
@@ -1008,6 +1028,8 @@ internal static class Program
             var liveCrop=moduleGraph.Add(ModuleKind.Crop,850,650); moduleGraph.Connect(moduleGraph.Nodes[0].Id,liveCrop.Id,"image");
             typeof(ModuleWindow).GetMethod("RenderGraph",moduleFlags)!.Invoke(moduleWindow,null); moduleWindow.Show(); moduleWindow.UpdateLayout();
             var libraryScroll=(System.Windows.Controls.ScrollViewer)moduleWindow.FindName("ModuleLibraryScroll");
+            var displayedCards=moduleLibrary.Children.OfType<System.Windows.Controls.Border>().ToArray();
+            Check(displayedCards.All(card=>card.ActualWidth>64 && Math.Abs(card.ActualWidth-card.ActualHeight)<1) && displayedCards.Select(card=>Math.Round(card.ActualWidth)).Distinct().Count()==1,"all visible module cards retain one shared square size after responsive layout");
             var libraryDown=(System.Windows.Controls.Button)moduleWindow.FindName("LibraryScrollDownButton");
             var libraryUp=(System.Windows.Controls.Button)moduleWindow.FindName("LibraryScrollUpButton");
             double libraryOffset=libraryScroll.VerticalOffset;
@@ -1042,7 +1064,14 @@ internal static class Program
                 var dialog=app.Windows.OfType<System.Windows.Window>().FirstOrDefault(w=>ReferenceEquals(w.Owner,moduleWindow) && w.IsVisible && w.Title=="طرح نقشه‌بیتی");
                 if(dialog is null){if(++inspectorDialogTicks>300)inspectorDialogTimer.Stop();return;}
                 inspectorDialogOpened=true;
-                inspectorDialogHasMoved=inspectorPanel.Content is null && dialog.Content is System.Windows.Controls.DockPanel dialogRoot && dialogRoot.Children.Contains(inspectorScroll);
+                if(dialog.Content is System.Windows.Controls.DockPanel dialogRoot)
+                {
+                    var editorTitle=dialogRoot.Children.OfType<System.Windows.Controls.Border>().SingleOrDefault(border=>Equals(border.Tag,"module-editor-titlebar"));
+                    var editorFooter=dialogRoot.Children.OfType<System.Windows.Controls.Border>().SingleOrDefault(border=>Equals(border.Tag,"module-editor-footer"));
+                    var editorActions=editorFooter?.Child is System.Windows.Controls.Grid footerGrid?footerGrid.Children.OfType<System.Windows.Controls.StackPanel>().SingleOrDefault():null;
+                    var editorButtons=editorActions?.Children.OfType<System.Windows.Controls.Button>().ToArray()??Array.Empty<System.Windows.Controls.Button>();
+                    inspectorDialogHasMoved=inspectorPanel.Content is null && dialogRoot.Children.Contains(inspectorScroll) && dialog.WindowStyle==System.Windows.WindowStyle.None && editorTitle is not null && editorButtons.Length==3 && editorButtons.All(button=>button.MinHeight==40);
+                }
                 inspectorDialogTimer.Stop();dialog.DialogResult=false;
             };
             inspectorDialogTimer.Start();

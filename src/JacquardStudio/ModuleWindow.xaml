@@ -55,9 +55,9 @@
             <Setter Property="FontSize" Value="14"/>
         </Style>
         <Style x:Key="ModuleTileButton" TargetType="Button" BasedOn="{StaticResource GraphButton}">
-            <Setter Property="Background" Value="{DynamicResource GraphNode}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
-            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="7,8,7,5"/>
             <Setter Property="Margin" Value="0"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
