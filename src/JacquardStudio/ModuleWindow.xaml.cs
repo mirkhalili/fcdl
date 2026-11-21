@@ -11,7 +11,7 @@ using Microsoft.Win32;
 
 namespace JacquardStudio;
 
-public partial class ModuleWindow : Window
+public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
 {
     private ModuleGraph graph = new();
     private readonly Dictionary<Guid, Border> cards = new();
@@ -86,11 +86,43 @@ public partial class ModuleWindow : Window
     {
         InitializeComponent();
         InspectorScrollHost.SizeChanged+=(_,_)=>{if(inspectorTabControl is not null)inspectorTabControl.Height=Math.Max(90,InspectorScrollHost.ActualHeight-8);};
+        GraphScroll.SizeChanged+=(_,_)=>ResizeGraphCanvasToContent();
         if(ModuleIcons.CreateResourceImage("Settings",22) is { } settingsIcon) { SettingsRailButton.Content=settingsIcon; System.Windows.Automation.AutomationProperties.SetName(SettingsRailButton,"تنظیمات"); }
         AlertAnimations.Click+=(_,_)=>RenderSelection(); preferences=UserPreferences.Load(); ThemeManager.Apply(preferences.Theme,false);
-        BuildLibrary(); CreateDefaultGraph(); dirty = false; RenderGraph(); Inspect();
+        BuildLibrary(); CreateDefaultGraph(); dirty = false; RenderGraph(); Inspect(); UpdateTitle();
+        Loaded+=(_,_)=>Dispatcher.BeginInvoke(new Action(()=>{ResizeGraphCanvasToContent();UpdateNavigationScrollButtons();UpdateLibraryScrollButtons();}),System.Windows.Threading.DispatcherPriority.Loaded);
         ThemeManager.Changed += OnThemeChanged; Closed += (_,_) => ThemeManager.Changed -= OnThemeChanged;
     }
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if(e.ChangedButton!=MouseButton.Left)return;
+        if(e.ClickCount==2){ToggleMaximize();return;}
+        if(e.ButtonState==MouseButtonState.Pressed)DragMove();
+    }
+    private void TitleBar_MouseRightButtonUp(object sender, MouseButtonEventArgs e) => SystemCommands.ShowSystemMenu(this,PointToScreen(e.GetPosition(this)));
+    private void ToggleMaximize() { if(WindowState==WindowState.Maximized)SystemCommands.RestoreWindow(this);else SystemCommands.MaximizeWindow(this); }
+    private void CloseWindow_Click(object sender,RoutedEventArgs e) => SystemCommands.CloseWindow(this);
+    private void MaximizeWindow_Click(object sender,RoutedEventArgs e) => ToggleMaximize();
+    private void MinimizeWindow_Click(object sender,RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
+    private void NavigationRail_ScrollChanged(object sender,ScrollChangedEventArgs e) => UpdateNavigationScrollButtons();
+    private void ModuleLibrary_ScrollChanged(object sender,ScrollChangedEventArgs e) => UpdateLibraryScrollButtons();
+    private void GraphScroll_ScrollChanged(object sender,ScrollChangedEventArgs e) => ResizeGraphCanvasToContent();
+    private void UpdateNavigationScrollButtons()
+    {
+        if(!IsInitialized)return;
+        NavigationScrollUpButton.Visibility=NavigationScrollViewer.VerticalOffset>1 ? Visibility.Visible : Visibility.Hidden;
+        NavigationScrollDownButton.Visibility=NavigationScrollViewer.VerticalOffset<NavigationScrollViewer.ScrollableHeight-1 ? Visibility.Visible : Visibility.Hidden;
+    }
+    private void UpdateLibraryScrollButtons()
+    {
+        if(!IsInitialized)return;
+        LibraryScrollUpButton.Visibility=ModuleLibraryScroll.VerticalOffset>1 ? Visibility.Visible : Visibility.Hidden;
+        LibraryScrollDownButton.Visibility=ModuleLibraryScroll.VerticalOffset<ModuleLibraryScroll.ScrollableHeight-1 ? Visibility.Visible : Visibility.Hidden;
+    }
+    private void NavigationScrollUp_Click(object sender,RoutedEventArgs e) => NavigationScrollViewer.ScrollToVerticalOffset(Math.Max(0,NavigationScrollViewer.VerticalOffset-96));
+    private void NavigationScrollDown_Click(object sender,RoutedEventArgs e) => NavigationScrollViewer.ScrollToVerticalOffset(Math.Min(NavigationScrollViewer.ScrollableHeight,NavigationScrollViewer.VerticalOffset+96));
+    private void LibraryScrollUp_Click(object sender,RoutedEventArgs e) => ModuleLibraryScroll.ScrollToVerticalOffset(Math.Max(0,ModuleLibraryScroll.VerticalOffset-280));
+    private void LibraryScrollDown_Click(object sender,RoutedEventArgs e) => ModuleLibraryScroll.ScrollToVerticalOffset(Math.Min(ModuleLibraryScroll.ScrollableHeight,ModuleLibraryScroll.VerticalOffset+280));
     private void Theme_Click(object sender, RoutedEventArgs e) { if (!busy) { preferences.Theme=ThemeManager.IsLight ? "dark" : "light"; ThemeManager.Apply(preferences.Theme,true); try { preferences.Save(); } catch(IOException) { Status.Text="ذخیره تم ممکن نشد."; } } }
     private void Settings_Click(object sender,RoutedEventArgs e) { if(busy)return; var window=new SettingsWindow(preferences,Types.Select(t=>(t.kind,t.name))) {Owner=this}; if(window.ShowDialog()==true) {preferences=window.Result;ThemeManager.Apply(preferences.Theme,true);BuildLibrary();} }
     private void Guide_Click(object sender,RoutedEventArgs e) { if(!busy) new GraphGuideWindow {Owner=this}.ShowDialog(); }
@@ -101,12 +133,34 @@ public partial class ModuleWindow : Window
         finally { if(IsLoaded)CheckUpdatesButton.IsEnabled=true; }
     }
     private void About_Click(object sender,RoutedEventArgs e) => new AboutWindow(false) {Owner=this}.ShowDialog();
-    private void LibraryToggle_Click(object sender,RoutedEventArgs e) { bool open=LibraryPanel.Visibility==Visibility.Visible; LibraryPanel.Visibility=open ? Visibility.Collapsed : Visibility.Visible; LibraryColumn.Width=new GridLength(open ? 0 : 260); }
+    private void LibraryToggle_Click(object sender,RoutedEventArgs e) { bool open=LibraryPanel.Visibility==Visibility.Visible; LibraryPanel.Visibility=open ? Visibility.Collapsed : Visibility.Visible; LibraryColumn.Width=new GridLength(open ? 0 : 312); ResizeGraphCanvasToContent(); }
     private void FitAll_Click(object sender,RoutedEventArgs e)
     {
         if(graph.Nodes.Count==0)return; double left=graph.Nodes.Min(n=>n.X), top=graph.Nodes.Min(n=>n.Y), right=graph.Nodes.Max(n=>n.X+NodeDiameter), bottom=graph.Nodes.Max(n=>n.Y+NodeDiameter);
         double vw=GraphScroll.ViewportWidth, vh=GraphScroll.ViewportHeight; if(vw<=0 || vh<=0)return;
         SetZoom(Math.Min((vw-50)/Math.Max(1,right-left),(vh-50)/Math.Max(1,bottom-top))); GraphScroll.UpdateLayout(); GraphScroll.ScrollToHorizontalOffset(Math.Max(0,(left+right)*zoom/2-vw/2)); GraphScroll.ScrollToVerticalOffset(Math.Max(0,(top+bottom)*zoom/2-vh/2));
+    }
+    private void ResizeGraphCanvasToContent()
+    {
+        if(!IsInitialized)return;
+        double viewportWidth=GraphScroll.ViewportWidth>0 ? GraphScroll.ViewportWidth : GraphScroll.ActualWidth;
+        double viewportHeight=GraphScroll.ViewportHeight>0 ? GraphScroll.ViewportHeight : GraphScroll.ActualHeight;
+        if(!double.IsFinite(viewportWidth) || viewportWidth<0)viewportWidth=0;
+        if(!double.IsFinite(viewportHeight) || viewportHeight<0)viewportHeight=0;
+        double right=graph.Nodes.Select(n=>n.X+NodeDiameter)
+            .Concat(graph.Annotations.Select(a=>a.X+a.Width)).DefaultIfEmpty(0).Max();
+        double bottom=graph.Nodes.Select(n=>n.Y+NodeDiameter)
+            .Concat(graph.Annotations.Select(a=>a.Y+a.Height)).DefaultIfEmpty(0).Max();
+        double width=Math.Max(1,Math.Max(right,viewportWidth/zoom));
+        double height=Math.Max(1,Math.Max(bottom,viewportHeight/zoom));
+        if(Math.Abs(GraphCanvas.Width-width)>.5)GraphCanvas.Width=width;
+        if(Math.Abs(GraphCanvas.Height-height)>.5)GraphCanvas.Height=height;
+        if(Math.Abs(NodeLayer.Width-width)>.5)NodeLayer.Width=width;
+        if(Math.Abs(WireLayer.Width-width)>.5)WireLayer.Width=width;
+        if(Math.Abs(AnnotationLayer.Width-width)>.5)AnnotationLayer.Width=width;
+        if(Math.Abs(NodeLayer.Height-height)>.5)NodeLayer.Height=height;
+        if(Math.Abs(WireLayer.Height-height)>.5)WireLayer.Height=height;
+        if(Math.Abs(AnnotationLayer.Height-height)>.5)AnnotationLayer.Height=height;
     }
     private void ConfigureAi()
     {
@@ -121,27 +175,55 @@ public partial class ModuleWindow : Window
     private void BuildLibrary()
     {
         ModuleLibrary.Children.Clear();
-        foreach (var type in Types)
+        foreach(var type in Types)
         {
-            if(preferences.HiddenModules.Contains(type.kind.ToString())) continue;
-            var row = new Grid { FlowDirection=FlowDirection.LeftToRight, HorizontalAlignment=HorizontalAlignment.Stretch };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(1,GridUnitType.Star) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(38) });
-            var icon = ModuleIcons.Create(type.kind,30); Grid.SetColumn(icon,1); icon.HorizontalAlignment=HorizontalAlignment.Center; row.Children.Add(icon);
-            var labels = new StackPanel { FlowDirection=FlowDirection.RightToLeft, HorizontalAlignment=HorizontalAlignment.Stretch };
-            labels.Children.Add(new TextBlock { Text = type.name, FontSize = 12, Foreground = ResourceBrush("PrimaryText"), TextAlignment=TextAlignment.Right });
-            labels.Children.Add(new TextBlock { Text = type.subtitle, FontSize = 9, Foreground = ResourceBrush("Muted"), FlowDirection = FlowDirection.LeftToRight, TextAlignment=TextAlignment.Right });
-            Grid.SetColumn(labels,0); row.Children.Add(labels);
-            var kind = type.kind; bool wasDragged=false; var group = new DockPanel { FlowDirection = FlowDirection.LeftToRight, Margin = new Thickness(0,2,0,2) };
-            var help = new Button { Content = "?", ToolTip = "راهنمای " + type.name, Width = 28, Padding = new Thickness(0), Margin = new Thickness(3,0,0,0), Background = ResourceBrush("ButtonBackground"), Foreground = ResourceBrush("PrimaryText") }; DockPanel.SetDock(help,Dock.Left); group.Children.Add(help); help.Click += (_,_) => ShowModuleHelp(kind);
-            if(kind==ModuleKind.AiEdit) { var config=new Button { Content="⚙",ToolTip="تنظیم اتصال هوش مصنوعی",Width=30,Padding=new Thickness(0),Margin=new Thickness(3,0,0,0) }; DockPanel.SetDock(config,Dock.Left); group.Children.Add(config); config.Click+=(_,_)=>ConfigureAi(); }
-            else { var spacer=new Border {Width=30,Margin=new Thickness(3,0,0,0)};DockPanel.SetDock(spacer,Dock.Left);group.Children.Add(spacer); }
-            var button = new Button { Content = row, Background = ResourceBrush("GraphNode"), BorderBrush = ResourceBrush("Border"), Padding = new Thickness(6), HorizontalContentAlignment = HorizontalAlignment.Stretch, FlowDirection = FlowDirection.LeftToRight, ToolTip = "کلیک یا کشیدن: افزودن " + type.name };
-            button.Click += (_,_) => { if (wasDragged) return; if (!busy) AddModule(kind, 60 + (graph.Nodes.Count % 6) * 250, 80 + (graph.Nodes.Count / 6) * 200); };
-            button.PreviewMouseLeftButtonDown += (_,e) => { wasDragged=false; libraryDragStart = e.GetPosition(button); };
-            button.PreviewMouseMove += (_,e) => { if (busy || wasDragged || e.LeftButton != MouseButtonState.Pressed) return; var p=e.GetPosition(button); if (Math.Abs(p.X-libraryDragStart.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(p.Y-libraryDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return; wasDragged=true; button.ReleaseMouseCapture(); var data=new DataObject("JacquardModuleKind",kind.ToString()); data.SetData("JacquardDragToken",Guid.NewGuid().ToString()); DragDrop.DoDragDrop(button,data,DragDropEffects.Copy); e.Handled=true; };
-            group.Children.Add(button); ModuleLibrary.Children.Add(group);
+            if(preferences.HiddenModules.Contains(type.kind.ToString()))continue;
+            ModuleKind kind=type.kind;
+            bool wasDragged=false;
+            var tile=new Grid {Height=128,Margin=new Thickness(4),FlowDirection=FlowDirection.LeftToRight};
+            var content=new StackPanel {VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Stretch,
+                FlowDirection=FlowDirection.RightToLeft,IsHitTestVisible=false,Margin=new Thickness(3,10,3,3)};
+            content.Children.Add(ModuleIcons.Create(kind,42));
+            content.Children.Add(new TextBlock {Text=type.name,FontSize=11,FontWeight=FontWeights.SemiBold,
+                Foreground=ResourceBrush("PrimaryText"),TextAlignment=TextAlignment.Center,TextWrapping=TextWrapping.Wrap,
+                MaxHeight=34,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(1,5,1,0)});
+            content.Children.Add(new TextBlock {Text=type.subtitle,FontSize=7.5,Foreground=ResourceBrush("Muted"),
+                FlowDirection=FlowDirection.LeftToRight,TextAlignment=TextAlignment.Center,
+                TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(1,2,1,0)});
+            var addButton=new Button {Content=content,Style=(Style)FindResource("ModuleTileButton"),
+                FlowDirection=FlowDirection.LeftToRight,ToolTip="کلیک یا کشیدن: افزودن "+type.name,Tag=kind};
+            System.Windows.Automation.AutomationProperties.SetName(addButton,"افزودن "+type.name);
+            addButton.Click+=(_,_)=>{if(wasDragged)return;if(!busy)AddModule(kind,60+(graph.Nodes.Count%6)*250,80+(graph.Nodes.Count/6)*200);};
+            addButton.PreviewMouseLeftButtonDown+=(_,e)=>{wasDragged=false;libraryDragStart=e.GetPosition(addButton);};
+            addButton.PreviewMouseMove+=(_,e)=>
+            {
+                if(busy || wasDragged || e.LeftButton!=MouseButtonState.Pressed)return;
+                var p=e.GetPosition(addButton);
+                if(Math.Abs(p.X-libraryDragStart.X)<SystemParameters.MinimumHorizontalDragDistance && Math.Abs(p.Y-libraryDragStart.Y)<SystemParameters.MinimumVerticalDragDistance)return;
+                wasDragged=true;addButton.ReleaseMouseCapture();
+                var data=new DataObject("JacquardModuleKind",kind.ToString());data.SetData("JacquardDragToken",Guid.NewGuid().ToString());
+                DragDrop.DoDragDrop(addButton,data,DragDropEffects.Copy);e.Handled=true;
+            };
+            tile.Children.Add(addButton);
+
+            var help=new Button {Content="?",Style=(Style)FindResource("ModuleCornerButton"),
+                HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Top,
+                ToolTip="راهنمای "+type.name};
+            System.Windows.Automation.AutomationProperties.SetName(help,"راهنمای "+type.name);
+            help.Click+=(_,e)=>{e.Handled=true;ShowModuleHelp(kind);};
+            Panel.SetZIndex(help,2);tile.Children.Add(help);
+            if(kind==ModuleKind.AiEdit)
+            {
+                var configure=new Button {Content="\uE713",FontFamily=new FontFamily("Segoe MDL2 Assets"),
+                    Style=(Style)FindResource("ModuleCornerButton"),HorizontalAlignment=HorizontalAlignment.Right,
+                    VerticalAlignment=VerticalAlignment.Top,ToolTip="تنظیم اتصال هوش مصنوعی"};
+                System.Windows.Automation.AutomationProperties.SetName(configure,"تنظیم اتصال هوش مصنوعی");
+                configure.Click+=(_,e)=>{e.Handled=true;if(!busy)ConfigureAi();};
+                Panel.SetZIndex(configure,2);tile.Children.Add(configure);
+            }
+            ModuleLibrary.Children.Add(tile);
         }
+        Dispatcher.BeginInvoke(new Action(UpdateLibraryScrollButtons),System.Windows.Threading.DispatcherPriority.Loaded);
     }
     private void AddModule(ModuleKind kind, double x, double y)
     {
@@ -246,8 +328,7 @@ public partial class ModuleWindow : Window
         var activeNodeIds=graph.Nodes.Select(n=>n.Id).ToHashSet();
         foreach(var id in imagePayloadValidationCache.Keys.Where(id=>!activeNodeIds.Contains(id)).ToArray())imagePayloadValidationCache.Remove(id);
         UpdateStatusMetadata();
-        GraphCanvas.Width = Math.Max(2600, graph.Nodes.Select(n => n.X + 300).Concat(graph.Annotations.Select(a=>a.X+a.Width+60)).DefaultIfEmpty(0).Max()); GraphCanvas.Height = Math.Max(1700, graph.Nodes.Select(n => n.Y + (n.Kind==ModuleKind.AiEdit ? 360 : 250)).Concat(graph.Annotations.Select(a=>a.Y+a.Height+60)).DefaultIfEmpty(0).Max());
-        NodeLayer.Width = WireLayer.Width = AnnotationLayer.Width = GraphCanvas.Width; NodeLayer.Height = WireLayer.Height = AnnotationLayer.Height = GraphCanvas.Height;
+        ResizeGraphCanvasToContent();
         DrawAnnotations();
         foreach (var node in graph.Nodes)
         {
@@ -268,10 +349,10 @@ public partial class ModuleWindow : Window
                 if(dragging!=node.Id || e.LeftButton!=MouseButtonState.Pressed)return;var now=e.GetPosition(NodeLayer);var target=NodeAt(now,node.Id);
                 if(target is null){node.X=Math.Clamp(dragX+now.X-dragStart.X,0,Math.Max(0,GraphCanvas.Width-NodeDiameter));node.Y=Math.Clamp(dragY+now.Y-dragStart.Y,0,Math.Max(0,GraphCanvas.Height-NodeDiameter));}
                 else {node.X=dragX;node.Y=dragY;}
-                Canvas.SetLeft(card,node.X);Canvas.SetTop(card,node.Y);DrawWires();
+                Canvas.SetLeft(card,node.X);Canvas.SetTop(card,node.Y);ResizeGraphCanvasToContent();DrawWires();
                 if(target is not null){var line=new System.Windows.Shapes.Line {X1=dragX+NodeDiameter/2,Y1=dragY+NodeDiameter/2,X2=now.X,Y2=now.Y,Stroke=ResourceBrush("GraphSelection"),StrokeThickness=2,StrokeDashArray=new DoubleCollection {3,3},IsHitTestVisible=false};WireLayer.Children.Add(line);} };
             card.MouseLeftButtonUp+=(_,e)=>{
-                if(dragging!=node.Id)return;var target=NodeAt(e.GetPosition(NodeLayer),node.Id);dragging=null;card.ReleaseMouseCapture();
+                if(dragging!=node.Id)return;var target=NodeAt(e.GetPosition(NodeLayer),node.Id);dragging=null;card.ReleaseMouseCapture();ResizeGraphCanvasToContent();
                 if(target is not null){node.X=dragX;node.Y=dragY;Canvas.SetLeft(card,node.X);Canvas.SetTop(card,node.Y);DrawWires();ConnectNodes(node,target,null);}
                 else if(node.X!=dragX || node.Y!=dragY){dirty=true;UpdateTitle();}e.Handled=true;
             };
@@ -513,7 +594,7 @@ public partial class ModuleWindow : Window
             Canvas.SetLeft(frame,item.X);Canvas.SetTop(frame,item.Y);AnnotationLayer.Children.Add(frame);
             Point anchor=default;double oldX=0,oldY=0;bool moving=false;
             frame.MouseLeftButtonDown+=(_,e)=>{if(busy)return;if(e.ClickCount==2){if(EditAnnotation(item)){dirty=true;UpdateTitle();RenderGraph();}e.Handled=true;return;}moving=true;anchor=e.GetPosition(AnnotationLayer);oldX=item.X;oldY=item.Y;frame.CaptureMouse();e.Handled=true;};
-            frame.MouseMove+=(_,e)=>{if(!moving || e.LeftButton!=MouseButtonState.Pressed)return;var p=e.GetPosition(AnnotationLayer);item.X=Math.Clamp(oldX+p.X-anchor.X,0,10000);item.Y=Math.Clamp(oldY+p.Y-anchor.Y,0,10000);Canvas.SetLeft(frame,item.X);Canvas.SetTop(frame,item.Y);};
+            frame.MouseMove+=(_,e)=>{if(!moving || e.LeftButton!=MouseButtonState.Pressed)return;var p=e.GetPosition(AnnotationLayer);item.X=Math.Clamp(oldX+p.X-anchor.X,0,10000);item.Y=Math.Clamp(oldY+p.Y-anchor.Y,0,10000);Canvas.SetLeft(frame,item.X);Canvas.SetTop(frame,item.Y);ResizeGraphCanvasToContent();};
             frame.MouseLeftButtonUp+=(_,e)=>{if(!moving)return;moving=false;frame.ReleaseMouseCapture();if(item.X!=oldX || item.Y!=oldY){dirty=true;UpdateTitle();}e.Handled=true;};frame.LostMouseCapture+=(_,_)=>moving=false;
             frame.ContextMenu=new ContextMenu();var edit=new MenuItem {Header="ویرایش"};edit.Click+=(_,_)=>{if(!busy && EditAnnotation(item)){dirty=true;UpdateTitle();RenderGraph();}};frame.ContextMenu.Items.Add(edit);var remove=new MenuItem {Header="حذف"};remove.Click+=(_,_)=>{if(busy)return;graph.Annotations.Remove(item);dirty=true;UpdateTitle();RenderGraph();};frame.ContextMenu.Items.Add(remove);
         }
@@ -597,7 +678,7 @@ public partial class ModuleWindow : Window
     private void Workspace_KeyDown(object sender,KeyEventArgs e) { if(e.Key==Key.Escape && drawingFrame) {CancelFrame();e.Handled=true;return;} if(e.Key==Key.F1 && !busy) { Guide_Click(sender,e); e.Handled=true; return; } if(e.Key==Key.Delete && e.OriginalSource is not TextBox && e.OriginalSource is not PasswordBox) { DeleteSelection(); e.Handled=true; } }
     private void ZoomIn_Click(object sender,RoutedEventArgs e) => SetZoom(zoom*1.25);
     private void ZoomOut_Click(object sender,RoutedEventArgs e) => SetZoom(zoom/1.25);
-    private void SetZoom(double value) { zoom=Math.Clamp(value,.01,2); GraphCanvas.LayoutTransform=new ScaleTransform(zoom,zoom); ZoomInRailButton.ToolTip=$"بزرگ‌نمایی · {zoom*100:0}%"; ZoomOutRailButton.ToolTip=$"کوچک‌نمایی · {zoom*100:0}%"; }
+    private void SetZoom(double value) { zoom=Math.Clamp(value,.01,2); GraphCanvas.LayoutTransform=new ScaleTransform(zoom,zoom); ResizeGraphCanvasToContent(); ZoomInRailButton.ToolTip=$"بزرگ‌نمایی · {zoom*100:0}%"; ZoomOutRailButton.ToolTip=$"کوچک‌نمایی · {zoom*100:0}%"; }
     private void CancelFrame() {drawingFrame=false;frameStart=null;if(framePreview is not null)AnnotationLayer.Children.Remove(framePreview);framePreview=null;GraphScroll.ReleaseMouseCapture();GraphScroll.Cursor=null;}
     private void GraphScroll_MouseDown(object sender, MouseButtonEventArgs e)
     {
