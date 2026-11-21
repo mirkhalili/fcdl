@@ -33,10 +33,5 @@ public static class ModuleErrors
         return "تنظیمات یا ورودی‌های ماژول معتبر نیستند. اتصال‌ها، ابعاد و مقادیر را بررسی کنید و دوباره تلاش کنید.";
     }
     public static void Show(Window owner,Exception ex,string title="خطای ماژول")
-    {
-        var dialog=new Window {Title=title,Width=520,SizeToContent=SizeToContent.Height,MinHeight=210,MaxHeight=500,Owner=owner,WindowStartupLocation=WindowStartupLocation.CenterOwner,FlowDirection=FlowDirection.RightToLeft,ResizeMode=ResizeMode.NoResize};dialog.SetResourceReference(Window.BackgroundProperty,"Surface");
-        var panel=new StackPanel {Margin=new Thickness(24)};panel.Children.Add(new TextBlock {Text=title,FontSize=19,FontWeight=FontWeights.Bold,Margin=new Thickness(0,0,0,10)});
-        panel.Children.Add(new TextBlock {Text=Explain(ex),TextWrapping=TextWrapping.Wrap,LineHeight=24,Margin=new Thickness(0,0,0,16)});
-        var close=new Button {Content="متوجه شدم",HorizontalAlignment=HorizontalAlignment.Left,IsDefault=true,IsCancel=true};panel.Children.Add(close);dialog.Content=panel;dialog.ShowDialog();
-    }
+        => StudioDialogs.Show(owner, Explain(ex), title, MessageBoxButton.OK, MessageBoxImage.Error);
 }

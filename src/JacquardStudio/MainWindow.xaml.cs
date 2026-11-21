@@ -10,7 +10,7 @@ using Microsoft.Win32;
 
 namespace JacquardStudio;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private enum Stage { Size, Colors, Patterns, Machine, Analysis, Floats, Selvedge, Weft, Simulation }
     private Stage stage = Stage.Size;
@@ -99,14 +99,14 @@ public partial class MainWindow : Window
         if (busy || moduleEditorKind is null) return;
         if (moduleEditorKind==ModuleKind.CreateWeave)
         {
-            if (string.IsNullOrWhiteSpace(WeaveName.Text) || WeaveName.Text.Trim().Length>100) { MessageBox.Show(this,T("نام بافت باید ۱ تا ۱۰۰ حرف باشد.","The weave name must contain 1 to 100 characters.")); return; }
+            if (string.IsNullOrWhiteSpace(WeaveName.Text) || WeaveName.Text.Trim().Length>100) { StudioDialogs.Show(this,T("نام بافت باید ۱ تا ۱۰۰ حرف باشد.","The weave name must contain 1 to 100 characters.")); return; }
             ModuleWeaveResult=WeaveCanvas.Snapshot(); ModuleWeaveName=WeaveName.Text.Trim(); allowClose=true; DialogResult=true; return;
         }
         if (session is null) return;
-        if (bankOpen) { MessageBox.Show(this,T("ابتدا از بانک به ماژول بازگردید.","Return from the bank before applying.")); return; }
-        if (moduleEditorKind==ModuleKind.ApplyWeaves && !session.CanSave) { MessageBox.Show(this,T("ابتدا برای همه رنگ‌ها بافت انتخاب کنید.","Assign a weave to every color first.")); return; }
-        if (SizeDirty || moduleEditorKind==ModuleKind.Colors && ColorsDirty) { MessageBox.Show(this,T("ابتدا تغییر اندازه یا تعداد رنگ را در همین پنجره اعمال کنید.","Apply the current size or color limit first.")); return; }
-        if(moduleEditorKind==ModuleKind.Floats) { if(!NumberInput.TryInt(FloatMinimum.Text,out int minimum) || minimum<1 || minimum>DesignProcessor.MaxPixels) {MessageBox.Show(this,"حداقل طول فلوت معتبر نیست.");return;} EditedFloatMinimum=minimum; EditedFloatWarp=FloatWarp.IsChecked==true; }
+        if (bankOpen) { StudioDialogs.Show(this,T("ابتدا از بانک به ماژول بازگردید.","Return from the bank before applying.")); return; }
+        if (moduleEditorKind==ModuleKind.ApplyWeaves && !session.CanSave) { StudioDialogs.Show(this,T("ابتدا برای همه رنگ‌ها بافت انتخاب کنید.","Assign a weave to every color first.")); return; }
+        if (SizeDirty || moduleEditorKind==ModuleKind.Colors && ColorsDirty) { StudioDialogs.Show(this,T("ابتدا تغییر اندازه یا تعداد رنگ را در همین پنجره اعمال کنید.","Apply the current size or color limit first.")); return; }
+        if(moduleEditorKind==ModuleKind.Floats) { if(!NumberInput.TryInt(FloatMinimum.Text,out int minimum) || minimum<1 || minimum>DesignProcessor.MaxPixels) {StudioDialogs.Show(this,"حداقل طول فلوت معتبر نیست.");return;} EditedFloatMinimum=minimum; EditedFloatWarp=FloatWarp.IsChecked==true; }
         ModuleEditorResult=session.Snapshot(); allowClose=true; DialogResult=true;
     }
     private void ModuleCancel_Click(object sender,RoutedEventArgs e) { if (busy) return; allowClose=true; DialogResult=false; }
@@ -120,7 +120,7 @@ public partial class MainWindow : Window
     {
         if (bankOpen && !ConfirmDiscardDrawing()) return false;
         if (session is null || !projectDirty) return true;
-        var answer = MessageBox.Show(this, T("تغییرات پروژه ذخیره نشده است. پیش از ادامه ذخیره شود؟", "The project has unsaved changes. Save before continuing?"), Title, MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+        var answer = StudioDialogs.Show(this, T("تغییرات پروژه ذخیره نشده است. پیش از ادامه ذخیره شود؟", "The project has unsaved changes. Save before continuing?"), Title, MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
         return answer == MessageBoxResult.No || (answer == MessageBoxResult.Yes && await SaveProjectAsync(false));
     }
     private async void Open_Click(object sender, RoutedEventArgs e)
@@ -142,7 +142,7 @@ public partial class MainWindow : Window
         SetBusy(true); StatusText.Text = T("در حال باز کردن تصویر…", "Loading image…");
         try
         {
-            var result = await Task.Run(() => ImageLoader.Load(filename, page, true));
+            var result = await Task.Run(() => ImageLoader.Load(filename, page, true, true));
             var next = new WorkflowSession(result.Image, result.Vector);
             double scale = Math.Min(1, Math.Sqrt((double)DesignProcessor.MaxPixels / ((long)result.Image.PixelWidth * result.Image.PixelHeight)));
             int initialWidth = Math.Min(DesignProcessor.MaxPixels, Math.Max(1, (int)Math.Floor(result.Image.PixelWidth * scale)));
@@ -152,13 +152,15 @@ public partial class MainWindow : Window
             WidthInput.Text = initialWidth.ToString(); HeightInput.Text = initialHeight.ToString(); ColorInput.Text = "256"; ColorDistanceInput.Text="12";
             FileValue.Text = Path.GetFileName(filename); FormatValue.Text = $"{result.Format} · {result.Image.Format.BitsPerPixel} bpp";
             zoom = 1; SetZoom(1); stage = Stage.Size; projectDirty = true; ShowStage();
-            StatusText.Text = result.OriginalWidth>0 ? T($"عرض تصویر از {result.OriginalWidth} به ۴۰۰۰ پیکسل کاهش یافت." + (scale<1 ? " اندازه پردازشی نیز با سقف چهار میلیون پیکسل متناسب شد." : ""), $"Image width was reduced from {result.OriginalWidth} to 4000 pixels.") : scale < 1 ? T("تصویر بزرگ بود؛ اندازه اولیه متناسب با سقف ۴ میلیون پیکسل کاهش یافت.", "Image was scaled to fit the 4-million-pixel processing limit.") : T("اندازه اولیه اعمال شد؛ در صورت نیاز آن را تغییر دهید.", "Original dimensions applied; change them if needed.");
+            string importStatus = result.OriginalWidth>0 ? T($"عرض تصویر از {result.OriginalWidth} به ۴۰۰۰ پیکسل کاهش یافت." + (scale<1 ? " اندازه پردازشی نیز با سقف چهار میلیون پیکسل متناسب شد." : ""), $"Image width was reduced from {result.OriginalWidth} to 4000 pixels.") : scale < 1 ? T("تصویر بزرگ بود؛ اندازه اولیه متناسب با سقف ۴ میلیون پیکسل کاهش یافت.", "Image was scaled to fit the 4-million-pixel processing limit.") : T("اندازه اولیه اعمال شد؛ در صورت نیاز آن را تغییر دهید.", "Original dimensions applied; change them if needed.");
+            if (result.ColorLimitApplied) importStatus += T(" پالت رنگ تصویر به حداکثر ۲۵۶ رنگ محدود شد.", " The imported bitmap palette was limited to at most 256 colors.");
+            StatusText.Text = importStatus;
         }
         catch (Exception ex)
         {
             StatusText.Text = T("باز کردن تصویر ناموفق بود.", "Could not open image.");
             if (!showErrors) throw;
-            MessageBox.Show(this, T("باز کردن تصویر ممکن نشد.\n", "Could not open the image.\n") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            StudioDialogs.Show(this, T("باز کردن تصویر ممکن نشد.\n", "Could not open the image.\n") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally { SetBusy(false); }
     }
@@ -236,7 +238,7 @@ public partial class MainWindow : Window
             StatusText.Text = T("پروژه باز شد؛ تصویر و پترن‌ها در پروژه قرار دارند.", "Project opened; the image and patterns are embedded."); loaded = true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException or System.Text.Json.JsonException or OverflowException or FormatException)
-        { MessageBox.Show(this, T("باز کردن پروژه ممکن نشد: ", "Could not open project: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("باز کردن پروژه ناموفق بود.", "Could not open project."); }
+        { StudioDialogs.Show(this, T("باز کردن پروژه ممکن نشد: ", "Could not open project: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("باز کردن پروژه ناموفق بود.", "Could not open project."); }
         finally { SetBusy(false); }
         if (loaded && stage == Stage.Simulation) await RenderSimulationAsync();
         else if (loaded && stage == Stage.Selvedge) await PreviewSelvedgesAsync(false);
@@ -264,10 +266,12 @@ public partial class MainWindow : Window
         try
         {
             await Task.Run(() => ProjectFile.Save(destination, state, protectedPaths));
-            projectPath = destination; projectDirty = false; UpdateWindowTitle(); StatusText.Text = T("پروژه ذخیره شد.", "Project saved."); return true;
+            projectPath = destination; projectDirty = false; UpdateWindowTitle(); StatusText.Text = T("پروژه ذخیره شد.", "Project saved.");
+            StudioNotifications.Show(this, T("ذخیره شد", "Saved"), T("پروژه ذخیره شد.", "Project saved."));
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException)
-        { MessageBox.Show(this, T("ذخیره پروژه ممکن نشد: ", "Could not save project: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("ذخیره پروژه ناموفق بود.", "Project save failed."); return false; }
+        { StudioDialogs.Show(this, T("ذخیره پروژه ممکن نشد: ", "Could not save project: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); StatusText.Text = T("ذخیره پروژه ناموفق بود.", "Project save failed."); return false; }
         finally { SetBusy(false); }
     }
     private void MachineFormat_Checked(object sender, RoutedEventArgs e)
@@ -369,14 +373,14 @@ public partial class MainWindow : Window
     private bool ConfirmPatternLoss()
     {
         if (session?.Patterns.Any(p => p is not null) != true && session?.PixelOverrides is null) return true;
-        return MessageBox.Show(this, T("تغییر این مرحله بافت‌های انتخاب‌شده و اصلاح نقاط فلوت را پاک می‌کند. ادامه می‌دهید؟", "Changing this stage clears assigned weaves and edited float points. Continue?"), Title,
+        return StudioDialogs.Show(this, T("تغییر این مرحله بافت‌های انتخاب‌شده و اصلاح نقاط فلوت را پاک می‌کند. ادامه می‌دهید؟", "Changing this stage clears assigned weaves and edited float points. Continue?"), Title,
             MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
     }
     private async void ApplySize_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session is null) return;
         if (!NumberInput.TryInt(WidthInput.Text, out int w) || !NumberInput.TryInt(HeightInput.Text, out int h) || w <= 0 || h <= 0 || (long)w * h > DesignProcessor.MaxPixels)
-        { MessageBox.Show(this, T("ابعاد مثبت تا مجموع ۴ میلیون پیکسل وارد کنید.", "Enter positive dimensions totaling at most 4 million pixels.")); return; }
+        { StudioDialogs.Show(this, T("ابعاد مثبت تا مجموع ۴ میلیون پیکسل وارد کنید.", "Enter positive dimensions totaling at most 4 million pixels.")); return; }
         if (!ConfirmPatternLoss()) return;
         var before = CaptureHistory(); SetBusy(true); StatusText.Text = T("در حال تغییر اندازه…", "Resizing…");
         try
@@ -385,7 +389,7 @@ public partial class MainWindow : Window
             StatusText.Text = T("اندازه اعمال شد. مرحله رنگ را انتخاب کنید.", "Size applied. Continue to colors.");
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
-        { MessageBox.Show(this, T("تغییر اندازه ممکن نشد: ", "Resizing failed: ") + ex.Message); StatusText.Text = T("تغییر اندازه ناموفق بود.", "Resizing failed."); }
+        { StudioDialogs.Show(this, T("تغییر اندازه ممکن نشد: ", "Resizing failed: ") + ex.Message); StatusText.Text = T("تغییر اندازه ناموفق بود.", "Resizing failed."); }
         finally { SetBusy(false); }
     }
     private async void ApplyColor_Click(object sender, RoutedEventArgs e) => await ApplyColorsAsync(true);
@@ -393,9 +397,9 @@ public partial class MainWindow : Window
     {
         if (busy || session?.Resized is null || SizeDirty) return;
         if (!NumberInput.TryInt(ColorInput.Text, out int colors) || colors is < 1 or > 256)
-        { MessageBox.Show(this, T("تعداد رنگ باید بین ۱ تا ۲۵۶ باشد.", "The color count must be between 1 and 256.")); return; }
-        if(!NumberInput.TryInt(ColorDistanceInput.Text,out int rgbDistance) || rgbDistance is <0 or >441) {MessageBox.Show(this,T("آستانه فاصله RGB باید بین ۰ تا ۴۴۱ باشد.","RGB distance threshold must be between 0 and 441."));return;}
-        if (session.LockedColors.Count(x => x) > colors) { MessageBox.Show(this, T("تعداد رنگ نباید کمتر از تعداد رنگ‌های قفل‌شده باشد.", "The limit cannot be less than the number of locked colors.")); return; }
+        { StudioDialogs.Show(this, T("تعداد رنگ باید بین ۱ تا ۲۵۶ باشد.", "The color count must be between 1 and 256.")); return; }
+        if(!NumberInput.TryInt(ColorDistanceInput.Text,out int rgbDistance) || rgbDistance is <0 or >441) {StudioDialogs.Show(this,T("آستانه فاصله RGB باید بین ۰ تا ۴۴۱ باشد.","RGB distance threshold must be between 0 and 441."));return;}
+        if (session.LockedColors.Count(x => x) > colors) { StudioDialogs.Show(this, T("تعداد رنگ نباید کمتر از تعداد رنگ‌های قفل‌شده باشد.", "The limit cannot be less than the number of locked colors.")); return; }
         if (confirm && !ConfirmPatternLoss()) return;
         var before = CaptureHistory(); SetBusy(true); StatusText.Text = T("در حال بررسی رنگ‌ها…", "Analyzing colors…");
         try
@@ -407,7 +411,7 @@ public partial class MainWindow : Window
                 : T("رنگ‌ها اعمال شدند. مرحله بافت را انتخاب کنید.", "Colors applied. Continue to patterns.");
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
-        { MessageBox.Show(this, T("کاهش رنگ ممکن نشد: ", "Color reduction failed: ") + ex.Message); StatusText.Text = T("کاهش رنگ ناموفق بود.", "Color reduction failed."); }
+        { StudioDialogs.Show(this, T("کاهش رنگ ممکن نشد: ", "Color reduction failed: ") + ex.Message); StatusText.Text = T("کاهش رنگ ناموفق بود.", "Color reduction failed."); }
         finally { SetBusy(false); }
     }
     private void RebuildPaletteEntries(string?[]? restoredNames = null, IReadOnlyList<PaletteEntry>? previous = null, int removedIndex = -1)
@@ -443,7 +447,7 @@ public partial class MainWindow : Window
             foreach (var item in entries) item.Highlighted = item.Index == highlightedColor;
             ShowStage();
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or OutOfMemoryException) { MessageBox.Show(this, T("نمایش رنگ ممکن نشد: ", "Could not highlight color: ") + ex.Message); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or OutOfMemoryException) { StudioDialogs.Show(this, T("نمایش رنگ ممکن نشد: ", "Could not highlight color: ") + ex.Message); }
         finally { SetBusy(false); }
     }
     private async void PaletteColor_Click(object sender, RoutedEventArgs e)
@@ -451,10 +455,10 @@ public partial class MainWindow : Window
         if (busy || stage != Stage.Colors || session?.Palette is null || SizeDirty || ColorsDirty || sender is not Button { DataContext: PaletteEntry entry }) return;
         var picked = ColorChooser.Pick(this, entry.ColorCode); if (picked is null || picked.Equals(entry.ColorCode, StringComparison.OrdinalIgnoreCase)) return;
         var c = FabricSimulation.ParseColor(picked); int rgb = (c.R << 16) | (c.G << 8) | c.B;
-        if (session.Palette.Colors.Where((_, i) => i != entry.Index).Contains(rgb)) { MessageBox.Show(this, T("این رنگ قبلاً وجود دارد؛ برای ترکیب از ادغام رنگ استفاده کنید.", "This color already exists; use merge instead."), Title); return; }
+        if (session.Palette.Colors.Where((_, i) => i != entry.Index).Contains(rgb)) { StudioDialogs.Show(this, T("این رنگ قبلاً وجود دارد؛ برای ترکیب از ادغام رنگ استفاده کنید.", "This color already exists; use merge instead."), Title); return; }
         var before = CaptureHistory(); var prior = entries.ToArray(); SetBusy(true);
         try { await Task.Run(() => session.Recolor(entry.Index, rgb)); RecordHistory(before); RebuildPaletteEntries(previous: prior); ShowStage(); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { MessageBox.Show(this, ex.Message, Title); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { StudioDialogs.Show(this, ex.Message, Title); }
         finally { SetBusy(false); }
     }
     private void ColorSelection_Changed(object sender, SelectionChangedEventArgs e) { if (IsInitialized) RefreshControls(); }
@@ -492,13 +496,13 @@ public partial class MainWindow : Window
     private async Task RemoveColorsAsync(int[] removed, int? target)
     {
         if (session?.Palette is null || removed.Length == 0) return;
-        if (removed.Any(i => session.LockedColors[i])) { MessageBox.Show(this, T("برای حذف یا ادغام، ابتدا قفل رنگ‌های حذف‌شونده را باز کنید.", "Unlock colors before removing or merging them.")); return; }
+        if (removed.Any(i => session.LockedColors[i])) { StudioDialogs.Show(this, T("برای حذف یا ادغام، ابتدا قفل رنگ‌های حذف‌شونده را باز کنید.", "Unlock colors before removing or merging them.")); return; }
         string message = target is int t ? T($"{removed.Length} رنگ در رنگ شماره {t + 1} ادغام می‌شوند.", $"{removed.Length} colors will be merged into color {t + 1}.") : T($"{removed.Length} رنگ حذف و پیکسل‌هایشان به نزدیک‌ترین رنگ‌های باقی‌مانده منتقل می‌شوند.", $"{removed.Length} colors will be removed and mapped to the nearest remaining colors.");
         if (removed.Any(i => session.Patterns[i] is not null)) message += T(" بافت رنگ‌های حذف‌شده نیز حذف می‌شود.", " Removed colors' patterns are discarded.");
-        if (MessageBox.Show(this, message + T(" ادامه می‌دهید؟", " Continue?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        if (StudioDialogs.Show(this, message + T(" ادامه می‌دهید؟", " Continue?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var prior = entries.Where(x => !removed.Contains(x.Index)).ToArray(); var before = CaptureHistory(); SetBusy(true);
         try { await Task.Run(() => session.RemoveColors(removed, target)); RecordHistory(before); RebuildPaletteEntries(previous: prior); ShowStage(); StatusText.Text = T("رنگ‌ها به‌روزرسانی شدند.", "Colors updated."); }
-        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException) { MessageBox.Show(this, T("تغییر رنگ ممکن نشد: ", "Could not change colors: ") + ex.Message, Title); }
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException) { StudioDialogs.Show(this, T("تغییر رنگ ممکن نشد: ", "Could not change colors: ") + ex.Message, Title); }
         finally { SetBusy(false); }
     }
     private HistoryState CaptureHistory() => new(session!.Snapshot(), stage, entries.Select(x => (string?)x.PatternLabel).ToArray(), entries.Select(x => x.PatternPath).ToArray());
@@ -570,20 +574,20 @@ public partial class MainWindow : Window
     private void Help_Click(object sender, RoutedEventArgs e)
     {
         try { new GuideWindow(english) { Owner = this }.ShowDialog(); }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException) { MessageBox.Show(this, T("راهنما باز نشد: ", "Could not open guide: ") + ex.Message, Title); }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException) { StudioDialogs.Show(this, T("راهنما باز نشد: ", "Could not open guide: ") + ex.Message, Title); }
     }
     private void EditorHelper_Click(object sender, RoutedEventArgs e)
     {
         if (busy || sender is not Button { Tag: string action }) return;
         if (!NumberInput.TryInt(StepXInput.Text, out int dx) || !NumberInput.TryInt(StepYInput.Text, out int dy) || dx < 1 || dy < 1 || dx > 64 || dy > 64)
-        { MessageBox.Show(this, T("گام‌های X و Y باید بین ۱ تا ۶۴ باشند.", "X and Y steps must be between 1 and 64.")); return; }
+        { StudioDialogs.Show(this, T("گام‌های X و Y باید بین ۱ تا ۶۴ باشند.", "X and Y steps must be between 1 and 64.")); return; }
         int repeat = 5, step = 2;
-        if (action == "satin" && (!NumberInput.TryInt(SatinRepeat.Text, out repeat) || !NumberInput.TryInt(SatinStep.Text, out step))) { MessageBox.Show(this, T("تکرار و گام ساتین باید عدد صحیح باشند.", "Satin repeat and step must be integers.")); return; }
+        if (action == "satin" && (!NumberInput.TryInt(SatinRepeat.Text, out repeat) || !NumberInput.TryInt(SatinStep.Text, out step))) { StudioDialogs.Show(this, T("تکرار و گام ساتین باید عدد صحیح باشند.", "Satin repeat and step must be integers.")); return; }
         try { WeaveCanvas.ApplyHelper(action, dx, dy, repeat, step); }
         catch (ArgumentException ex)
         {
             string message = action == "panama" ? T("عرض و ارتفاع پاناما باید زوج باشند.", "Panama width and height must be even.") : action == "satin" ? T("ساتین: تکرار حداقل ۵، گام بین ۲ و تکرار منهای ۲ و نسبت به تکرار متباین باشد؛ ابعاد نیز مضرب تکرار باشند.", "Satin: repeat ≥5, step 2 to repeat-2 coprime with repeat; both dimensions must be multiples of repeat.") : ex.Message;
-            MessageBox.Show(this, message, Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            StudioDialogs.Show(this, message, Title, MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
     private void EditorGrid_Click(object sender, RoutedEventArgs e) => WeaveCanvas.GridVisible = !WeaveCanvas.GridVisible;
@@ -641,7 +645,7 @@ public partial class MainWindow : Window
             AnalysisRangeText.Text = details.Count == 0 ? T("بازه‌ای بالاتر از ۲۰٪ وجود ندارد.", "No ranges exceed 20%.") : T("فقط بیش از ۲۰٪؛ حداکثر ۱۰۰ بازه در هر دسته. مقدار هر تار روی نوار قابل مشاهده است.\n", "Above 20% only; up to 100 ranges per group. Hover the strip for each warp.\n") + string.Join("\n", details);
             AnalysisHoverText.Text = T("برای درصد هر تار، نشانگر را روی نوار یا تصویر ببرید.", "Hover the strip or image to inspect a warp."); ShowStage();
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException) { MessageBox.Show(this, ex.Message, Title); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException) { StudioDialogs.Show(this, ex.Message, Title); }
         finally { SetBusy(false); }
     }
     private void AnalysisStrip_MouseMove(object sender, MouseEventArgs e)
@@ -665,14 +669,14 @@ public partial class MainWindow : Window
     {
         if (busy || session?.CanSave != true || SizeDirty || ColorsDirty) return;
         if (!NumberInput.TryInt(FloatMinimum.Text, out int minimum) || minimum < 1 || minimum > DesignProcessor.MaxPixels)
-        { MessageBox.Show(this, T("طول باید یک عدد مثبت باشد.", "Length must be a positive integer.")); return; }
+        { StudioDialogs.Show(this, T("طول باید یک عدد مثبت باشد.", "Length must be a positive integer.")); return; }
         await ScanFloatsAsync(minimum, FloatWarp.IsChecked == true ? FloatDirection.Warp : FloatDirection.Weft, 0, true);
     }
     private async void FloatAuto_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session?.CanSave != true || SizeDirty || ColorsDirty || session.Palette is null) return;
         if (!NumberInput.TryInt(FloatMinimum.Text, out int minimum) || minimum < 1 || minimum > DesignProcessor.MaxPixels)
-        { MessageBox.Show(this, T("طول باید یک عدد مثبت باشد.", "Length must be a positive integer.")); return; }
+        { StudioDialogs.Show(this, T("طول باید یک عدد مثبت باشد.", "Length must be a positive integer.")); return; }
         var composition = composedMap ?? await ComposeMachineAsync(true); if (composition is null) return;
         var fabric = CompositionView.Fabric(composition); var direction = FloatWarp.IsChecked == true ? FloatDirection.Warp : FloatDirection.Weft; var currentSession = session;
         FloatCorrectionPlan? plan = null; SetBusy(true);
@@ -680,16 +684,16 @@ public partial class MainWindow : Window
         {
             plan = await Task.Run(() => { var runs = DesignAnalysis.FindFloats(DesignAnalysis.ReadBinary(fabric), fabric.PixelWidth, fabric.PixelHeight, minimum, direction).Select(r => r with { X = r.X + composition.FabricStart }); return FloatAutoCorrection.Plan(runs, composition.DesignStart, currentSession.Palette!.Width, fabric.PixelHeight, composition.SignalHooks); });
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or OverflowException) { MessageBox.Show(this, ex.Message, Title); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or OverflowException) { StudioDialogs.Show(this, ex.Message, Title); }
         finally { SetBusy(false); }
         if (plan is null) return;
         if(moduleEditorKind==ModuleKind.Floats && (moduleProtectedLeft>0 || moduleProtectedRight>0)) { var filtered=plan.Points.Where(p=>p.X>=moduleProtectedLeft && p.X<currentSession.Palette!.Width-moduleProtectedRight).ToArray(); plan=new FloatCorrectionPlan(filtered,plan.Skipped+plan.Points.Count-filtered.Length); }
         if (plan.Points.Count == 0) { FloatAutoResult.Text = T($"نقطه قابل اصلاحی پیدا نشد؛ {plan.Skipped:N0} مرکز خارج از طرح یا روی فرمان است.", $"No editable centers found; {plan.Skipped:N0} are outside the design or on signal hooks."); return; }
         string prompt = T($"مرکز {plan.Points.Count:N0} فلوت در طرح سیاه/سفید معکوس می‌شود؛ {plan.Skipped:N0} مرکز کناره یا فرمان تغییر نمی‌کند. اصلاح انجام شود؟", $"Toggle {plan.Points.Count:N0} float centers in the design; {plan.Skipped:N0} centers on selvedges or signal hooks are skipped. Apply?");
-        if (MessageBox.Show(this, prompt, Title, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        if (StudioDialogs.Show(this, prompt, Title, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         var before = CaptureHistory(); bool changed = false; SetBusy(true);
         try { await Task.Run(() => currentSession.TogglePixels(plan.Points)); RecordHistory(before); changed = true; }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException) { MessageBox.Show(this, ex.Message, Title); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException) { StudioDialogs.Show(this, ex.Message, Title); }
         finally { SetBusy(false); }
         if (!changed) return;
         if (await ComposeMachineAsync(true) is not null) await ScanFloatsAsync(minimum, direction, 0, false);
@@ -707,7 +711,7 @@ public partial class MainWindow : Window
             FloatResultText.Text = T($"تعداد دنباله‌های پیوسته: {found.Count:N0} (طول حداقل {minimum})", $"Continuous runs: {found.Count:N0} (minimum {minimum})");
             ShowFloat(focus);
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException) { MessageBox.Show(this, ex.Message, Title); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException) { StudioDialogs.Show(this, ex.Message, Title); }
         finally { SetBusy(false); }
     }
     private void FloatPrevious_Click(object sender, RoutedEventArgs e) { if (!busy && floatRuns is { Count: > 0 } && floatIndex > 0) { floatIndex--; ShowFloat(true); } }
@@ -743,7 +747,7 @@ public partial class MainWindow : Window
         { StatusText.Text = T("فقط نقاط خود طرح قابل ویرایش‌اند؛ کناره را از تنظیمات کناره تغییر دهید.", "Only design pixels can be edited; change selvedges in their settings."); return; }
         bool rescan = floatRuns is not null; int index = floatIndex, minimum = lastFloatMinimum; var direction = lastFloatDirection; var before = CaptureHistory(); SetBusy(true);
         try { await Task.Run(() => session.TogglePixel(bodyX, y)); RecordHistory(before); StatusText.Text = T("نقطه اصلاح شد؛ پروژه را ذخیره کنید.", "Pixel edited; save the project."); }
-        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException) { MessageBox.Show(this, ex.Message, Title); rescan = false; }
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException) { StudioDialogs.Show(this, ex.Message, Title); rescan = false; }
         finally { SetBusy(false); }
         await ComposeMachineAsync(true); if (rescan) await ScanFloatsAsync(minimum, direction, index, false);
         e.Handled = true;
@@ -784,7 +788,7 @@ public partial class MainWindow : Window
     private bool ConfirmDiscardDrawing()
     {
         if (!WeaveCanvas.IsDirty) return true;
-        return MessageBox.Show(this, T("تغییرات بافت در بانک ذخیره نشده است. کنار گذاشته شود؟", "The weave drawing has unsaved changes. Discard them?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+        return StudioDialogs.Show(this, T("تغییرات بافت در بانک ذخیره نشده است. کنار گذاشته شود؟", "The weave drawing has unsaved changes. Discard them?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
     }
     private async void Bank_Click(object sender, RoutedEventArgs e)
     {
@@ -799,7 +803,7 @@ public partial class MainWindow : Window
         var root=new DockPanel { Margin=new Thickness(14) }; var confirm=new Button { Content="انتخاب بافت",Margin=new Thickness(4) }; DockPanel.SetDock(confirm,Dock.Bottom); root.Children.Add(confirm);
         var list=new ListBox { ItemsSource=connectedWeaves,ItemsPanel=(ItemsPanelTemplate)Application.Current.FindResource("WeaveGalleryPanel"),ItemTemplate=(DataTemplate)Application.Current.FindResource("WeaveGalleryItem"),ItemContainerStyle=(Style)Application.Current.FindResource("WeaveGalleryListItem") }; list.SetResourceReference(Control.BackgroundProperty,"ListBackground"); root.Children.Add(list); dialog.Content=root;
         confirm.Click+=(_,_)=>{if(list.SelectedItem is BankItem)dialog.DialogResult=true;}; if(dialog.ShowDialog()!=true || list.SelectedItem is not BankItem item)return;
-        var before=CaptureHistory(); SetBusy(true); try { await Task.Run(()=>session.AssignPattern(entry.Index,item.Pattern)); RecordHistory(before); entry.Restore(item.Name,item.Pattern); ShowStage(); } catch(Exception ex) when(ex is ArgumentException or InvalidOperationException) { MessageBox.Show(this,ex.Message); } finally { SetBusy(false); }
+        var before=CaptureHistory(); SetBusy(true); try { await Task.Run(()=>session.AssignPattern(entry.Index,item.Pattern)); RecordHistory(before); entry.Restore(item.Name,item.Pattern); ShowStage(); } catch(Exception ex) when(ex is ArgumentException or InvalidOperationException) { StudioDialogs.Show(this,ex.Message); } finally { SetBusy(false); }
     }
     private async void PatternBank_Click(object sender, RoutedEventArgs e)
     {
@@ -840,7 +844,7 @@ public partial class MainWindow : Window
                 $"{result.items.Count} weaves available" + (result.skipped > 0 ? $" · {result.skipped} invalid items skipped" : ""));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
-        { MessageBox.Show(this, T("خواندن بانک ممکن نشد: ", "Could not load weave bank: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        { StudioDialogs.Show(this, T("خواندن بانک ممکن نشد: ", "Could not load weave bank: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally { SetBusy(false); }
     }
     private void ApplyBankCategory()
@@ -865,7 +869,7 @@ public partial class MainWindow : Window
     {
         if (busy) return;
         if (!NumberInput.TryInt(WeaveWidth.Text, out int w) || !NumberInput.TryInt(WeaveHeight.Text, out int h) || w < 1 || h < 1 || w > WeaveEditor.MaxSide || h > WeaveEditor.MaxSide || (long)w * h > DesignProcessor.MaxPatternPixels)
-        { MessageBox.Show(this, T("هر بعد تا ۴۰۹۶ و مساحت حداکثر ۲۶۲۱۴۴ خانه باشد.", "Each dimension must be at most 4096, with at most 262144 cells.")); return; }
+        { StudioDialogs.Show(this, T("هر بعد تا ۴۰۹۶ و مساحت حداکثر ۲۶۲۱۴۴ خانه باشد.", "Each dimension must be at most 4096, with at most 262144 cells.")); return; }
         if (!ConfirmDiscardDrawing()) return;
         WeaveCanvas.Reset(w, h);
     }
@@ -873,7 +877,7 @@ public partial class MainWindow : Window
     {
         if (busy || BankList.SelectedItem is not BankItem item || !ConfirmDiscardDrawing()) return;
         if (item.Pattern.Width > WeaveEditor.MaxSide || item.Pattern.Height > WeaveEditor.MaxSide)
-        { MessageBox.Show(this, T("بعد این بافت بیش از ۴۰۹۶ خانه است؛ همچنان می‌توان آن را استفاده و سه‌بعدی مشاهده کرد.", "A dimension exceeds the 4096-cell editor limit; it can still be applied or viewed in 3D.")); return; }
+        { StudioDialogs.Show(this, T("بعد این بافت بیش از ۴۰۹۶ خانه است؛ همچنان می‌توان آن را استفاده و سه‌بعدی مشاهده کرد.", "A dimension exceeds the 4096-cell editor limit; it can still be applied or viewed in 3D.")); return; }
         WeaveCanvas.SetPattern(item.Pattern); WeaveWidth.Text = item.Pattern.Width.ToString(); WeaveHeight.Text = item.Pattern.Height.ToString(); WeaveName.Text = item.Name;
     }
     private void Editor3D_Click(object sender, RoutedEventArgs e) { if (!busy) Fabric3DWindow.ShowPattern(this, WeaveCanvas.Snapshot(), english); }
@@ -887,7 +891,7 @@ public partial class MainWindow : Window
             if (window.ShowDialog() == true && window.SavedItem is { } item) await ReloadBankAsync(item.Id);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or NotSupportedException)
-        { MessageBox.Show(this, T("بافت ترکیبی باز نشد: ", "Could not open composite weave: ") + ex.Message, Title); }
+        { StudioDialogs.Show(this, T("بافت ترکیبی باز نشد: ", "Could not open composite weave: ") + ex.Message, Title); }
     }
     private async void BankSaveDrawing_Click(object sender, RoutedEventArgs e)
     {
@@ -898,7 +902,7 @@ public partial class MainWindow : Window
             StatusText.Text = T("بافت در بانک ذخیره شد.", "Weave saved to the bank.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
-        { MessageBox.Show(this, T("ذخیره بافت ممکن نشد: ", "Could not save weave: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        { StudioDialogs.Show(this, T("ذخیره بافت ممکن نشد: ", "Could not save weave: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
     }
     private async void BankImport_Click(object sender, RoutedEventArgs e)
     {
@@ -912,16 +916,16 @@ public partial class MainWindow : Window
             SetBusy(false); await ReloadBankAsync(item.Id); StatusText.Text = T("بافت به بانک افزوده شد.", "Weave added to bank.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or NotSupportedException or System.Runtime.InteropServices.COMException)
-        { MessageBox.Show(this, T("بافت باید مات، تک‌صفحه‌ای و سیاه‌وسفید خالص باشد: ", "Weave must be opaque, single-page and pure black/white: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        { StudioDialogs.Show(this, T("بافت باید مات، تک‌صفحه‌ای و سیاه‌وسفید خالص باشد: ", "Weave must be opaque, single-page and pure black/white: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally { SetBusy(false); }
     }
     private async void BankDelete_Click(object sender, RoutedEventArgs e)
     {
         if (busy || BankList.SelectedItem is not BankItem item || item.IsPreset) return;
-        if (MessageBox.Show(this, T($"بافت «{item.Name}» از بانک حذف شود؟ پروژه‌های ذخیره‌شده مستقل می‌مانند.", $"Delete {item.Name} from the bank? Saved projects remain self-contained."), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        if (StudioDialogs.Show(this, T($"بافت «{item.Name}» از بانک حذف شود؟ پروژه‌های ذخیره‌شده مستقل می‌مانند.", $"Delete {item.Name} from the bank? Saved projects remain self-contained."), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         try { bank.Delete(item); await ReloadBankAsync(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-        { MessageBox.Show(this, T("حذف بافت ممکن نشد: ", "Could not delete weave: ") + ex.Message); }
+        { StudioDialogs.Show(this, T("حذف بافت ممکن نشد: ", "Could not delete weave: ") + ex.Message); }
     }
     private async void BankUse_Click(object sender, RoutedEventArgs e)
     {
@@ -941,7 +945,7 @@ public partial class MainWindow : Window
             StatusText.Text = T("بافت بانک به رنگ انتخاب‌شده اختصاص یافت.", "Library weave applied to the selected color.");
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
-        { MessageBox.Show(this, T("اعمال بافت ممکن نشد: ", "Could not apply weave: ") + ex.Message); }
+        { StudioDialogs.Show(this, T("اعمال بافت ممکن نشد: ", "Could not apply weave: ") + ex.Message); }
         finally { SetBusy(false); }
     }
     private async void Pattern_Click(object sender, RoutedEventArgs e)
@@ -956,13 +960,13 @@ public partial class MainWindow : Window
             RecordHistory(before); entry.Assign(dialog.FileName, pattern); ShowStage(); StatusText.Text = T("پترن روی همه نقاط این رنگ اعمال شد.", "Pattern applied to every pixel of this color.");
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or System.Runtime.InteropServices.COMException)
-        { MessageBox.Show(this, T("پترن باید تک‌صفحه‌ای، مات و فقط سیاه‌وسفید خالص باشد.\n", "Pattern must be single-page, opaque and pure black and white.\n") + ex.Message); StatusText.Text = T("اعمال پترن ناموفق بود.", "Pattern could not be applied."); }
+        { StudioDialogs.Show(this, T("پترن باید تک‌صفحه‌ای، مات و فقط سیاه‌وسفید خالص باشد.\n", "Pattern must be single-page, opaque and pure black and white.\n") + ex.Message); StatusText.Text = T("اعمال پترن ناموفق بود.", "Pattern could not be applied."); }
         finally { SetBusy(false); }
     }
     private async void RandomWeave_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session?.Palette is null || SizeDirty || ColorsDirty) return;
-        if (session.Patterns.Any(p => p is not null) && MessageBox.Show(this, T("بافت همه رنگ‌ها به‌صورت تصادفی جایگزین شود؟ امکان بازگردانی وجود دارد.", "Replace every assigned weave randomly? You can undo this action."), Title, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        if (session.Patterns.Any(p => p is not null) && StudioDialogs.Show(this, T("بافت همه رنگ‌ها به‌صورت تصادفی جایگزین شود؟ امکان بازگردانی وجود دارد.", "Replace every assigned weave randomly? You can undo this action."), Title, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         var before = CaptureHistory(); var active = session; SetBusy(true);
         try
         {
@@ -972,7 +976,7 @@ public partial class MainWindow : Window
             StatusText.Text = T("برای همه رنگ‌ها بافت تصادفی از بانک انتخاب شد.", "A random bank weave was assigned to each color.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or NotSupportedException)
-        { MessageBox.Show(this, T("بافت تصادفی ممکن نشد: ", "Could not assign random weaves: ") + ex.Message, Title); }
+        { StudioDialogs.Show(this, T("بافت تصادفی ممکن نشد: ", "Could not assign random weaves: ") + ex.Message, Title); }
         finally { SetBusy(false); }
     }
     private async void PatternPreset_Click(object sender, RoutedEventArgs e)
@@ -993,7 +997,7 @@ public partial class MainWindow : Window
                     StatusText.Text = T("الگو روی همه نقاط این رنگ اعمال شد.", "Pattern applied to every pixel of this color.");
                 }
                 catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
-                { MessageBox.Show(this, T("اعمال الگو ممکن نشد: ", "Could not apply pattern: ") + ex.Message); }
+                { StudioDialogs.Show(this, T("اعمال الگو ممکن نشد: ", "Could not apply pattern: ") + ex.Message); }
                 finally { SetBusy(false); }
             };
             menu.Items.Add(item);
@@ -1019,7 +1023,7 @@ public partial class MainWindow : Window
             _ => null
         };
         if (frame is null) return;
-        if (stage == Stage.Patterns && !session.CanSave && MessageBox.Show(this,
+        if (stage == Stage.Patterns && !session.CanSave && StudioDialogs.Show(this,
             T("همه رنگ‌ها بافت ندارند. در تصویر ذخیره‌شده رنگ‌های بدون بافت بدون تغییر باقی می‌مانند. ادامه می‌دهید؟", "Not all colors have patterns. Unassigned colors remain unchanged in the saved image. Continue?"),
             Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var defaultName = stage switch { Stage.Size => "resized.bmp", Stage.Colors => "colors.bmp", _ => "prepared-design.bmp" };
@@ -1034,7 +1038,7 @@ public partial class MainWindow : Window
             StatusText.Text = T("تصویر این مرحله ذخیره شد؛ این فایل ماشین نیست.", "Stage image saved; this is not a loom file.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
-        { MessageBox.Show(this, T("ذخیره ناموفق بود: ", "Save failed: ") + ex.Message); }
+        { StudioDialogs.Show(this, T("ذخیره ناموفق بود: ", "Save failed: ") + ex.Message); }
         finally { SetBusy(false); }
     }
     private async void SavePalette_Click(object sender, RoutedEventArgs e)
@@ -1043,7 +1047,7 @@ public partial class MainWindow : Window
         var dialog = new SaveFileDialog { Filter = "PNG (*.png)|*.png", AddExtension = true, OverwritePrompt = true, FileName = "palette.png" }; if (dialog.ShowDialog(this) != true) return;
         var protectedPaths = new[] { path, projectPath }.OfType<string>().Concat(entries.Select(x => x.PatternPath).OfType<string>()).ToArray(); SetBusy(true);
         try { var image = PaletteImage.Render(ColorPaletteList.Items.OfType<PaletteEntry>().ToArray(), english); await Task.Run(() => PaletteImage.Save(image, dialog.FileName, protectedPaths)); StatusText.Text = T("جدول پالت رنگ ذخیره شد.", "Palette table saved."); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or NotSupportedException) { MessageBox.Show(this, T("ذخیره پالت ممکن نشد: ", "Could not save palette: ") + ex.Message); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or NotSupportedException) { StudioDialogs.Show(this, T("ذخیره پالت ممکن نشد: ", "Could not save palette: ") + ex.Message); }
         finally { SetBusy(false); }
     }
     private MachineSetup ReadMachineFields()
@@ -1090,7 +1094,7 @@ public partial class MainWindow : Window
             loadingMachineSettings = true; try { InstallMachineChoices(result.items, setup); } finally { loadingMachineSettings = false; }
             if (result.skipped > 0) MachineSetupSummary.Text = T($"{result.skipped} بافت نامعتبر بانک نادیده گرفته شد.", $"{result.skipped} invalid bank items skipped.");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException) { MessageBox.Show(this, T("خواندن بانک ممکن نشد: ", "Could not read weave bank: ") + ex.Message, Title); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException) { StudioDialogs.Show(this, T("خواندن بانک ممکن نشد: ", "Could not read weave bank: ") + ex.Message, Title); }
         finally { SetBusy(false); }
     }
     private async void RefreshMachineBank_Click(object sender, RoutedEventArgs e) => await RefreshMachineBankAsync();
@@ -1123,7 +1127,7 @@ public partial class MainWindow : Window
             MachineSetupSummary.Text = T($"پودگذاری اعمال شد؛ عرض نهایی {result.Image.PixelWidth:N0} تار.", $"Weft settings applied; final width {result.Image.PixelWidth:N0} hooks."); ShowStage();
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
-        { MachineSetupSummary.Text = T("اعمال نشد؛ تنظیمات پیشین حفظ شد: ", "Not applied; previous settings retained: ") + ex.Message; MessageBox.Show(this, MachineSetupSummary.Text, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        { MachineSetupSummary.Text = T("اعمال نشد؛ تنظیمات پیشین حفظ شد: ", "Not applied; previous settings retained: ") + ex.Message; StudioDialogs.Show(this, MachineSetupSummary.Text, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally { SetBusy(false); }
     }
     private BitmapSource? MachineInput() => session is null ? null : stage == Stage.Machine && MachineUseSource.IsChecked == true ? session.Source : session.CanSave && !SizeDirty && !ColorsDirty ? (stage == Stage.Selvedge ? session.BasePatternPreview : session.PatternPreview) : null;
@@ -1143,7 +1147,7 @@ public partial class MainWindow : Window
             ShowStage(); return result;
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
-        { composedMap = null; machinePreview = null; redPreview = null; MachineSetupSummary.Text = T("تنظیمات معتبر نیست: ", "Invalid setup: ") + ex.Message; StatusText.Text = MachineSetupSummary.Text; if (showErrors) MessageBox.Show(this, MachineSetupSummary.Text, Title, MessageBoxButton.OK, MessageBoxImage.Warning); ShowStage(); return null; }
+        { composedMap = null; machinePreview = null; redPreview = null; MachineSetupSummary.Text = T("تنظیمات معتبر نیست: ", "Invalid setup: ") + ex.Message; StatusText.Text = MachineSetupSummary.Text; if (showErrors) StudioDialogs.Show(this, MachineSetupSummary.Text, Title, MessageBoxButton.OK, MessageBoxImage.Warning); ShowStage(); return null; }
         finally { SetBusy(false); }
     }
     private SimulationSettings ReadSimulationSettings() => new(SimulationWarpYarn.SelectedIndex, defaultWeftYarn, warpSwatch.Value, defaultWeftColor, SimulationWeave.SelectedIndex, (int)SimulationShadow.Value, FabricSimulation.WeftIds(appliedWeft).Select(id => simulationYarns.TryGetValue(id, out var value) ? value : new SimulatedYarn(id, defaultWeftYarn, defaultWeftColor)).ToArray(), SimulationMode.SelectedIndex, SimulationWarpCount.Text, SimulationWarpUnit.SelectedIndex, SimulationWarpDensity.Text, SimulationWeftDensity.Text, SimulationMaterialDensity.Text);
@@ -1208,6 +1212,16 @@ public partial class MainWindow : Window
     private void SimulationChanged(object sender, SelectionChangedEventArgs e) => SimulationSettingsChanged();
     private void SimulationTextChanged(object sender, TextChangedEventArgs e) => SimulationSettingsChanged();
     private void SimulationShadowChanged(object sender, RoutedPropertyChangedEventArgs<double> e) => SimulationSettingsChanged();
+    private void SimulationReferencePreset_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var preset = FabricSimulation.CreateReferencePreset(ReadSimulationSettings(), FabricSimulation.WeftIds(appliedWeft));
+            LoadSimulationSettings(preset);
+            SimulationSettingsChanged();
+        }
+        catch (ArgumentException ex) { SimulationStatus.Text = ex.Message; }
+    }
     private async void SimulationRender_Click(object sender, RoutedEventArgs e) => await RenderSimulationAsync();
     private async Task RenderSimulationAsync()
     {
@@ -1246,12 +1260,12 @@ public partial class MainWindow : Window
         var protectedPaths = new[] { path }.Concat(entries.Select(x => x.PatternPath).OfType<string>()).ToArray();
         SetBusy(true);
         try { await Task.Run(() => ImageExporter.Save(frame, dialog.FileName, dialog.FilterIndex == 2, protectedPaths)); SimulationStatus.Text = T("تصویر شبیه‌سازی ذخیره شد؛ فایل ماشین نیست.", "Preview saved; this is not a loom file."); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException) { MessageBox.Show(this, ex.Message, Title); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException) { StudioDialogs.Show(this, ex.Message, Title); }
         finally { SetBusy(false); }
     }
     private void UpgradeLayout_Click(object sender, RoutedEventArgs e)
     {
-        if (MessageBox.Show(this, T("تغییر به چیدمان جدید، کدهای قدیمی باکس را غیرفعال می‌کند. ادامه می‌دهید؟", "Switching to the new layout disables legacy box codes. Continue?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        if (StudioDialogs.Show(this, T("تغییر به چیدمان جدید، کدهای قدیمی باکس را غیرفعال می‌کند. ادامه می‌دهید؟", "Switching to the new layout disables legacy box codes. Continue?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         absoluteLayout = true; BoxEnabled.IsChecked = false; BoxEnabled.Visibility = Visibility.Collapsed; BoxSequence.Text = ""; AbsoluteFields.Visibility = Visibility.Visible; LegacySetup.Visibility = Visibility.Collapsed; MarkProjectDirty(); MachineSetupSummary.Text = T("چیدمان جدید پیش‌نویس است؛ برای تغییر خروجی اعمال کنید.", "New layout is a draft; apply it to change the output.");
     }
     private async Task PreviewSelvedgesAsync(bool showErrors)
@@ -1260,7 +1274,7 @@ public partial class MainWindow : Window
         var setup = MachineComposer.BeforeWeft(ReadMachineSettings()); bool red = MachineRedAsBlack.IsChecked == true;
         SetBusy(true);
         try { var result = await Task.Run(() => MachineComposer.Compose(frame, setup, red)); composedMap = null; machinePreview = result.Image; redPreview = null; SelvedgeSummary.Text = T($"عرض طرح همراه کناره‌ها: {result.Image.PixelWidth:N0} تار", $"Design with selvedges: {result.Image.PixelWidth:N0} hooks"); ShowStage(); }
-        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException) { SelvedgeSummary.Text = T("عرض یا بافت کناره معتبر نیست.", "Invalid selvedge width or weave."); if (showErrors) MessageBox.Show(this, SelvedgeSummary.Text + "\n" + ex.Message, Title); }
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException) { SelvedgeSummary.Text = T("عرض یا بافت کناره معتبر نیست.", "Invalid selvedge width or weave."); if (showErrors) StudioDialogs.Show(this, SelvedgeSummary.Text + "\n" + ex.Message, Title); }
         finally { SetBusy(false); }
     }
     private async void SelvedgePreview_Click(object sender, RoutedEventArgs e) => await PreviewSelvedgesAsync(true);
@@ -1274,11 +1288,11 @@ public partial class MainWindow : Window
         string warning = T($"خروجی {format} آزمایشی و تک‌ناحیه‌ای است: {composed.Image.PixelWidth} قلاب و {composed.Image.PixelHeight} رج. بیت ۱ سیاه است. " + (overwriteColumns ? "قلاب‌های فرمان محتوای ستون‌های موجود را جایگزین می‌کنند. " : "") + "توالی و نگاشت منطقی را در پیش‌نمایش و اتصال و قطبیت قلاب‌های واقعی را با متخصص دستگاه بررسی کنید. ادامه می‌دهید؟",
             $"Experimental single-area {format}: {composed.Image.PixelWidth} hooks and {composed.Image.PixelHeight} picks. Bit 1 is black. " + (overwriteColumns ? "Signal hooks replace existing columns. " : "") + "Verify the preview, physical wiring and signal polarity with the machine specialist. Continue?");
         if (WeftHasDraft) warning = T("پیش‌نویس پودگذاری اعمال نشده؛ این خروجی از تنظیمات قبلی استفاده می‌کند.\n\n", "The weft draft has not been applied; this export uses previous settings.\n\n") + warning;
-        if (MessageBox.Show(this, warning, Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        if (StudioDialogs.Show(this, warning, Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var dialog = new SaveFileDialog { Filter = $"{format} (*.jc5)|*.jc5", DefaultExt = ".jc5", AddExtension = true, OverwritePrompt = true, FileName = MachineFileNaming.SuggestedName(machineFormatIndex) };
         if (dialog.ShowDialog(this) != true) return;
         if (!MachineFileNaming.ValidDestination(dialog.FileName, machineFormatIndex))
-        { MessageBox.Show(this, T("برای JC6 نام فایل باید شامل عدد ۶ باشد و پسوند آن jc5 بماند؛ مانند design6.jc5.", "For JC6, the name must contain 6 and the extension must be .jc5, e.g. design6.jc5."), Title, MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { StudioDialogs.Show(this, T("برای JC6 نام فایل باید شامل عدد ۶ باشد و پسوند آن jc5 بماند؛ مانند design6.jc5.", "For JC6, the name must contain 6 and the extension must be .jc5, e.g. design6.jc5."), Title, MessageBoxButton.OK, MessageBoxImage.Warning); return; }
         var protectedPaths = new[] { path }.Concat(projectPath is null ? Array.Empty<string>() : new[] { projectPath }).Concat(entries.Select(x => x.PatternPath).OfType<string>()).ToArray();
         SetBusy(true);
         try
@@ -1287,7 +1301,7 @@ public partial class MainWindow : Window
             StatusText.Text = T($"{format} آزمایشی ذخیره شد؛ پیش از تولید آن را مستقل بررسی کنید.", $"Experimental {format} saved; verify independently before production.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException)
-        { MessageBox.Show(this, T("ذخیره فایل ماشین ناموفق بود: ", "Loom file save failed: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        { StudioDialogs.Show(this, T("ذخیره فایل ماشین ناموفق بود: ", "Loom file save failed: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally { SetBusy(false); }
     }
     private async void MachineImport_Click(object sender, RoutedEventArgs e)
@@ -1312,7 +1326,7 @@ public partial class MainWindow : Window
             StatusText.Text = T("JC5 باز شد؛ از مرحله اندازه می‌توانید نقشه را BMP یا TIFF ذخیره کنید. داده‌های غیرتصویری و بیت‌های اضافی حفظ نمی‌شوند.", "JC5 opened; save the hook map as BMP or TIFF from the size stage. Non-image data and padding bits are not preserved.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException or OverflowException)
-        { MessageBox.Show(this, T("خواندن JC5 ممکن نشد: ", "Could not read JC5: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        { StudioDialogs.Show(this, T("خواندن JC5 ممکن نشد: ", "Could not read JC5: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally { SetBusy(false); }
     }
     private void ImageScroll_MouseWheel(object sender, MouseWheelEventArgs e)
@@ -1361,7 +1375,7 @@ public partial class MainWindow : Window
     private async void Report_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session?.Palette is null || SizeDirty || ColorsDirty) return;
-        if (WeftHasDraft && MessageBox.Show(this, T("پیش‌نویس پودگذاری اعمال نشده است. گزارش با تنظیمات اعمال‌شده قبلی ساخته شود؟", "The weft draft is not applied. Generate the report using the previous applied settings?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        if (WeftHasDraft && StudioDialogs.Show(this, T("پیش‌نویس پودگذاری اعمال نشده است. گزارش با تنظیمات اعمال‌شده قبلی ساخته شود؟", "The weft draft is not applied. Generate the report using the previous applied settings?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         var currentSession = session; var setup = ReadMachineSettings();
         SetBusy(true); var reportPages = new List<BitmapSource>();
         try
@@ -1386,7 +1400,7 @@ public partial class MainWindow : Window
             }
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException)
-        { reportPages.Clear(); MessageBox.Show(this, T("ساخت گزارش ممکن نشد: ", "Could not prepare report: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+        { reportPages.Clear(); StudioDialogs.Show(this, T("ساخت گزارش ممکن نشد: ", "Could not prepare report: ") + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally { SetBusy(false); }
         if (reportPages.Count > 0)
         {
@@ -1405,7 +1419,7 @@ public partial class MainWindow : Window
         LanguageButton.Content = english ? "FA" : "EN"; LanguageButton.ToolTip = T("تغییر زبان", "Change language"); AboutButton.ToolTip = T("درباره", "About"); HelpButton.ToolTip = T("راهنمای برنامه (F1)", "Help (F1)"); SaveProjectButton.ToolTip = T("ذخیره پروژه", "Save project"); SaveProjectAsButton.ToolTip = T("ذخیره با نام دیگر", "Save project as"); ThemeButton.ToolTip = T("تغییر تم", "Change theme"); BankButton.ToolTip = T("بانک و طراحی بافت", "Weave bank and editor"); UndoButton.ToolTip = T("بازگشت (Ctrl+Z)", "Undo (Ctrl+Z)"); RedoButton.ToolTip = T("بازانجام (Ctrl+Y)", "Redo (Ctrl+Y)"); ReportButton.ToolTip = T("گزارش PDF و چاپ", "PDF report and print"); InfoButton.Content = T("اطلاعات طرح", "Design info"); InfoButton.ToolTip = T("طراح، کاربرد و توضیحات", "Designer, use and description");
         SimulationStepButton.ToolTip = T("شبیه‌سازی پارچه", "Fabric simulation");
         SimulationWeftsLabel.Text = T("نخ و رنگ هر پود اعمال‌شده", "Yarn and color for each applied weft");
-        SimulationModeLabel.Text = T("حالت نمایش", "Appearance"); SimulationTitle.Text = T("شبیه‌سازی پارچه", "Fabric simulation"); SimulationHint.Text = T("نمای تصویری تقریبی؛ رفتار واقعی پارچه نیست و بر خروجی ماشین اثر ندارد.", "Stylized preview, not a physical simulation; it does not change loom output."); SimulationRenderButton.Content = T("ساخت پیش‌نمایش", "Render preview"); SimulationSaveButton.Content = T("ذخیره تصویر شبیه‌سازی", "Save preview image");
+        SimulationModeLabel.Text = T("حالت نمایش", "Appearance"); SimulationTitle.Text = T("شبیه‌سازی پارچه", "Fabric simulation"); SimulationHint.Text = T("نمای تصویری تقریبی؛ رفتار واقعی پارچه نیست و بر خروجی ماشین اثر ندارد.", "Stylized preview, not a physical simulation; it does not change loom output."); SimulationReferencePreset.Content = T("پیش‌نمایش نمونه: چهارخانه قرمز و سفید", "Load red and ivory reference preset"); SimulationRenderButton.Content = T("ساخت پیش‌نمایش", "Render preview"); SimulationSaveButton.Content = T("ذخیره تصویر شبیه‌سازی", "Save preview image");
         GridToggle.Content = T("شبکه", "Grid"); GridToggle.ToolTip = T("در زوم کم، خطوط اصلی در فاصله نشان‌داده‌شده رسم می‌شوند؛ با زوم بیشتر هر پیکسل را ببینید.", "At low zoom major lines are shown at the displayed interval; zoom in for individual pixels.");
         OpenButton.ToolTip = T("باز کردن پروژه یا فایل", "Open project or image"); SizeStepButton.ToolTip = T("تنظیم اندازه", "Resize"); ColorStepButton.ToolTip = T("مدیریت رنگ", "Color management"); PatternStepButton.ToolTip = T("بافت‌ریزی", "Weave assignment"); SelvedgeStepButton.ToolTip = T("تعریف کناره", "Selvedges"); WeftStepButton.ToolTip = T("تعریف پودگذاری", "Weft / box motion"); FloatStepButton.ToolTip = T("فلوت‌گیری", "Float check"); AnalysisStepButton.ToolTip = T("تحلیل", "Analysis"); MachineStepButton.ToolTip = T("خروجی ماشین", "Machine output");
         AnalysisTitle.Text = T("تحلیل تارها", "Warp analysis"); AnalysisHint.Text = T("درصدها شاخص نسبی‌اند، نه اندازه‌گیری فیزیکی.", "Percentages are relative indicators, not physical measurements."); RunAnalysisButton.Content = T("محاسبه تحلیل", "Calculate analysis"); AnalysisLegendTitle.Text = T("راهنمای رنگ‌ها", "Color legend"); LegendExcluded.Text = T("خارج از بافت", "Outside fabric");

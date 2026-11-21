@@ -14,26 +14,57 @@ export JACQUARD_TEST_RELEASES=$(mktemp -d)
 export JACQUARD_TEST_KEY="$JACQUARD_TEST_RELEASES/license.pem"
 openssl ecparam -name prime256v1 -genkey -noout -out "$JACQUARD_TEST_KEY"
 openssl pkey -in "$JACQUARD_TEST_KEY" -pubout -out "$JACQUARD_TEST_RELEASES/public.pem"
-trap 'if [[ -n "${server:-}" ]]; then kill "$server" 2>/dev/null || true; fi; rm -f "$config"; rm -rf "$JACQUARD_TEST_RELEASES"' EXIT
+cleanup_files=()
+trap 'if [[ -n "${server:-}" ]]; then kill "$server" 2>/dev/null || true; fi; rm -f "$config" "${cleanup_files[@]}"; rm -rf "$JACQUARD_TEST_RELEASES"' EXIT
 cat > "$config" <<'PHP'
 <?php return ['db_dsn'=>'mysql:host=127.0.0.1;dbname=jacquard_test;charset=utf8mb4','db_user'=>'root','db_password'=>'test-only-password','admin_username'=>'test-admin','admin_hash'=>password_hash('test-only-admin-password', PASSWORD_DEFAULT),'download_dir'=>getenv('JACQUARD_TEST_RELEASES'),'base_path'=>'','allow_local_http'=>true,'license_private_key'=>getenv('JACQUARD_TEST_KEY')];
 PHP
 export JACQUARD_CONFIG="$config"
 php -S 127.0.0.1:18999 -t website/public >/tmp/jacquard-php.log 2>&1 & server=$!
 sleep 2
-curl -fsS http://127.0.0.1:18999/ | grep -q 'تار و پود'
+home=$(curl -fsS http://127.0.0.1:18999/)
+[[ "$home" == *'تار و پود'* && "$home" == *'href="download-info.php"'* ]]
 request='{"installationId":"3b01a77c-85a6-491e-94d8-28c4ec5e7138","secret":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","device":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","licenseProtocol":2,"appVersion":"test","osVersion":"Windows","cpuModel":"CPU","ramBytes":1024,"machineName":"PC","customerName":"First User","phone":"123","city":"Utrecht"}'
 first=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
 [[ "$first" == *'"status":"pending"'* ]]
 [[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT customer_name FROM devices') == 'First User' ]]
 export REQUEST_JSON="$request"
+legacy_report=$(python3 - <<'PYTEST'
+import os,json
+r=json.loads(os.environ['REQUEST_JSON']);r['reportOnly']=True;print(json.dumps(r))
+PYTEST
+)
+report_code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data "$legacy_report" http://127.0.0.1:18999/api.php)
+[[ "$report_code" == 400 && $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events') == 1 ]]
+report_request=$(python3 - <<'PYTEST'
+import os,json
+r=json.loads(os.environ['REQUEST_JSON']);r.update(reportOnly=True,licenseProtocol=3,customerName='Report must not overwrite',phone='999',city='Nowhere',osVersion='Report OS',cpuModel='Report CPU',machineName='Report PC');print(json.dumps(r))
+PYTEST
+)
+report_reply=$(curl -fsS -H 'Content-Type: application/json' --data "$report_request" http://127.0.0.1:18999/api.php)
+[[ "$report_reply" == *'"status":"reported"'* && $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM devices') == 1 && $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT customer_name FROM devices') == 'First User' && $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT cpu_model FROM installations') == 'Report CPU' ]]
+[[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events') == 2 ]]
+report_uninstalled=$(python3 - <<'PYTEST'
+import os,json
+r=json.loads(os.environ['REQUEST_JSON']);r.update(installationId='f6bc3945-7683-4da5-b3c8-4d6e69d845f8',secret='b'*64,reportOnly=True,licenseProtocol=3);print(json.dumps(r))
+PYTEST
+)
+uninstalled_report=$(curl -fsS -H 'Content-Type: application/json' --data "$report_uninstalled" http://127.0.0.1:18999/api.php)
+[[ "$uninstalled_report" == *'"status":"not_registered"'* && $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM installations') == 1 && $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events') == 2 ]]
+unknown_report=$(python3 - <<'PYTEST'
+import os,json
+r=json.loads(os.environ['REQUEST_JSON']);r.update(installationId='f6bc3945-7683-4da5-b3c8-4d6e69d845f8',secret='b'*64,device='B'*64,reportOnly=True,licenseProtocol=3);print(json.dumps(r))
+PYTEST
+)
+unknown_report_reply=$(curl -fsS -H 'Content-Type: application/json' --data "$unknown_report" http://127.0.0.1:18999/api.php)
+[[ "$unknown_report_reply" == *'"status":"not_registered"'* && $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM devices') == 1 ]]
 lookup_pending=$(python3 - <<'PYTEST'
 import os,json
 r=json.loads(os.environ['REQUEST_JSON']);r['checkOnly']=True;print(json.dumps(r))
 PYTEST
 )
 pending_lookup=$(curl -fsS -H 'Content-Type: application/json' --data "$lookup_pending" http://127.0.0.1:18999/api.php)
-[[ "$pending_lookup" == *'"status":"not_licensed"'* && $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events') == 1 ]]
+[[ "$pending_lookup" == *'"status":"not_licensed"'* && $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events') == 2 ]]
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET status='blocked'"
 second=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
 [[ "$second" == *'"status":"blocked"'* ]]
@@ -67,7 +98,7 @@ p=r['token'].split('.')[1];c=json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%
 assert c['device']=='A'*64 and c['licenseId']=='3b01a77c-85a6-491e-94d8-28c4ec5e7138'
 PYTEST
 [[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT customer_name FROM devices') == 'First User' ]]
-[[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events') == 3 ]]
+[[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events') == 4 ]]
 unknown_lookup=$(python3 - <<'PYTEST'
 import os,json
 r=json.loads(os.environ['REQUEST_JSON']);r.update(installationId='f6bc3945-7683-4da5-b3c8-4d6e69d845f8',secret='b'*64,device='B'*64,checkOnly=True);print(json.dumps(r))
@@ -80,7 +111,7 @@ wrong=${request/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data "$wrong" http://127.0.0.1:18999/api.php)
 [[ "$code" == 403 ]]
 count=$(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM execution_events')
-[[ "$count" == 3 ]]
+[[ "$count" == 4 ]]
 # The device expiry limits the signed lease, and reinstallation inherits device approval.
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET expires_at=UTC_TIMESTAMP()+INTERVAL 1 HOUR"
 short=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
@@ -104,12 +135,21 @@ legacy_reply=$(curl -fsS -H 'Content-Type: application/json' --data "$legacy" ht
 
 [[ $(mysql -h 127.0.0.1 -uroot -ptest-only-password -N -B jacquard_test -e 'SELECT COUNT(*) FROM devices') == 1 ]]
 
-cookies=$(mktemp); html=$(mktemp); fake=$(mktemp); downloaded=$(mktemp); version_file=$(mktemp)
+cookies=$(mktemp); html=$(mktemp); fake=$(mktemp); downloaded=$(mktemp); version_file=$(mktemp); headers=$(mktemp)
+cleanup_files=("$cookies" "$html" "$fake" "$downloaded" "$version_file" "$headers")
+curl -fsS http://127.0.0.1:18999/download-info.php > "$html"
+grep -q 'فایل نصب هنوز آماده نیست' "$html"
 curl -fsS -c "$cookies" http://127.0.0.1:18999/admin.php > "$html"
 csrf=$(sed -n 's/.*name="csrf" value="\([a-f0-9]*\)".*/\1/p' "$html" | head -1)
 [[ ${#csrf} == 64 ]]
+curl -fsS -b "$cookies" http://127.0.0.1:18999/releases.php > "$html"
+grep -q 'ورود مدیر لازم است' "$html"
 curl -fsS -b "$cookies" -c "$cookies" -X POST -d "csrf=$csrf&action=login&username=test-admin&password=test-only-admin-password" http://127.0.0.1:18999/admin.php -o /dev/null
 curl -fsS -b "$cookies" http://127.0.0.1:18999/admin.php > "$html"
+grep -q 'مدیریت انتشار' "$html"
+! grep -q 'انتشار نسخهٔ تازه' "$html"
+! grep -q 'MD5 فایل نصب' "$html"
+curl -fsS -b "$cookies" http://127.0.0.1:18999/releases.php > "$html"
 grep -q 'انتشار نسخهٔ تازه' "$html";grep -q 'MD5 فایل نصب' "$html"
 csrf=$(sed -n 's/.*name="csrf" value="\([a-f0-9]*\)".*/\1/p' "$html" | head -1)
 device=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
@@ -137,7 +177,8 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' --data "csrf=$csrf&action=delete_
 { printf MZ; head -c 2048 /dev/zero; } > "$fake"
 printf '044.0.0.0-a2\n' > "$version_file"
 md5=$(md5sum "$fake" | awk '{print $1}')
-curl -fsS -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=setup.exe" -F "version_file=@$version_file;filename=version.txt" --form-string "md5=$md5" http://127.0.0.1:18999/admin.php > "$html"
+sha256=$(sha256sum "$fake" | awk '{print $1}')
+curl -fsSL -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=setup.exe" -F "version_file=@$version_file;filename=version.txt" --form-string "md5=$md5" http://127.0.0.1:18999/releases.php > "$html"
 grep -q 'نسخهٔ 044.0.0.0-a2 با MD5' "$html"
 manifest=$(curl -fsS 'http://127.0.0.1:18999/download.php?manifest=1')
 export TEST_RELEASE_MANIFEST="$manifest" TEST_INSTALLER="$fake"
@@ -145,17 +186,27 @@ python3 - <<'PYTEST'
 import hashlib,json,os,pathlib
 m=json.loads(os.environ['TEST_RELEASE_MANIFEST']);data=pathlib.Path(os.environ['TEST_INSTALLER']).read_bytes()
 assert m['product']=='JacquardStudio' and m['version']=='044.0.0.0-a2'
+assert m['filename']=='JacquardStudio-Setup-044.0.0.0-a2.exe'
 assert m['md5']==hashlib.md5(data).hexdigest() and m['sha256']==hashlib.sha256(data).hexdigest() and m['size']==len(data)
+assert m['publishedAt'] and m['download']=='download.php'
 PYTEST
-curl -fsS http://127.0.0.1:18999/download.php > "$downloaded"
+curl -fsS http://127.0.0.1:18999/download-info.php > "$html"
+grep -q 'JacquardStudio-Setup-044.0.0.0-a2.exe' "$html"
+grep -q 'آخرین به‌روزرسانی' "$html"
+grep -q '044.0.0.0-a2' "$html"
+grep -q "$md5" "$html"
+grep -q "$sha256" "$html"
+grep -q 'حجم فایل' "$html"
+curl -fsS -D "$headers" -o "$downloaded" http://127.0.0.1:18999/download.php
 cmp "$fake" "$downloaded"
-curl -fsS -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=setup.exe" -F "version_file=@$version_file;filename=version.txt" --form-string 'md5=00000000000000000000000000000000' http://127.0.0.1:18999/admin.php > "$html"
+grep -Fiq 'Content-Disposition: attachment; filename="JacquardStudio-Setup-044.0.0.0-a2.exe"' "$headers"
+curl -fsS -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=setup.exe" -F "version_file=@$version_file;filename=version.txt" --form-string 'md5=00000000000000000000000000000000' http://127.0.0.1:18999/releases.php > "$html"
 grep -q 'MD5 واردشده با فایل نصب مطابقت ندارد' "$html"
 curl -fsS 'http://127.0.0.1:18999/download.php?manifest=1' > "$html"
 grep -q '044.0.0.0-a2' "$html"
 printf 'not an installer' > "$fake";head -c 2048 /dev/zero >> "$fake"
 md5=$(md5sum "$fake" | awk '{print $1}')
-curl -fsS -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=evil.php" -F "version_file=@$version_file;filename=version.txt" --form-string "md5=$md5" http://127.0.0.1:18999/admin.php > "$html"
+curl -fsS -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=evil.php" -F "version_file=@$version_file;filename=version.txt" --form-string "md5=$md5" http://127.0.0.1:18999/releases.php > "$html"
 grep -q 'فایل انتخاب‌شده اجرایی ویندوز نیست' "$html"
 curl -fsS http://127.0.0.1:18999/download.php > "$fake";cmp "$fake" "$downloaded"
 curl -fsS -b "$cookies" "http://127.0.0.1:18999/admin.php?device=$device&delete=1" > "$html";grep -q 'تأیید می‌کنید' "$html"

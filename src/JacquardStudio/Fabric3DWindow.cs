@@ -64,7 +64,7 @@ public sealed class Fabric3DWindow : Window
             capture.Click += (_, _) =>
             {
                 int cw = Math.Max(1, (int)Math.Ceiling(viewport.ActualWidth)), ch = Math.Max(1, (int)Math.Ceiling(viewport.ActualHeight));
-                if ((long)cw * ch > 4_000_000) { MessageBox.Show(this, T("پنجره را کوچک‌تر کنید.", "Make the window smaller.")); return; }
+                if ((long)cw * ch > 4_000_000) { StudioDialogs.Show(this, T("پنجره را کوچک‌تر کنید.", "Make the window smaller.")); return; }
                 var bitmap = new RenderTargetBitmap(cw, ch, 96, 96, PixelFormats.Pbgra32); bitmap.Render(viewport); bitmap.Freeze(); Captured = bitmap;
                 static string Hex(Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
                 var savedWefts = (settings.Wefts ?? Array.Empty<SimulatedYarn>()).ToDictionary(v => v.Id, StringComparer.Ordinal);
@@ -105,7 +105,7 @@ public sealed class Fabric3DWindow : Window
                 double ws = YarnGeometry.SpacingMm(Parse(warpDensity)), fs = YarnGeometry.SpacingMm(Parse(weftDensity)); var wc = FabricSimulation.ParseColor(warpColor.Value); var cs = colorInputs.Select(x => FabricSimulation.ParseColor(x.Value)).ToArray();
                 warpDiameter = wd; weftDiameter = fd; warpSpacing = ws; weftSpacing = fs; warp = wc; colors = cs; RenderPart();
             }
-            catch (ArgumentException ex) { MessageBox.Show(this, T("تنظیمات معتبر نیست: ", "Invalid settings: ") + ex.Message, Title); }
+            catch (ArgumentException ex) { StudioDialogs.Show(this, T("تنظیمات معتبر نیست: ", "Invalid settings: ") + ex.Message, Title); }
         };
         left.Click += (_, _) => { offsetX = Math.Max(0, offsetX - MaxThreads); RenderPart(); }; right.Click += (_, _) => { offsetX += MaxThreads; RenderPart(); };
         up.Click += (_, _) => { offsetY = Math.Max(0, offsetY - MaxThreads); RenderPart(); }; down.Click += (_, _) => { offsetY += MaxThreads; RenderPart(); };

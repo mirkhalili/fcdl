@@ -15,12 +15,13 @@
 | وب‌سایت و پنل مدیریت | [بستهٔ سایت (ZIP)](https://github.com/mirkhalili/fcdl/releases/latest/download/JacquardStudio-website-updated.zip) |
 | ابزار صدور لایسنس | [License Issuer برای ویندوز](https://github.com/mirkhalili/fcdl/releases/latest/download/Jacquard-LicenseIssuer.exe) |
 | لوگوی نهایی برنامه | [PNG شفاف با وضوح اصلی](https://github.com/mirkhalili/fcdl/releases/latest/download/sam-emblem-high-resolution.png) |
+| پیش‌نمایش رابط WPF-UI | [صفحهٔ انتشار v045.0.1.1-a2](https://github.com/mirkhalili/fcdl/releases/tag/v045.0.1.1-a2) · [دانلود مستقیم نصب‌کننده](https://github.com/mirkhalili/fcdl/releases/download/v045.0.1.1-a2/JacquardStudio-Setup.exe) |
 
 برای دریافت همهٔ فایل‌ها و نسخه‌های پیشین، به صفحهٔ [Releases](https://github.com/mirkhalili/fcdl/releases) بروید. آرشیو کد منبع نیز در هر انتشار GitHub موجود است. نصب‌کنندهٔ برنامه و ابزار لایسنس فقط پس از موفقیت ساخت و آزمون خودکار منتشر می‌شوند؛ انتشار وب‌سایت هنوز نیازمند تنظیم هاست و کلیدهای خصوصی خودتان است.
 
 این پروژه برای طراحی یک نرم‌افزار دسکتاپ ویندوزی با رابط کاربری حرفه‌ای، فارسی و انگلیسی آغاز شده است. هدف نهایی آن، فراهم‌کردن مسیر تبدیل دوطرفه بین تصاویر **TIFF / BMP** و فایل‌های مورد استفاده کنترلرهای ژاکارد، همراه با بررسی تنظیمات، پیش‌نمایش و گزارش تبدیل است.
 
-> **وضعیت پروژه: مرحله بیست‌ویکم توسعه؛ نسخه آزمایشی.** رندر بدون هموارسازی PDF/AI، کاهش رنگ بر پایه فراوانی، نمایش موضعی رنگ و بهبود ورود PNG افزوده شده‌اند؛ نگاشت فیزیکی و سازگاری صنعتی هنوز تأیید نشده‌اند.
+> **آخرین انتشار پایدار: [`044.0.0.0-a4`](https://github.com/mirkhalili/fcdl/releases/tag/v044.0.0.0-a4) (آزمایشی).** پیش‌نمایش WPF-UI نسخهٔ [`045.0.1.1-a2`](https://github.com/mirkhalili/fcdl/releases/tag/v045.0.1.1-a2) شامل بهبود محیط ماژولی و چیدمان کارت‌هاست؛ ساخت Windows، آزمون Smoke و آزمون نصب/ارتقای نصب‌کننده در CI موفق شدند. هیچ‌یک از این نسخه‌ها برای سازگاری صنعتی تأیید نشده‌اند و انتشار وب‌سایت روی هاست همچنان جداگانه انجام می‌شود. شرح تغییرات و محدودیت‌ها در [یادداشت تغییرات فضای کار و سایت](Docs/WORKSPACE-SITE-UPDATE.md) آمده است.
 
 ## مسئله‌ای که حل می‌کنیم
 
@@ -93,6 +94,7 @@ JC4، JC5 و JC6 نام کنترلر هستند و لزوماً پسوند فا�
 | [مرحله شانزدهم توسعه](Docs/24-stage-16.md) | فلوت خودکار، کنترل پیش‌نمایش و نوار حرارتی |
 | [مرحله بیست‌ودوم توسعه](Docs/30-stage-22.md) | بافت‌های استاندارد و سه حالت شبیه‌سازی |
 | [مرحله بیست‌وسوم توسعه](Docs/31-stage-23.md) | شبیه‌سازی هندسی نخ و انتخاب رنگ تصویری |
+| [تغییرات فضای کار و سایت](Docs/WORKSPACE-SITE-UPDATE.md) | وضعیت رابط، بارگذاری تصاویر، رضایت‌های فعال‌سازی، جداسازی انتشار و آزمون‌های لازم |
 | [استاندارد QAVNS](Docs/QAVNS.md) | شیوه شماره‌گذاری نسخه‌ها |
 | [چک‌لیست اطلاعات مورد نیاز](Docs/08-discovery-checklist.md) | اطلاعات دستگاه و نمونه‌های لازم برای شروع |
 
@@ -102,11 +104,15 @@ JC4، JC5 و JC6 نام کنترلر هستند و لزوماً پسوند فا�
 
 ## راه‌اندازی و مشارکت
 
-کد و دستور ساخت در [مستند مرحله اول](Docs/09-stage-01.md) و قابلیت‌های فعلی در [مستند مرحله شانزدهم](Docs/24-stage-16.md) آمده‌اند. بسته آزمایشی ویندوز، پس از موفقیت workflow، در بخش Actions همان اجرای موفق قابل دریافت است. برای تبدیل صنعتی هنوز نباید از این نسخه استفاده شود. مجوز پروژه هنوز تعیین نشده است.
+کد و دستور ساخت در [مستند مرحله اول](Docs/09-stage-01.md) و بخشی از قابلیت‌های محیط ماژولی در [یادداشت مرحله ۳۱](Docs/39-stage-31.md) آمده‌اند. نصب‌کنندهٔ ویندوز نسخهٔ `044.0.0.0-a4` پس از موفقیت ساخت، آزمون Smoke و بررسی ارتقای نصب، در [GitHub Releases](https://github.com/mirkhalili/fcdl/releases/tag/v044.0.0.0-a4) منتشر شده است؛ آرشیو workflow نیز در بخش Actions در دسترس می‌ماند. برای تبدیل صنعتی هنوز نباید از این نسخه استفاده شود. مجوز پروژه هنوز تعیین نشده است.
 
 برای انتخاب اولین مسیر صنعتی، به **مدل دقیق کنترلر و نسخه آن** و در صورت امکان **فایل تصویر و فایل ماشین متناظر که قبلاً روی همان دستگاه پذیرفته شده است** نیاز داریم. نمونه‌های محرمانه بدون اجازه در مخزن قرار نمی‌گیرند.
 
-### Latest preview
+### نسخهٔ کاری و آخرین انتشار
+
+نسخهٔ کاری فعلی در `version.txt` برابر `045.0.1.1-a2` است و پیش‌انتشار WPF-UI آن در [صفحهٔ انتشار GitHub](https://github.com/mirkhalili/fcdl/releases/tag/v045.0.1.1-a2) قرار دارد. ساخت Windows، آزمون Smoke، انتشار self-contained و آزمون نصب/ارتقای نصب‌کننده در CI موفق شدند. این نسخه آزمایشی است و برای تولید صنعتی تأیید نشده است؛ آخرین انتشار پایدار همچنان [`044.0.0.0-a4`](https://github.com/mirkhalili/fcdl/releases/tag/v044.0.0.0-a4) است.
+
+### یادداشت‌های پیش‌نمایش تاریخی
 
 Version 024.10.0.1-a1 adds a sample-based experimental Bonas JC5 profile, an adaptive indexed 8-bit initial palette (up to 256 colors), soft normal and yarn-fiber fabric previews, and paginated yarn/color reports. The Bonas profile is verified against one provided EAT OpenWeave sample only; verify the file and hook polarity on the intended controller before production. See [stage 24 notes](Docs/32-stage-24.md).
 

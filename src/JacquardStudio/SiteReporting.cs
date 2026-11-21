@@ -13,7 +13,7 @@ public static class SiteReporting
     private static readonly Uri Endpoint=new("https://www.mirkhalili.com/app/api.php");
     private static readonly HttpClient Client=new(new HttpClientHandler { AllowAutoRedirect=false }) {Timeout=TimeSpan.FromSeconds(12),MaxResponseContentBufferSize=16384};
     private sealed record Credentials(string InstallationId,string Secret,string? Device=null);
-    private sealed record Report(string InstallationId,string Secret,string Device,string AppVersion,string OsVersion,string CpuModel,long RamBytes,string MachineName,string CustomerName,string Phone,string City,string? ManualToken,int LicenseProtocol,bool CheckOnly);
+    private sealed record Report(string InstallationId,string Secret,string Device,string AppVersion,string OsVersion,string CpuModel,long RamBytes,string MachineName,string CustomerName,string Phone,string City,string? ManualToken,int LicenseProtocol,bool CheckOnly,bool ReportOnly);
     public sealed record Contact(string CustomerName,string Phone,string City);
     public sealed record SiteReply(string? Status,string? Token,string? ActivationCode);
     private static readonly JsonSerializerOptions JsonOptions=new(JsonSerializerDefaults.Web);
@@ -48,7 +48,7 @@ public static class SiteReporting
         path ??= ContactPath;if(!File.Exists(path))return null;if(new FileInfo(path).Length>8192)throw new InvalidDataException("اطلاعات تماس نامعتبر است.");
         var plain=ProtectedData.Unprotect(File.ReadAllBytes(path),null,DataProtectionScope.CurrentUser);try{return JsonSerializer.Deserialize<Contact>(plain);}finally{CryptographicOperations.ZeroMemory(plain);}
     }
-    private static Report Collect(Contact? contact,string? manualToken,bool checkOnly)
+    private static Report Collect(Contact? contact,string? manualToken,bool checkOnly,bool reportOnly)
     {
         var device=HardwareIdentity.ReadDeviceId();var identity=Identity(device);string cpu="",os="",machine="";long memory=0;
         if(!checkOnly)
@@ -59,20 +59,26 @@ public static class SiteReporting
             using(var search=new ManagementObjectSearcher("SELECT TotalPhysicalMemory FROM Win32_ComputerSystem"))
             using(var results=search.Get()) foreach(ManagementObject item in results) using(item) {if(item["TotalPhysicalMemory"] is not null)memory=Convert.ToInt64(item["TotalPhysicalMemory"]);break;}
         }
-        return new(identity.InstallationId,identity.Secret,device,Clean(AppVersion.Display,50),os,cpu,memory,machine,checkOnly?"":Clean(contact?.CustomerName,120),checkOnly?"":Clean(contact?.Phone,60),checkOnly?"":Clean(contact?.City,100),checkOnly?null:manualToken,2,checkOnly);
+        // Protocol 3 marks report-only requests so older sites reject them instead of registering.
+        return new(identity.InstallationId,identity.Secret,device,Clean(AppVersion.Display,50),os,cpu,memory,machine,checkOnly?"":Clean(contact?.CustomerName,120),checkOnly?"":Clean(contact?.Phone,60),checkOnly?"":Clean(contact?.City,100),checkOnly || reportOnly ? null : manualToken,reportOnly?3:2,checkOnly,reportOnly);
     }
-    public static async Task<SiteReply> RequestAsync(Contact? contact=null,string? manualToken=null,bool checkOnly=false)
+    public static async Task<SiteReply> RequestAsync(Contact? contact=null,string? manualToken=null,bool checkOnly=false,bool reportOnly=false)
     {
-        var data=await Task.Run(()=>Collect(contact,manualToken,checkOnly));
+        if(checkOnly && reportOnly)throw new ArgumentException("A request cannot be both a minimal lookup and a full report.");
+        var data=await Task.Run(()=>Collect(contact,manualToken,checkOnly,reportOnly));
         using var response=await Client.PostAsJsonAsync(Endpoint,data,JsonOptions);response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<SiteReply>(JsonOptions) ?? throw new InvalidDataException("پاسخ سایت نامعتبر است.");
     }
     public static async Task<string> SendAsync()
     {
-        var reply=await RequestAsync();return reply.Status switch {"pending"=>"درخواست در انتظار بررسی است.","approved"=>reply.Token is null ? "درخواست تأیید شده اما کلید صدور روی سایت تنظیم نشده است." : "درخواست تأیید شده است. برای فعال‌سازی از پنجره ورود به برنامه استفاده کنید.","blocked"=>"درخواست در پنل مسدود شده است.","expired"=>"اعتبار مجوز به پایان رسیده است.",_=>"پاسخ سایت نامعتبر است."};
+        var reply=await RequestAsync(LoadContact(),reportOnly:true);return reply.Status switch {"reported"=>"گزارش اجرا ارسال شد.","not_registered"=>"گزارش برای نصب ثبت‌نشده ذخیره نشد.","blocked"=>"گزارش برای دستگاه مسدودشده ذخیره نشد.","expired"=>"گزارش برای مجوز منقضی‌شده ذخیره نشد.",_=>"گزارش اجرا ارسال نشد."};
     }
     public static async Task SendOnStartupAsync()
     {
-        try {await SendAsync();}catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or HttpRequestException or TaskCanceledException or ManagementException or InvalidOperationException or ArgumentException or CryptographicException or JsonException or System.Runtime.InteropServices.COMException) { /* Reporting is best-effort, never blocks startup. */ }
+        try { await SendAsync(); }
+        catch (Exception)
+        {
+            // This optional report must never prevent an otherwise valid session from opening.
+        }
     }
 }
