@@ -104,19 +104,19 @@ public static class ReleaseUpdater
             if (release is null)
             {
                 if (manual && owner.IsVisible)
-                    MessageBox.Show(owner, "هنوز نسخه‌ای برای به‌روزرسانی در سایت منتشر نشده است.", "بررسی به‌روزرسانی", MessageBoxButton.OK, MessageBoxImage.Information);
+                    StudioDialogs.Show(owner, "هنوز نسخه‌ای برای به‌روزرسانی در سایت منتشر نشده است.", "بررسی به‌روزرسانی", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
             if (CompareVersions(release.Version!, AppVersion.Display) <= 0)
             {
                 if (manual && owner.IsVisible)
-                    MessageBox.Show(owner, $"نسخهٔ نصب‌شده ({AppVersion.Display}) به‌روز است.", "بررسی به‌روزرسانی", MessageBoxButton.OK, MessageBoxImage.Information);
+                    StudioNotifications.Show(owner, "به‌روزرسانی", $"نسخهٔ نصب‌شده ({AppVersion.Display}) به‌روز است.", Wpf.Ui.Controls.ControlAppearance.Success);
                 return;
             }
 
             string prompt = $"نسخهٔ تازهٔ {release.Version} در دسترس است؛ نسخهٔ نصب‌شده: {AppVersion.Display}.\n\nآیا فایل نصب را دریافت و اجرا می‌کنید؟ پس از تأیید، اندازه و MD5 و SHA-256 فایل بررسی می‌شود. این بررسی از همان وب‌سایت می‌آید و جایگزین امضای دیجیتال ناشر نیست.";
-            if (!owner.IsVisible || MessageBox.Show(owner, prompt, "به‌روزرسانی Jacquard Studio", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
+            if (!owner.IsVisible || StudioDialogs.Show(owner, prompt, "به‌روزرسانی Jacquard Studio", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
                 return;
             updateAccepted = true;
 
@@ -131,7 +131,7 @@ public static class ReleaseUpdater
         catch (Exception)
         {
             if (owner.IsVisible)
-                MessageBox.Show(owner, "بررسی یا آماده‌سازی به‌روزرسانی انجام نشد. اتصال اینترنت و انتشار فایل را بررسی و دوباره تلاش کنید.", "خطای به‌روزرسانی", MessageBoxButton.OK, MessageBoxImage.Warning);
+                StudioDialogs.Show(owner, "بررسی یا آماده‌سازی به‌روزرسانی انجام نشد. اتصال اینترنت و انتشار فایل را بررسی و دوباره تلاش کنید.", "خطای به‌روزرسانی", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 

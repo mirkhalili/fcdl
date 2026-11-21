@@ -36,9 +36,9 @@ public sealed class ReportWindow : Window
     {
         var dialog = new SaveFileDialog { Filter = "PDF (*.pdf)|*.pdf", DefaultExt = ".pdf", AddExtension = true, OverwritePrompt = true, FileName = suggestedName };
         if (dialog.ShowDialog(this) != true) return;
-        try { DesignReport.SavePdf(reports, dialog.FileName, protectedPaths); MessageBox.Show(this, english ? "PDF report saved." : "گزارش PDF ذخیره شد.", Title); }
+        try { DesignReport.SavePdf(reports, dialog.FileName, protectedPaths); StudioDialogs.Show(this, english ? "PDF report saved." : "گزارش PDF ذخیره شد.", Title); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or InvalidOperationException)
-        { MessageBox.Show(this, (english ? "Could not save report: " : "ذخیره گزارش ممکن نشد: ") + ex.Message, Title); }
+        { StudioDialogs.Show(this, (english ? "Could not save report: " : "ذخیره گزارش ممکن نشد: ") + ex.Message, Title); }
     }
     private void Print_Click(object sender, RoutedEventArgs e)
     {
@@ -56,6 +56,6 @@ public sealed class ReportWindow : Window
             dialog.PrintDocument(document.DocumentPaginator, english ? "Jacquard design report" : "گزارش طرح ژاکارد");
         }
         catch (Exception ex) when (ex is System.Printing.PrintSystemException or IOException or InvalidOperationException or ArgumentException)
-        { MessageBox.Show(this, (english ? "Could not print: " : "چاپ ممکن نشد: ") + ex.Message, Title); }
+        { StudioDialogs.Show(this, (english ? "Could not print: " : "چاپ ممکن نشد: ") + ex.Message, Title); }
     }
 }

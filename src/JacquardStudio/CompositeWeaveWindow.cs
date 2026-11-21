@@ -64,7 +64,7 @@ public sealed class CompositeWeaveWindow : Window
         var footerFrame = Panel(footer); footerFrame.Margin = new Thickness(0, 10, 0, 0); Grid.SetRow(footerFrame, 2); right.Children.Add(footerFrame);
         editor.Changed += (_, _) => { editor.SizeForScrolling(); if (!updating && valid) { var split = CompositeWeave.Split(editor.Snapshot(), parts.Length); for (int i = 0; i < parts.Length; i++) parts[i] = split[i]; UpdatePreviews(); changed = true; } };
         parts = new WeavePattern?[2]; names = new string[2]; colors = DefaultColors(2); editor.SetRowColors(colors); BuildRows(); editor.SizeForScrolling(); Status();
-        Closing += (_, e) => { if (changed && SavedItem is null && MessageBox.Show(this, T("تغییرات ذخیره نشده‌اند. پنجره بسته شود؟", "Discard unsaved composite changes?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) e.Cancel = true; };
+        Closing += (_, e) => { if (changed && SavedItem is null && StudioDialogs.Show(this, T("تغییرات ذخیره نشده‌اند. پنجره بسته شود؟", "Discard unsaved composite changes?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) e.Cancel = true; };
     }
     private static Button Button(string text, RoutedEventHandler handler) { var b = new Button { Content = text, Margin = new Thickness(4), Padding = new Thickness(8, 4, 8, 4) }; b.Click += handler; return b; }
     private void Status(string? error = null)
@@ -75,9 +75,9 @@ public sealed class CompositeWeaveWindow : Window
     private bool Count(out int count)
     {
         if (NumberInput.TryInt(countBox.Text, out count) && count is >= 1 and <= CompositeWeave.MaxWefts) return true;
-        MessageBox.Show(this, T("تعداد پود باید بین ۱ و ۲۵۶ باشد.", "Weft count must be between 1 and 256."), Title); return false;
+        StudioDialogs.Show(this, T("تعداد پود باید بین ۱ و ۲۵۶ باشد.", "Weft count must be between 1 and 256."), Title); return false;
     }
-    private bool ConfirmReplace() => !changed || MessageBox.Show(this, T("طرح فعلی جایگزین شود؟", "Replace the current unsaved design?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+    private bool ConfirmReplace() => !changed || StudioDialogs.Show(this, T("طرح فعلی جایگزین شود؟", "Replace the current unsaved design?"), Title, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
     private void SetCount()
     {
         if (!Count(out int count) || count == parts.Length || !ConfirmReplace()) return;
@@ -86,7 +86,7 @@ public sealed class CompositeWeaveWindow : Window
     private void SplitSelected()
     {
         if (!Count(out int count) || source.SelectedItem is not BankItem item) return;
-        if (item.Pattern.Height < count || item.Pattern.Height % count != 0) { MessageBox.Show(this, T("تجزیه ممکن نیست: ارتفاع بافت باید مضرب تعداد پود باشد.", "Cannot split: the weave height must be a multiple of the weft count."), Title); return; }
+        if (item.Pattern.Height < count || item.Pattern.Height % count != 0) { StudioDialogs.Show(this, T("تجزیه ممکن نیست: ارتفاع بافت باید مضرب تعداد پود باشد.", "Cannot split: the weave height must be a multiple of the weft count."), Title); return; }
         try
         {
             var split = CompositeWeave.Split(item.Pattern, count);
@@ -94,7 +94,7 @@ public sealed class CompositeWeaveWindow : Window
             parts = split.Cast<WeavePattern?>().ToArray(); names = Enumerable.Range(1, count).Select(i => $"{item.Name} — {i}").ToArray(); colors = item.WeftColors is { Length: > 0 } savedColors && savedColors.Length == count ? (string[])savedColors.Clone() : DefaultColors(count); editor.SetRowColors(colors);
             BuildRows(); Recombine(); changed = true;
         }
-        catch (ArgumentException ex) { MessageBox.Show(this, T("تجزیه ممکن نیست: ", "Cannot split: ") + ex.Message, Title); }
+        catch (ArgumentException ex) { StudioDialogs.Show(this, T("تجزیه ممکن نیست: ", "Cannot split: ") + ex.Message, Title); }
     }
     private static BitmapSource ColoredPreview(WeavePattern pattern, string color)
     {
@@ -132,14 +132,14 @@ public sealed class CompositeWeaveWindow : Window
     }
     private void EditPart(int index, WeavePattern pattern)
     {
-        if (pattern.Width > WeaveEditor.MaxSide || pattern.Height > WeaveEditor.MaxSide) { MessageBox.Show(this, T("هر بعد ویرایشگر حداکثر ۴۰۹۶ خانه است.", "Editor dimensions are limited to 4096 cells."), Title); return; }
+        if (pattern.Width > WeaveEditor.MaxSide || pattern.Height > WeaveEditor.MaxSide) { StudioDialogs.Show(this, T("هر بعد ویرایشگر حداکثر ۴۰۹۶ خانه است.", "Editor dimensions are limited to 4096 cells."), Title); return; }
         var dialog = new Window { Owner = this, Title = T($"ویرایش پود {index + 1}", $"Edit weft {index + 1}"), Width = 720, Height = 650, WindowStartupLocation = WindowStartupLocation.CenterOwner, FlowDirection = FlowDirection };
         var root = new DockPanel { Margin = new Thickness(10) }; dialog.Content = root;
         var bar = new WrapPanel(); DockPanel.SetDock(bar, Dock.Top); root.Children.Add(bar);
         var width = new TextBox { Width = 60, Text = pattern.Width.ToString(), FlowDirection = FlowDirection.LeftToRight }; var height = new TextBox { Width = 60, Text = pattern.Height.ToString(), FlowDirection = FlowDirection.LeftToRight };
         bar.Children.Add(new TextBlock { Text = T("عرض", "Width"), Margin = new Thickness(4) }); bar.Children.Add(width); bar.Children.Add(new TextBlock { Text = T("ارتفاع", "Height"), Margin = new Thickness(4) }); bar.Children.Add(height);
         var canvas = new WeaveEditor { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FlowDirection = FlowDirection.LeftToRight }; canvas.SetPattern(pattern); canvas.Changed += (_, _) => canvas.SizeForScrolling(); canvas.SizeForScrolling();
-        bar.Children.Add(Button(T("شبکه جدید", "New grid"), (_, _) => { if (NumberInput.TryInt(width.Text, out int w) && NumberInput.TryInt(height.Text, out int h)) { try { canvas.Reset(w, h); } catch (ArgumentOutOfRangeException) { MessageBox.Show(dialog, T("ابعاد بیش از حد مجاز است.", "Dimensions exceed the editor limit.")); } } }));
+        bar.Children.Add(Button(T("شبکه جدید", "New grid"), (_, _) => { if (NumberInput.TryInt(width.Text, out int w) && NumberInput.TryInt(height.Text, out int h)) { try { canvas.Reset(w, h); } catch (ArgumentOutOfRangeException) { StudioDialogs.Show(dialog, T("ابعاد بیش از حد مجاز است.", "Dimensions exceed the editor limit.")); } } }));
         bar.Children.Add(Button(T("بازگردانی", "Undo"), (_, _) => canvas.Undo())); bar.Children.Add(Button(T("انجام دوباره", "Redo"), (_, _) => canvas.Redo()));
         bar.Children.Add(Button("3D", (_, _) => Fabric3DWindow.ShowPattern(dialog, canvas.Snapshot(), english)));
         bar.Children.Add(Button(T("اعمال", "Apply"), (_, _) => { dialog.DialogResult = true; }));
@@ -155,8 +155,8 @@ public sealed class CompositeWeaveWindow : Window
     }
     private void Save()
     {
-        if (!valid) { MessageBox.Show(this, T("ابتدا بافت ترکیبی معتبر بسازید.", "First create a valid composite weave."), Title); return; }
+        if (!valid) { StudioDialogs.Show(this, T("ابتدا بافت ترکیبی معتبر بسازید.", "First create a valid composite weave."), Title); return; }
         try { SavedItem = bank.SaveNew(nameBox.Text, editor.Snapshot(), colors); changed = false; DialogResult = true; }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { MessageBox.Show(this, T("ذخیره ممکن نیست: ", "Cannot save: ") + ex.Message, Title); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { StudioDialogs.Show(this, T("ذخیره ممکن نیست: ", "Cannot save: ") + ex.Message, Title); }
     }
 }

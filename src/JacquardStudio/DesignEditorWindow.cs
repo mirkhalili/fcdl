@@ -719,7 +719,7 @@ public sealed class DesignEditorWindow : Window
         {
             if (!NumberInput.TryInt(traceOpacityText.Text, out int value) || value is < 0 or > 100)
             {
-                MessageBox.Show(this, "درصد شفافیت باید بین ۰ تا ۱۰۰ باشد.", "تصویر مرجع");
+                StudioDialogs.Show(this, "درصد شفافیت باید بین ۰ تا ۱۰۰ باشد.", "تصویر مرجع");
                 return;
             }
             traceAlpha = value;
@@ -847,7 +847,7 @@ public sealed class DesignEditorWindow : Window
         var chosen = ColorChooser.Pick(this, $"#{color.R:X2}{color.G:X2}{color.B:X2}");
         if (chosen is null) return;
         try { color = (Color)ColorConverter.ConvertFromString(chosen); AddPaletteColor(color); UpdateColor(); }
-        catch (FormatException) { MessageBox.Show(this, "کد رنگ معتبر نیست.", "رنگ"); }
+        catch (FormatException) { StudioDialogs.Show(this, "کد رنگ معتبر نیست.", "رنگ"); }
     }
 
     private void UpdateColor()
@@ -882,7 +882,7 @@ public sealed class DesignEditorWindow : Window
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException)
         {
-            MessageBox.Show(this, ex.Message, "واردکردن تصویر", MessageBoxButton.OK, MessageBoxImage.Error);
+            StudioDialogs.Show(this, ex.Message, "واردکردن تصویر", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -907,13 +907,13 @@ public sealed class DesignEditorWindow : Window
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or UnauthorizedAccessException)
         {
-            MessageBox.Show(this, ex.Message, "ذخیره خروجی", MessageBoxButton.OK, MessageBoxImage.Error);
+            StudioDialogs.Show(this, ex.Message, "ذخیره خروجی", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
     private void DeleteLayer()
     {
-        if (MessageBox.Show(this, "لایه فعال حذف شود؟", "حذف لایه", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+        if (StudioDialogs.Show(this, "لایه فعال حذف شود؟", "حذف لایه", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             Mutate(doc.DeleteLayer);
     }
 
@@ -944,7 +944,7 @@ public sealed class DesignEditorWindow : Window
             !NumberInput.TryInt(traceWText.Text, out int width) || !NumberInput.TryInt(traceHText.Text, out int height) ||
             Math.Abs((long)x) > 16000 || Math.Abs((long)y) > 16000 || width < 1 || height < 1 || width > 16000 || height > 16000)
         {
-            MessageBox.Show(this, "مختصات باید بین ۱۶۰۰۰- و ۱۶۰۰۰ و ابعاد بین ۱ و ۱۶۰۰۰ باشد.", "تصویر مرجع");
+            StudioDialogs.Show(this, "مختصات باید بین ۱۶۰۰۰- و ۱۶۰۰۰ و ابعاد بین ۱ و ۱۶۰۰۰ باشد.", "تصویر مرجع");
             return;
         }
         traceX = x; traceY = y; traceW = width; traceH = height;
@@ -1101,7 +1101,7 @@ public sealed class DesignEditorWindow : Window
         {
             doc = old;
             Refresh();
-            MessageBox.Show(this, ex.Message, "طراحی", MessageBoxButton.OK, MessageBoxImage.Warning);
+            StudioDialogs.Show(this, ex.Message, "طراحی", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -1124,14 +1124,14 @@ public sealed class DesignEditorWindow : Window
         }
         catch (InvalidOperationException ex)
         {
-            MessageBox.Show(this, ex.Message, "کلیپ‌بورد");
+            StudioDialogs.Show(this, ex.Message, "کلیپ‌بورد");
             return false;
         }
     }
 
     private void Paste()
     {
-        if (clipboard is null) { MessageBox.Show(this, "ابتدا یک ناحیه را کپی کنید.", "کلیپ‌بورد"); return; }
+        if (clipboard is null) { StudioDialogs.Show(this, "ابتدا یک ناحیه را کپی کنید.", "کلیپ‌بورد"); return; }
         Mutate(() => { doc.AddLayer("ناحیه چسبانده‌شده"); doc.Paste(clipboard, clipboard.X, clipboard.Y); });
     }
 
@@ -1151,7 +1151,7 @@ public sealed class DesignEditorWindow : Window
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or OverflowException)
         {
-            MessageBox.Show(this, ex.Message, "خطای ذخیره طراحی", MessageBoxButton.OK, MessageBoxImage.Error);
+            StudioDialogs.Show(this, ex.Message, "خطای ذخیره طراحی", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -1168,7 +1168,7 @@ public sealed class DesignEditorWindow : Window
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException)
         {
-            MessageBox.Show(this, ex.Message, "تصویر مرجع");
+            StudioDialogs.Show(this, ex.Message, "تصویر مرجع");
         }
     }
 
@@ -1178,7 +1178,7 @@ public sealed class DesignEditorWindow : Window
         if (picker.ShowDialog(this) != true) return;
         try { SetTrace(ImageLoader.Load(picker.FileName, 0, true).Image); }
         catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException)
-        { MessageBox.Show(this, ex.Message, "تصویر مرجع"); }
+        { StudioDialogs.Show(this, ex.Message, "تصویر مرجع"); }
     }
 
     private string? PromptText()
@@ -1207,7 +1207,7 @@ public sealed class DesignEditorWindow : Window
         var inputBox = new TextBox { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxLength = 512, FontSize = 16, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         StyleInput(inputBox);
         root.Children.Add(inputBox);
-        accept.Click += (_, _) => { if (!string.IsNullOrWhiteSpace(inputBox.Text)) dialog.DialogResult = true; else MessageBox.Show(dialog, "متن را وارد کنید.", "افزودن متن"); };
+        accept.Click += (_, _) => { if (!string.IsNullOrWhiteSpace(inputBox.Text)) dialog.DialogResult = true; else StudioDialogs.Show(dialog, "متن را وارد کنید.", "افزودن متن"); };
         dialog.Content = root;
         dialog.Loaded += (_, _) => inputBox.Focus();
         return dialog.ShowDialog() == true ? inputBox.Text : null;
@@ -1250,7 +1250,7 @@ public sealed class DesignEditorWindow : Window
         }
         if (t == 15)
         {
-            if (doc.Current.Locked) { MessageBox.Show(this, "لایه قفل است.", "طراحی"); return; }
+            if (doc.Current.Locked) { StudioDialogs.Show(this, "لایه قفل است.", "طراحی"); return; }
             string? text = PromptText();
             if (!string.IsNullOrWhiteSpace(text)) Mutate(() => doc.DrawText(point.Value.X, point.Value.Y, text, Ink, Math.Clamp(BrushSize * 4, 6, 128)));
             return;
@@ -1258,7 +1258,7 @@ public sealed class DesignEditorWindow : Window
         if (t is 0 or 1 or 2 or 3 or 9 or 11 or 12 or 14 || t is 6 or 7 or 8)
         {
             if ((t is 0 or 1 or 2 or 3 or 9 or 11 or 12 or 14 or 8) && doc.Current.Locked)
-            { MessageBox.Show(this, "لایه قفل است.", "طراحی"); return; }
+            { StudioDialogs.Show(this, "لایه قفل است.", "طراحی"); return; }
             before = doc.Clone();
         }
         addingSelection = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
@@ -1343,7 +1343,7 @@ public sealed class DesignEditorWindow : Window
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
             if (before is not null) doc = before;
-            MessageBox.Show(this, ex.Message, "طراحی", MessageBoxButton.OK, MessageBoxImage.Warning);
+            StudioDialogs.Show(this, ex.Message, "طراحی", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         before = null; start = last = null; pathPoints.Clear(); path.Points.Clear();
         view.ReleaseMouseCapture();

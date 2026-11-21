@@ -41,7 +41,7 @@ public sealed class SourcePageWindow : Window
     {
         if(loading || page<0 || page>=current.PageCount) return; loading=true; Refresh();
         try { current=await Task.Run(()=>ImageLoader.Load(path,page,limitWidth,limitColors)); }
-        catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or NotSupportedException or InvalidOperationException) { MessageBox.Show(this,ex.Message); }
+        catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or NotSupportedException or InvalidOperationException) { StudioDialogs.Show(this,ex.Message); }
         finally { loading=false; Refresh(); }
     }
 }

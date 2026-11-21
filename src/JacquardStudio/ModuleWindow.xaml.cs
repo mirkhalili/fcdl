@@ -115,7 +115,7 @@ public partial class ModuleWindow : Window
         var endpoint=new TextBox {Text=aiEndpoint,FlowDirection=FlowDirection.LeftToRight,Margin=new Thickness(0,5,0,10),Padding=new Thickness(6)};panel.Children.Add(endpoint);panel.Children.Add(new TextBlock {Text="نام مدل:"});var model=new TextBox {Text=aiModel,FlowDirection=FlowDirection.LeftToRight,Margin=new Thickness(0,5,0,10),Padding=new Thickness(6)};panel.Children.Add(model);
         panel.Children.Add(new TextBlock {Text="کلید اتصال (فقط در حافظهٔ این اجرا؛ خالی = متغیر محیطی):",TextWrapping=TextWrapping.Wrap});var key=new PasswordBox {Margin=new Thickness(0,5,0,10),Padding=new Thickness(6),MaxLength=4096};panel.Children.Add(key);
         panel.Children.Add(new TextBlock {Text="کلید و تصویر به نشانی انتخاب‌شده ارسال می‌شوند. تنها از سرویس مورد اعتماد استفاده کنید. کلید در فایل پروژه ذخیره نمی‌شود.",TextWrapping=TextWrapping.Wrap});
-        var ok=new Button {Content="اعمال تنظیمات و بستن",Margin=new Thickness(0,12,0,0)};panel.Children.Add(ok);ok.Click+=(_,_)=>{if(!Uri.TryCreate(endpoint.Text,UriKind.Absolute,out var uri) || uri.Scheme!=Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Fragment) || string.IsNullOrWhiteSpace(model.Text) || model.Text.Length>100) {MessageBox.Show(dialog,"نشانی HTTPS یا نام مدل معتبر نیست.");return;} aiEndpoint=uri.ToString();aiModel=model.Text.Trim();aiKey=string.IsNullOrWhiteSpace(key.Password)?null:key.Password;dialog.DialogResult=true;};dialog.Content=panel;dialog.ShowDialog();
+        var ok=new Button {Content="اعمال تنظیمات و بستن",Margin=new Thickness(0,12,0,0)};panel.Children.Add(ok);ok.Click+=(_,_)=>{if(!Uri.TryCreate(endpoint.Text,UriKind.Absolute,out var uri) || uri.Scheme!=Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Fragment) || string.IsNullOrWhiteSpace(model.Text) || model.Text.Length>100) {StudioDialogs.Show(dialog,"نشانی HTTPS یا نام مدل معتبر نیست.");return;} aiEndpoint=uri.ToString();aiModel=model.Text.Trim();aiKey=string.IsNullOrWhiteSpace(key.Password)?null:key.Password;dialog.DialogResult=true;};dialog.Content=panel;dialog.ShowDialog();
     }
     private void OnThemeChanged(object? sender, EventArgs e) { BuildLibrary(); RenderGraph(); }
     private void BuildLibrary()
@@ -188,7 +188,7 @@ public partial class ModuleWindow : Window
             ModuleKind.Weft => "توالی و ستون‌های فرمان پود را به پارچه اضافه می‌کند؛ محل و قطبیت را روی دستگاه بررسی کنید.",
             ModuleKind.Simulation => "پیش‌نمایش تقریبی پارچه و نخ را می‌سازد؛ فایل ماشین را تغییر نمی‌دهد.",
             ModuleKind.Machine => "نقشه ورودی را بررسی و به JC5 آزمایشی صادر می‌کند. پیش از تولید روی دستگاه کنترل کنید.", _ => "" };
-        MessageBox.Show(this,text + "\n\nبرای اتصال، نقطه خروجی و سپس ورودی سازگار را انتخاب کنید. برای تنظیم ماژول دوبار کلیک کنید.","راهنمای " + Spec(kind).name,MessageBoxButton.OK,MessageBoxImage.Information);
+        StudioDialogs.Show(this,text + "\n\nبرای اتصال، نقطه خروجی و سپس ورودی سازگار را انتخاب کنید. برای تنظیم ماژول دوبار کلیک کنید.","راهنمای " + Spec(kind).name,MessageBoxButton.OK,MessageBoxImage.Information);
     }
     private void CreateDefaultGraph()
     {
@@ -483,15 +483,15 @@ public partial class ModuleWindow : Window
         {
             var icon=ModuleIcons.Create(spec.kind,36);
             var button=new Button {Content=icon,Width=68,Height=60,Margin=new Thickness(5),ToolTip=spec.name+" · ورودی "+PortName(port)};System.Windows.Automation.AutomationProperties.SetName(button,spec.name+" · "+PortName(port));
-            button.Click+=(_,_)=>{try {var from=graph.Nodes.Single(n=>n.Id==edge.From);var to=graph.Nodes.Single(n=>n.Id==edge.To);var node=graph.InsertBetween(edge,spec.kind,port,Math.Clamp((from.X+to.X)/2,0,10000),Math.Clamp((from.Y+to.Y)/2+155,0,10000));selected=node.Id;selectedWire=null;Changed(node.Id);RenderGraph();Inspect();Status.Text="ماژول درج شد؛ تا تأیید تنظیمات در حالت عبور مستقیم است.";dialog.DialogResult=true;}catch(ArgumentException ex){MessageBox.Show(dialog,ex.Message);}};grid.Children.Add(button);
+            button.Click+=(_,_)=>{try {var from=graph.Nodes.Single(n=>n.Id==edge.From);var to=graph.Nodes.Single(n=>n.Id==edge.To);var node=graph.InsertBetween(edge,spec.kind,port,Math.Clamp((from.X+to.X)/2,0,10000),Math.Clamp((from.Y+to.Y)/2+155,0,10000));selected=node.Id;selectedWire=null;Changed(node.Id);RenderGraph();Inspect();Status.Text="ماژول درج شد؛ تا تأیید تنظیمات در حالت عبور مستقیم است.";dialog.DialogResult=true;}catch(ArgumentException ex){StudioDialogs.Show(dialog,ex.Message);}};grid.Children.Add(button);
         }
         if(grid.Children.Count==0)grid.Children.Add(new TextBlock {Text="ماژول سازگاری برای این اتصال وجود ندارد.",TextWrapping=TextWrapping.Wrap});dialog.ShowDialog();
     }
     private void AddText_Click(object sender,RoutedEventArgs e)=>AddAnnotation(false);
-    private void AddFrame_Click(object sender,RoutedEventArgs e) {if(busy)return;if(graph.Annotations.Count>=256){MessageBox.Show(this,"حداکثر ۲۵۶ یادداشت مجاز است.");return;} drawingFrame=true;GraphScroll.Cursor=Cursors.Cross;Status.Text="برای رسم کادر روی فضای کار بکشید؛ Escape برای لغو.";}
+    private void AddFrame_Click(object sender,RoutedEventArgs e) {if(busy)return;if(graph.Annotations.Count>=256){StudioDialogs.Show(this,"حداکثر ۲۵۶ یادداشت مجاز است.");return;} drawingFrame=true;GraphScroll.Cursor=Cursors.Cross;Status.Text="برای رسم کادر روی فضای کار بکشید؛ Escape برای لغو.";}
     private void AddAnnotation(bool frame)
     {
-        if(busy)return;if(graph.Annotations.Count>=256){MessageBox.Show(this,"حداکثر ۲۵۶ یادداشت مجاز است.");return;}
+        if(busy)return;if(graph.Annotations.Count>=256){StudioDialogs.Show(this,"حداکثر ۲۵۶ یادداشت مجاز است.");return;}
         var item=new GraphAnnotation {IsFrame=frame,X=Math.Clamp(GraphScroll.HorizontalOffset/zoom+60,0,10000),Y=Math.Clamp(GraphScroll.VerticalOffset/zoom+60,0,10000),Width=frame?350:210,Height=frame?200:65,Text=frame?"گروه ماژول‌ها":"یادداشت"};
         if(EditAnnotation(item)){graph.Annotations.Add(item);dirty=true;UpdateTitle();RenderGraph();}
     }
@@ -502,7 +502,7 @@ public partial class ModuleWindow : Window
         TextBox Field(string label,string value) {panel.Children.Add(new TextBlock {Text=label,Margin=new Thickness(0,5,0,2)});var field=new TextBox {Text=value,Margin=new Thickness(0,0,0,4)};panel.Children.Add(field);return field;}
         var text=Field("متن",item.Text);text.MaxLength=300;var width=Field("عرض",item.Width.ToString("0"));var height=Field("ارتفاع",item.Height.ToString("0"));var color=Field("رنگ #RRGGBB",item.Color);color.FlowDirection=FlowDirection.LeftToRight;
         var choose=new Button {Content="انتخاب رنگ",Margin=new Thickness(0,6,0,0)};choose.Click+=(_,_)=>{var chosen=ColorChooser.Pick(dialog,color.Text);if(chosen is not null)color.Text=chosen;};panel.Children.Add(choose);
-        var ok=new Button {Content="ثبت",Margin=new Thickness(0,10,0,0)};panel.Children.Add(ok);ok.Click+=(_,_)=>{try{int w=Parse(width.Text,0),h=Parse(height.Text,0);string c=color.Text.Trim();if(w is <40 or >2000 || h is <30 or >2000 || c.Length!=7 || c[0]!='#' || !c.Skip(1).All(Uri.IsHexDigit))throw new ArgumentException("ابعاد یا رنگ معتبر نیست.");item.Width=w;item.Height=h;item.Text=text.Text;item.Color=c;dialog.DialogResult=true;}catch(ArgumentException ex){MessageBox.Show(dialog,ex.Message);}};return dialog.ShowDialog()==true;
+        var ok=new Button {Content="ثبت",Margin=new Thickness(0,10,0,0)};panel.Children.Add(ok);ok.Click+=(_,_)=>{try{int w=Parse(width.Text,0),h=Parse(height.Text,0);string c=color.Text.Trim();if(w is <40 or >2000 || h is <30 or >2000 || c.Length!=7 || c[0]!='#' || !c.Skip(1).All(Uri.IsHexDigit))throw new ArgumentException("ابعاد یا رنگ معتبر نیست.");item.Width=w;item.Height=h;item.Text=text.Text;item.Color=c;dialog.DialogResult=true;}catch(ArgumentException ex){StudioDialogs.Show(dialog,ex.Message);}};return dialog.ShowDialog()==true;
     }
     private void DrawAnnotations()
     {
@@ -529,12 +529,12 @@ public partial class ModuleWindow : Window
     }
     private void ClearAll_Click(object sender,RoutedEventArgs e)
     {
-        if(busy || graph.Nodes.Count==0 || MessageBox.Show(this,"همه ماژول‌ها و اتصال‌ها از پروژه حذف شوند؟","حذف همه",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
+        if(busy || graph.Nodes.Count==0 || StudioDialogs.Show(this,"همه ماژول‌ها و اتصال‌ها از پروژه حذف شوند؟","حذف همه",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
         graph=new ModuleGraph {Annotations=graph.Annotations}; failedNodes.Clear(); selected=connecting=null; selectedWire=null; Changed(); RenderGraph(); Inspect(); Status.Text="همه ماژول‌ها حذف شدند.";
     }
     private void Preset_Click(object sender,RoutedEventArgs e)
     {
-        if(busy || graph.Nodes.Count>0 && MessageBox.Show(this,"زنجیره عمومی جایگزین تمام ماژول‌های فعلی شود؟","زنجیره عمومی",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
+        if(busy || graph.Nodes.Count>0 && StudioDialogs.Show(this,"زنجیره عمومی جایگزین تمام ماژول‌های فعلی شود؟","زنجیره عمومی",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
         var savedPath=projectPath; var notes=graph.Annotations; CreateDefaultGraph(); graph.Annotations=notes; projectPath=savedPath; Changed(); RenderGraph(); Inspect(); Status.Text="زنجیره عمومی ساخته شد.";
     }
     private void CustomPresets_Click(object sender,RoutedEventArgs e)
@@ -566,7 +566,7 @@ public partial class ModuleWindow : Window
                     var remove=new Button {Content="حذف",Padding=new Thickness(12,6,12,6),Margin=new Thickness(4)};remove.SetResourceReference(Control.BackgroundProperty,"DangerBackground");remove.SetResourceReference(Control.ForegroundProperty,"PrimaryText");Grid.SetColumn(remove,2);row.Children.Add(remove);
                     use.Click+=(_,_)=>
                     {
-                        if((graph.Nodes.Count>0 || graph.Annotations.Count>0) && MessageBox.Show(dialog,"زنجیرهٔ انتخاب‌شده جایگزین گراف فعلی می‌شود. ادامه می‌دهید؟","بارگذاری زنجیره",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes)return;
+                        if((graph.Nodes.Count>0 || graph.Annotations.Count>0) && StudioDialogs.Show(dialog,"زنجیرهٔ انتخاب‌شده جایگزین گراف فعلی می‌شود. ادامه می‌دهید؟","بارگذاری زنجیره",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes)return;
                         try
                         {
                             graph=workflowPresetStore.Load(preset.Id);failedNodes.Clear();selected=graph.Nodes.FirstOrDefault()?.Id;selectedWire=null;connecting=null;results=new Dictionary<Guid,ModuleValue>();
@@ -576,7 +576,7 @@ public partial class ModuleWindow : Window
                     };
                     remove.Click+=(_,_)=>
                     {
-                        if(MessageBox.Show(dialog,$"زنجیرهٔ «{preset.Name}» حذف شود؟","حذف زنجیره",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes)return;
+                        if(StudioDialogs.Show(dialog,$"زنجیرهٔ «{preset.Name}» حذف شود؟","حذف زنجیره",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes)return;
                         try{workflowPresetStore.Delete(preset.Id);RefreshList();Status.Text="زنجیرهٔ سفارشی حذف شد.";}
                         catch(Exception ex) when(ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException){ModuleErrors.Show(dialog,ex,"حذف زنجیره");}
                     };
@@ -700,7 +700,7 @@ public partial class ModuleWindow : Window
                 Category("مشخصات طرح");
                 AddInspector(Note("برای هر مشخصه عنوان و متن وارد کنید. خروجی شناسنامه را می‌توان به گزارش متصل کرد."));
                 for(int i=0;i<node.DesignFields.Count;i++) { int index=i; var f=node.DesignFields[i]; Field("عنوان",f.Title,s=>node.DesignFields[index]=node.DesignFields[index] with { Title=s }); Field("متن",f.Text,s=>node.DesignFields[index]=node.DesignFields[index] with { Text=s }); Button("حذف این فیلد",()=>{node.DesignFields.RemoveAt(index); Changed(); Inspect();}); }
-                Button("افزودن فیلد",()=>{if(node.DesignFields.Count>=50) {MessageBox.Show(this,"حداکثر ۵۰ فیلد مجاز است.");return;} node.DesignFields.Add(new DesignField("عنوان جدید", "")); Changed(); Inspect();}); break;
+                Button("افزودن فیلد",()=>{if(node.DesignFields.Count>=50) {StudioDialogs.Show(this,"حداکثر ۵۰ فیلد مجاز است.");return;} node.DesignFields.Add(new DesignField("عنوان جدید", "")); Changed(); Inspect();}); break;
             case ModuleKind.AiEdit:
                 Category("اطلاع‌رسانی و اتصال");
                 AddInspector(Note("ارسال تصویر به OpenAI ممکن است هزینه داشته باشد. کلید از متغیر محیطی OPENAI_API_KEY خوانده می‌شود و در پروژه ذخیره نمی‌شود؛ تصویر و نتیجه در پروژه ذخیره می‌شوند."));
@@ -813,7 +813,7 @@ public partial class ModuleWindow : Window
         bool vector=node.Kind==ModuleKind.VectorLoad, binary=node.Kind==ModuleKind.BinaryLoad;
         var picker=new OpenFileDialog { Filter=vector ? "PDF / AI سازگار با PDF|*.pdf;*.ai" : binary ? "نقشه سیاه‌وسفید یا JC5|*.bmp;*.tif;*.tiff;*.png;*.jc5" : "طرح نقشه‌بیتی|*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr", CheckFileExists=true };
         var owner=Window.GetWindow(Inspector) ?? this; if(picker.ShowDialog(owner)!=true) return;
-        string ext=System.IO.Path.GetExtension(picker.FileName).ToLowerInvariant(); if(vector ? ext is not (".pdf" or ".ai") : binary ? ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jc5") : ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".ico" or ".wdp" or ".jxr")) { MessageBox.Show(owner,"پسوند فایل با نوع ماژول سازگار نیست."); return; }
+        string ext=System.IO.Path.GetExtension(picker.FileName).ToLowerInvariant(); if(vector ? ext is not (".pdf" or ".ai") : binary ? ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jc5") : ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".ico" or ".wdp" or ".jxr")) { StudioDialogs.Show(owner,"پسوند فایل با نوع ماژول سازگار نیست."); return; }
         bool limitRaster=!binary && !vector;
         try
         {
@@ -836,10 +836,10 @@ public partial class ModuleWindow : Window
     }
     private async Task GenerateAiAsync(ModuleNode node)
     {
-        var owner=Window.GetWindow(Inspector) ?? this; string? key=aiKey ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY"); if(string.IsNullOrWhiteSpace(key)) { MessageBox.Show(owner,"ابتدا متغیر محیطی OPENAI_API_KEY را در ویندوز تنظیم و برنامه را دوباره اجرا کنید."); return; }
-        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="image"); if(edge is null) { MessageBox.Show(owner,"ابتدا ورودی تصویر را وصل کنید."); return; }
-        if(string.IsNullOrWhiteSpace(node.AiPrompt) || node.AiPrompt.Length>4000) { MessageBox.Show(owner,"پرامپت باید ۱ تا ۴۰۰۰ نویسه باشد."); return; }
-        if(MessageBox.Show(owner,$"تصویر و پرامپت همراه کلید به این سرویس ارسال می‌شوند: {aiEndpoint}\nممکن است هزینه داشته باشد. ادامه می‌دهید؟","ارسال داده",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
+        var owner=Window.GetWindow(Inspector) ?? this; string? key=aiKey ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY"); if(string.IsNullOrWhiteSpace(key)) { StudioDialogs.Show(owner,"ابتدا متغیر محیطی OPENAI_API_KEY را در ویندوز تنظیم و برنامه را دوباره اجرا کنید."); return; }
+        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="image"); if(edge is null) { StudioDialogs.Show(owner,"ابتدا ورودی تصویر را وصل کنید."); return; }
+        if(string.IsNullOrWhiteSpace(node.AiPrompt) || node.AiPrompt.Length>4000) { StudioDialogs.Show(owner,"پرامپت باید ۱ تا ۴۰۰۰ نویسه باشد."); return; }
+        if(StudioDialogs.Show(owner,$"تصویر و پرامپت همراه کلید به این سرویس ارسال می‌شوند: {aiEndpoint}\nممکن است هزینه داشته باشد. ادامه می‌دهید؟","ارسال داده",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
         try
         {
             busy=true; Inspector.IsEnabled=false; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=false; Status.Text="در حال ارسال به OpenAI…";
@@ -862,7 +862,7 @@ public partial class ModuleWindow : Window
             var items=bank.Load(out int skipped); var dialog=new Window { Title="انتخاب بافت از بانک",Width=450,Height=580,Owner=Window.GetWindow(Inspector) ?? this,WindowStartupLocation=WindowStartupLocation.CenterOwner,FlowDirection=FlowDirection.RightToLeft,Background=ResourceBrush("Surface"), Foreground=ResourceBrush("PrimaryText") };
             var root=new DockPanel { Margin=new Thickness(15) }; var hint=new TextBlock { Text="برای انتخاب چند بافت از Ctrl یا Shift استفاده کنید.", TextWrapping=TextWrapping.Wrap, Margin=new Thickness(0,0,0,10) }; DockPanel.SetDock(hint,Dock.Top); root.Children.Add(hint); var confirm=new Button { Content="افزودن بافت‌های انتخاب‌شده",Margin=new Thickness(0,10,0,0) }; DockPanel.SetDock(confirm,Dock.Bottom); root.Children.Add(confirm);
             var list=WeaveGallery(items, true); root.Children.Add(list); dialog.SetResourceReference(Window.BackgroundProperty,"Surface"); dialog.SetResourceReference(Window.ForegroundProperty,"PrimaryText"); dialog.Content=root;
-            confirm.Click+=(_,_)=>{ var chosen=list.SelectedItems.OfType<BankItem>().ToArray(); if (node.Weaves.Count+chosen.Length>256) { MessageBox.Show(dialog,"حداکثر ۲۵۶ بافت مجاز است."); return; } foreach(var item in chosen) { node.Weaves.Add(new WeavePattern(item.Pattern.Width,item.Pattern.Height,(byte[])item.Pattern.Values.Clone(),WeaveBank.CopyColors(item.Pattern.WeftColors))); node.WeaveNames.Add(item.Name); } if(chosen.Length>0) Changed(); dialog.DialogResult=true; };
+            confirm.Click+=(_,_)=>{ var chosen=list.SelectedItems.OfType<BankItem>().ToArray(); if (node.Weaves.Count+chosen.Length>256) { StudioDialogs.Show(dialog,"حداکثر ۲۵۶ بافت مجاز است."); return; } foreach(var item in chosen) { node.Weaves.Add(new WeavePattern(item.Pattern.Width,item.Pattern.Height,(byte[])item.Pattern.Values.Clone(),WeaveBank.CopyColors(item.Pattern.WeftColors))); node.WeaveNames.Add(item.Name); } if(chosen.Length>0) Changed(); dialog.DialogResult=true; };
             dialog.ShowDialog(); Inspect(); if(skipped>0) Status.Text=$"{skipped} بافت نامعتبر بانک نادیده گرفته شد.";
         } catch (Exception ex) when(ex is IOException or ArgumentException or UnauthorizedAccessException) { ModuleErrors.Show(Window.GetWindow(Inspector) ?? this,ex); }
     }
@@ -879,7 +879,7 @@ public partial class ModuleWindow : Window
     }
     private void CreateWeave(ModuleNode node)
     {
-        if(node.Weaves.Count>=256) { MessageBox.Show(this,"حداکثر ۲۵۶ بافت مجاز است."); return; }
+        if(node.Weaves.Count>=256) { StudioDialogs.Show(this,"حداکثر ۲۵۶ بافت مجاز است."); return; }
         var dialog=new MainWindow { Owner=Window.GetWindow(Inspector) ?? this }; dialog.ConfigureWeaveModuleEditor(null,null);
         if(dialog.ShowDialog()==true && dialog.ModuleWeaveResult is { } pattern) { node.Weaves.Add(pattern); node.WeaveNames.Add(dialog.ModuleWeaveName); Changed(); Inspect(); }
     }
@@ -927,7 +927,7 @@ public partial class ModuleWindow : Window
     }
     private async Task EditSimulationAsync(ModuleNode node)
     {
-        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="fabric");if(edge is null){MessageBox.Show(this,"ابتدا ورودی پارچه را وصل کنید.");return;}
+        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="fabric");if(edge is null){StudioDialogs.Show(this,"ابتدا ورودی پارچه را وصل کنید.");return;}
         IReadOnlyDictionary<Guid,ModuleValue> inputs;BitmapSource fabric; string[] rows;
         try {busy=true;GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=false;inputs=await Task.Run(()=>ModuleExecutor.Run(graph,edge.From));var input=inputs[edge.From];fabric=input.Composition is null ? input.Image! : CompositionView.Fabric(input.Composition);rows=input.Composition?.RowWefts ?? Array.Empty<string>();}
         catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException){ModuleErrors.Show(this,ex,"خطای ورودی شبیه‌سازی");return;}
@@ -937,14 +937,14 @@ public partial class ModuleWindow : Window
     }
     private async Task EditFabricAsync(ModuleNode node)
     {
-        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="fabric"); if(edge is null) {MessageBox.Show(this,"ابتدا ورودی پارچه را متصل کنید.");return;}
+        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="fabric"); if(edge is null) {StudioDialogs.Show(this,"ابتدا ورودی پارچه را متصل کنید.");return;}
         IReadOnlyDictionary<Guid,ModuleValue> inputs; BitmapSource fabric; WorkflowSession prepared; string hash; int left,right;
         try
         {
             busy=true; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=false; inputs=await Task.Run(()=>ModuleExecutor.Run(graph,edge.From)); var input=inputs[edge.From];
             fabric=input.Composition is null ? input.Image! : CompositionView.Fabric(input.Composition); left=input.Composition?.LeftWidth ?? 0; right=input.Composition?.RightWidth ?? 0;
             hash=await Task.Run(()=>ModuleExecutor.ImageFingerprint(fabric));
-            if(node.Kind==ModuleKind.Floats && node.FloatImagePng is not null && node.FloatInputHash!=hash && MessageBox.Show(this,"ورودی تغییر کرده است؛ اصلاح قبلی فلوت بازنشانی شود؟","فلوت",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
+            if(node.Kind==ModuleKind.Floats && node.FloatImagePng is not null && node.FloatInputHash!=hash && StudioDialogs.Show(this,"ورودی تغییر کرده است؛ اصلاح قبلی فلوت بازنشانی شود؟","فلوت",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
             if(node.Kind==ModuleKind.Floats && node.FloatImagePng is not null && node.FloatInputHash==hash) { var edited=await Task.Run(()=>ModuleExecutor.ApplyFloatEdit(input,node.FloatImagePng)); fabric=edited.Composition is null ? edited.Image! : CompositionView.Fabric(edited.Composition); }
             var source=fabric; prepared=await Task.Run(()=> { _=DesignAnalysis.ReadBinary(source); var p=DesignProcessor.Prepare(source,source.PixelWidth,source.PixelHeight,2); var patterns=p.Colors.Select(c=>(WeavePattern?)new WeavePattern(1,1,new[]{c==0 ? (byte)0 : (byte)255})).ToArray(); return WorkflowSession.Restore(source,source,p,2,patterns); });
         }
@@ -958,7 +958,7 @@ public partial class ModuleWindow : Window
     private async Task EditWeaveMappingAsync(ModuleNode node)
     {
         var paletteEdge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="palette"); var weaveEdge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="weaves");
-        if(paletteEdge is null || weaveEdge is null) {MessageBox.Show(this,"ابتدا ورودی رنگ و بافت را متصل کنید.");return;}
+        if(paletteEdge is null || weaveEdge is null) {StudioDialogs.Show(this,"ابتدا ورودی رنگ و بافت را متصل کنید.");return;}
         IReadOnlyDictionary<Guid,ModuleValue> colors, weaves; WorkflowSession prepared; BankItem[] choices;
         try
         {
@@ -979,7 +979,7 @@ public partial class ModuleWindow : Window
     private async Task EditAutoWeavesAsync(ModuleNode node)
     {
         var pe=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="palette"); var we=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="weaves");
-        if(pe is null || we is null) {MessageBox.Show(this,"ابتدا پالت رنگ و بانک بافت را متصل کنید.");return;}
+        if(pe is null || we is null) {StudioDialogs.Show(this,"ابتدا پالت رنگ و بانک بافت را متصل کنید.");return;}
         IReadOnlyDictionary<Guid,ModuleValue> colors, patterns;
         try { busy=true; colors=await Task.Run(()=>ModuleExecutor.Run(graph,pe.From)); patterns=await Task.Run(()=>ModuleExecutor.Run(graph,we.From)); }
         catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) {ModuleErrors.Show(Window.GetWindow(Inspector) ?? this,ex);return;}
@@ -997,7 +997,7 @@ public partial class ModuleWindow : Window
         for(int i=0;i<palette.Colors.Length;i++) { int c=palette.Colors[i]; colorList.Items.Add(new ListBoxItem { Tag=i,Content=$"رنگ {i+1} · #{c:X6}" }); }
         for(int i=0;i<available.Count;i++) weaveList.Items.Add(new ListBoxItem { Tag=i,Content=$"{i+1} · {source.WeaveNames[i]}" });
         void Refresh() { var remaining=Enumerable.Range(0,palette.Colors.Length).Where(i=>!custom.ContainsKey(palette.Colors[i]) && (!draft.TryGetValue(palette.Colors[i],out var j) || j<0 || j>=available.Count)).ToArray(); note.Text="رنگ‌های بدون بافت: " + (remaining.Length==0 ? "هیچ‌کدام" : string.Join("، ",remaining.Select(i=>$"{i+1} (#{palette.Colors[i]:X6})"))); }
-        assign.Click+=(_,_)=>{ var cs=colorList.SelectedItems.Cast<ListBoxItem>().Select(x=>(int)x.Tag).Order().ToArray(); var ws=weaveList.SelectedItems.Cast<ListBoxItem>().Select(x=>(int)x.Tag).Order().ToArray(); if(cs.Length==0 || ws.Length==0) { MessageBox.Show(dialog,"رنگ و بافت را انتخاب کنید.");return; } draft=AutoWeaveAssignments.Pair(palette.Colors,available.Count,cs,ws,draft).ToDictionary(x=>x.Key,x=>x.Value); for(int i=0;i<Math.Min(cs.Length,ws.Length);i++) custom.Remove(palette.Colors[cs[i]]); Refresh(); };
+        assign.Click+=(_,_)=>{ var cs=colorList.SelectedItems.Cast<ListBoxItem>().Select(x=>(int)x.Tag).Order().ToArray(); var ws=weaveList.SelectedItems.Cast<ListBoxItem>().Select(x=>(int)x.Tag).Order().ToArray(); if(cs.Length==0 || ws.Length==0) { StudioDialogs.Show(dialog,"رنگ و بافت را انتخاب کنید.");return; } draft=AutoWeaveAssignments.Pair(palette.Colors,available.Count,cs,ws,draft).ToDictionary(x=>x.Key,x=>x.Value); for(int i=0;i<Math.Min(cs.Length,ws.Length);i++) custom.Remove(palette.Colors[cs[i]]); Refresh(); };
         apply.Click+=(_,_)=>dialog.DialogResult=true; dialog.Content=root; Refresh();
         if(dialog.ShowDialog()!=true)return;
         node.WeaveAssignments=draft; node.CustomWeaves=custom; node.DefaultWeaveIndex=-1; Changed(node.Id); MergeResults(colors); MergeResults(patterns);
@@ -1013,7 +1013,7 @@ public partial class ModuleWindow : Window
         catch(Exception ex) when(ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) {ModuleErrors.Show(this,ex);return;}
         finally {busy=false;GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=true;}
         bool compatible=node.DesignEditInputHash==hash && node.DesignStandalone==standalone;
-        if((node.DesignEditPng is not null || node.DesignEditDocument is not null) && !compatible && MessageBox.Show(this,"ورودی یا ابعاد تغییر کرده است. ویرایش قبلی کنار گذاشته شود؟","طراحی",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
+        if((node.DesignEditPng is not null || node.DesignEditDocument is not null) && !compatible && StudioDialogs.Show(this,"ورودی یا ابعاد تغییر کرده است. ویرایش قبلی کنار گذاشته شود؟","طراحی",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
         try
         {
             BitmapSource initial=source;
@@ -1038,7 +1038,7 @@ public partial class ModuleWindow : Window
             IReadOnlyDictionary<Guid,ModuleValue> evaluated; BitmapSource image; string hash;
             try { busy=true; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=false; evaluated=await Task.Run(()=>ModuleExecutor.Run(graph,edge.From)); image=evaluated[edge.From].Image ?? throw new InvalidOperationException("تصویر ورودی آماده نیست."); hash=await Task.Run(()=>ModuleExecutor.ImageFingerprint(image)); }
             finally { busy=false; GraphScroll.IsEnabled=ModuleLibrary.IsEnabled=true; }
-            if(node.Crop is { } prior && prior.InputHash!=hash && MessageBox.Show(this,"تصویر ورودی عوض شده است؛ برش قبلی بازنشانی شود؟","برش",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) throw new InvalidOperationException("برش قبلی حفظ شد؛ ورودی قبلی را بازگردانید.");
+            if(node.Crop is { } prior && prior.InputHash!=hash && StudioDialogs.Show(this,"تصویر ورودی عوض شده است؛ برش قبلی بازنشانی شود؟","برش",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) throw new InvalidOperationException("برش قبلی حفظ شد؛ ورودی قبلی را بازگردانید.");
             input=evaluated; return (image,node.Crop?.InputHash==hash ? node.Crop : null,hash);
         }) { Owner=this };
         if(dialog.ShowDialog()!=true || dialog.Result is not { } crop || input is null) return;
@@ -1046,13 +1046,13 @@ public partial class ModuleWindow : Window
     }
     private async Task EditLegacyModuleAsync(ModuleNode node)
     {
-        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="image"); if(edge is null) { MessageBox.Show(this,"ابتدا ورودی تصویر این ماژول را متصل کنید."); return; }
+        var edge=graph.Edges.SingleOrDefault(e=>e.To==node.Id && e.Port=="image"); if(edge is null) { StudioDialogs.Show(this,"ابتدا ورودی تصویر این ماژول را متصل کنید."); return; }
         BitmapSource source; IReadOnlyDictionary<Guid,ModuleValue> inputs; WorkflowSession prepared; string hash;
         try
         {
             busy=true; ModuleLibrary.IsEnabled=false; GraphScroll.IsEnabled=false; Status.Text="در حال آماده‌سازی ورودی ماژول…";
             inputs=await Task.Run(()=>ModuleExecutor.Run(graph,edge.From)); source=inputs[edge.From].Image ?? throw new InvalidOperationException("ورودی تصویر آماده نیست."); hash=await Task.Run(()=>ModuleExecutor.ImageFingerprint(source));
-            if (node.Kind==ModuleKind.Colors && node.ColorEdit is { } prior && prior.InputHash!=hash && MessageBox.Show(this,"ورودی تصویر تغییر کرده است. ویرایش رنگ قبلی با پالت جدید جایگزین شود؟","ورودی تغییر کرده",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
+            if (node.Kind==ModuleKind.Colors && node.ColorEdit is { } prior && prior.InputHash!=hash && StudioDialogs.Show(this,"ورودی تصویر تغییر کرده است. ویرایش رنگ قبلی با پالت جدید جایگزین شود؟","ورودی تغییر کرده",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes) return;
             prepared=await Task.Run(()=> {
                 if(node.Kind==ModuleKind.Resize) { var s=new WorkflowSession(source,inputs[edge.From].Vector); s.ApplySize(node.Width==0 ? source.PixelWidth : node.Width,node.Height==0 ? source.PixelHeight : node.Height); return s; }
                 var edit=node.ColorEdit; var raw=DesignProcessor.Prepare(source,source.PixelWidth,source.PixelHeight,node.ColorDistance>0 ? 256 : node.ColorLimit); var palette=edit is not null && edit.InputHash==hash ? edit.Palette : PaletteSimilarity.Reduce(raw,new bool[raw.Colors.Length],node.ColorLimit,node.ColorDistance).Palette;
@@ -1069,24 +1069,24 @@ public partial class ModuleWindow : Window
     }
     private void ExportGraphImage(ModuleNode node)
     {
-        var owner=Window.GetWindow(Inspector) ?? this; if(!results.TryGetValue(node.Id,out var result) || result.Image is null) {MessageBox.Show(owner,"ابتدا ماژول خروجی را اجرا کنید.");return;}
+        var owner=Window.GetWindow(Inspector) ?? this; if(!results.TryGetValue(node.Id,out var result) || result.Image is null) {StudioDialogs.Show(owner,"ابتدا ماژول خروجی را اجرا کنید.");return;}
         var dialog=new SaveFileDialog {Filter="PNG (*.png)|*.png|BMP (*.bmp)|*.bmp|TIFF (*.tif)|*.tif",AddExtension=true,FileName="export.png"}; if(dialog.ShowDialog(owner)!=true)return;
         try {GraphExports.SaveImage(result.Image,dialog.FileName,new[]{projectPath}.OfType<string>());Status.Text="تصویر ذخیره شد.";} catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException) {ModuleErrors.Show(owner,ex,"خطای خروجی تصویر");}
     }
     private void ExportGraphPalette(ModuleNode node)
     {
-        var owner=Window.GetWindow(Inspector) ?? this; if(!results.TryGetValue(node.Id,out var result) || result.Palette is null) {MessageBox.Show(owner,"پالت را وصل و ماژول خروجی را اجرا کنید.");return;}
+        var owner=Window.GetWindow(Inspector) ?? this; if(!results.TryGetValue(node.Id,out var result) || result.Palette is null) {StudioDialogs.Show(owner,"پالت را وصل و ماژول خروجی را اجرا کنید.");return;}
         var dialog=new SaveFileDialog {Filter="CSV (*.csv)|*.csv",AddExtension=true,FileName="palette.csv"};if(dialog.ShowDialog(owner)!=true)return;
         try {GraphExports.SavePalette(result.Palette,dialog.FileName,new[]{projectPath}.OfType<string>());Status.Text="جدول پالت ذخیره شد.";} catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or InvalidDataException) {ModuleErrors.Show(owner,ex,"خطای خروجی جدول");}
     }
     private void ExportMachine(ModuleNode node)
     {
-        if(!results.TryGetValue(node.Id,out var value) || value.Image is null) { MessageBox.Show(this,"ابتدا ماژول ماشین را اجرا کنید."); return; }
+        if(!results.TryGetValue(node.Id,out var value) || value.Image is null) { StudioDialogs.Show(this,"ابتدا ماژول ماشین را اجرا کنید."); return; }
         var dialog=new SaveFileDialog { Filter="JC5 (*.jc5)|*.jc5",FileName=MachineFileNaming.SuggestedName(node.MachineFormat),AddExtension=true }; if(dialog.ShowDialog(this)!=true) return;
-        if (!MachineFileNaming.ValidDestination(dialog.FileName,node.MachineFormat)) { MessageBox.Show(this,"نام یا پسوند فایل برای قالب انتخاب‌شده معتبر نیست."); return; }
+        if (!MachineFileNaming.ValidDestination(dialog.FileName,node.MachineFormat)) { StudioDialogs.Show(this,"نام یا پسوند فایل برای قالب انتخاب‌شده معتبر نیست."); return; }
         try { Jc5Codec.Save(value.Image,dialog.FileName,new[]{projectPath}.OfType<string>()); Status.Text="فایل آزمایشی ماشین ذخیره شد؛ پیش از تولید آن را بررسی کنید."; } catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException) { ModuleErrors.Show(Window.GetWindow(Inspector) ?? this,ex); }
     }
-    private bool ConfirmDiscard() { if(!dirty)return true; var result=MessageBox.Show(this,"تغییرات پروژه ذخیره نشده‌اند. ذخیره شوند؟","پروژه",MessageBoxButton.YesNoCancel,MessageBoxImage.Warning); return result==MessageBoxResult.No || result==MessageBoxResult.Yes && SaveGraph(false); }
+    private bool ConfirmDiscard() { if(!dirty)return true; var result=StudioDialogs.Show(this,"تغییرات پروژه ذخیره نشده‌اند. ذخیره شوند؟","پروژه",MessageBoxButton.YesNoCancel,MessageBoxImage.Warning); return result==MessageBoxResult.No || result==MessageBoxResult.Yes && SaveGraph(false); }
     private void Legacy_Click(object sender,RoutedEventArgs e) { if(!busy) new MainWindow().Show(); }
     private void New_Click(object sender,RoutedEventArgs e) { if(busy || !ConfirmDiscard())return; CreateDefaultGraph(); projectPassword=null; openedWithRecovery=false; dirty=false; UpdateTitle(); RenderGraph(); Inspect(); }
     private void Open_Click(object sender,RoutedEventArgs e)
@@ -1118,7 +1118,7 @@ public partial class ModuleWindow : Window
             var prompt=new PasswordPrompt("رمز پروژه","برای نسخهٔ جدید رمز را وارد و تکرار کنید. رمز بازیابی مشترک قابل استخراج است و محرمانگی را محدود می‌کند.",true) {Owner=this}; if(prompt.ShowDialog()!=true)return false; password=prompt.Password; recovery=false;
         }
         if(recovery) { var prompt=new PasswordPrompt("تعیین رمز جدید","پروژه با رمز بازیابی باز شده است. برای ذخیره، یک رمز جدید تعیین کنید؛ رمز قبلی دیگر معتبر نخواهد بود.",true) {Owner=this}; if(prompt.ShowDialog()!=true)return false; password=prompt.Password; recovery=false; }
-        try {if(password is null) ModuleProjectFile.Save(target!,graph); else ModuleProjectFile.SaveEncrypted(target!,graph,password); projectPassword=password;openedWithRecovery=recovery;projectPath=target; dirty=false; UpdateTitle(); Status.Text="پروژه ماژولی ذخیره شد."; return true; } catch(Exception ex) when(ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException) { ModuleErrors.Show(this,ex,"خطای ذخیره پروژه"); return false; }
+        try {if(password is null) ModuleProjectFile.Save(target!,graph); else ModuleProjectFile.SaveEncrypted(target!,graph,password); projectPassword=password;openedWithRecovery=recovery;projectPath=target; dirty=false; UpdateTitle(); Status.Text="پروژه ماژولی ذخیره شد."; StudioNotifications.Show(this,"ذخیره شد","پروژه ماژولی ذخیره شد."); return true; } catch(Exception ex) when(ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException) { ModuleErrors.Show(this,ex,"خطای ذخیره پروژه"); return false; }
     }
     private void Save_Click(object sender,RoutedEventArgs e) { if(!busy) SaveGraph(false); }
     private void SaveAs_Click(object sender,RoutedEventArgs e) { if(!busy) SaveGraph(true); }

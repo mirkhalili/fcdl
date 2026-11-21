@@ -151,7 +151,7 @@ public sealed class SettingsWindow : Window
             catch (Exception ex) when (ex is System.Management.ManagementException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or IOException or System.Runtime.InteropServices.COMException)
             {
                 deviceId.Text = "";
-                MessageBox.Show(this, "دریافت شناسه سخت‌افزار ممکن نیست.\n" + ex.Message, "شناسه دستگاه", MessageBoxButton.OK, MessageBoxImage.Warning);
+                StudioDialogs.Show(this, "دریافت شناسه سخت‌افزار ممکن نیست.\n" + ex.Message, "شناسه دستگاه", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             finally { getId.IsEnabled = true; }
         };
@@ -252,7 +252,7 @@ public sealed class SettingsWindow : Window
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
-                MessageBox.Show(this, ex.Message, "خطای تنظیمات", MessageBoxButton.OK, MessageBoxImage.Warning);
+                StudioDialogs.Show(this, ex.Message, "خطای تنظیمات", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         };
     }
