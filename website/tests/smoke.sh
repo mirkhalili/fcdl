@@ -157,8 +157,10 @@ csrf=$(sed -n 's/.*name="csrf" value="\([a-f0-9]*\)".*/\1/p' "$html" | head -1)
 device=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 # Site accepts an opaque code without checking its signature or device; date is mandatory.
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET status='pending',activation_code=NULL"
-curl -fsS -b "$cookies" --data-urlencode "csrf=$csrf" --data-urlencode 'action=save_device' --data-urlencode "device=$device" --data-urlencode 'status=approved' --data-urlencode 'activation_code=not-a-signed-code' http://127.0.0.1:18999/admin.php > "$html"
+curl -fsS -b "$cookies" "http://127.0.0.1:18999/admin.php?device=$device" > "$html"
 grep -q 'آخرین روز اعتبار (شمسی)' "$html"
+curl -fsS -b "$cookies" --data-urlencode "csrf=$csrf" --data-urlencode 'action=save_device' --data-urlencode "device=$device" --data-urlencode 'status=approved' --data-urlencode 'activation_code=not-a-signed-code' http://127.0.0.1:18999/admin.php > "$html"
+grep -q 'برای فعال‌سازی، تاریخ پایان اعتبار را تعیین کنید.' "$html"
 curl -fsS -b "$cookies" --data-urlencode "csrf=$csrf" --data-urlencode 'action=save_device' --data-urlencode "device=$device" --data-urlencode 'status=pending' --data-urlencode 'activation_code=not-a-signed-code' --data-urlencode 'expiry=۱۴۶۸/۱۰/۱۲' --data-urlencode 'customer_name=Test User' --data-urlencode 'phone=12345' --data-urlencode 'city=Amsterdam' --data-urlencode 'notes=<script>' http://127.0.0.1:18999/admin.php > "$html"
 grep -q 'Test User' "$html"; grep -q 'Amsterdam' "$html"
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE installations SET last_seen='2023-03-21 12:34:56'; UPDATE execution_events SET observed_at='2023-03-21 12:34:56'"

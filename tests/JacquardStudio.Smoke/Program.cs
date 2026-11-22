@@ -1175,14 +1175,12 @@ internal static class Program
             var soloOldContext=System.Threading.SynchronizationContext.Current;System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(System.Windows.Threading.Dispatcher.CurrentDispatcher));
             try{soloTimer.Start();var soloCard=(System.Windows.Controls.Border)nodeLayer.Children[nodeLayer.Children.Count-1];soloCard.ContextMenu.Items.OfType<System.Windows.Controls.MenuItem>().Single(x=>Equals(x.Header,"تنظیمات ماژول")).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));if(soloFrame.Continue)System.Windows.Threading.Dispatcher.PushFrame(soloFrame);}finally{soloTimer.Stop();System.Threading.SynchronizationContext.SetSynchronizationContext(soloOldContext);}
             Check(sawSetup && sawDesign && liveSolo.DesignStandalone && liveSolo.DesignWidth==12 && liveSolo.DesignHeight==8 && liveSolo.DesignWeftDensity==20 && ModuleExecutor.Run(moduleGraph,liveSolo.Id)[liveSolo.Id].Image!.PixelWidth==12,"unconnected design card creates a white project canvas and stores requested density");
-            typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
+            typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false);
             var drawingSurfaceType = typeof(VectorEditorWindow).Assembly.GetType("JacquardStudio.DrawingSurface", true)!;
             var drawingSurface = (System.Windows.FrameworkElement)Activator.CreateInstance(drawingSurfaceType, true)!;
             Check(RenderOptions.GetEdgeMode(drawingSurface) == EdgeMode.Aliased && RenderOptions.GetBitmapScalingMode(drawingSurface) == BitmapScalingMode.NearestNeighbor && TextOptions.GetTextRenderingMode(drawingSurface) == TextRenderingMode.Aliased, "live vector canvas uses aliased edges and text with nearest-neighbor bitmap scaling");
             var progressWindowType = typeof(ReleaseUpdater).Assembly.GetType("JacquardStudio.UpdateProgressWindow", true)!;
-            var progressOwner = new System.Windows.Window { Width = 1, Height = 1, Opacity = 0, ShowInTaskbar = false, WindowStyle = System.Windows.WindowStyle.None };
-            progressOwner.Show(); progressOwner.Hide();
-            var progressWindow = (System.Windows.Window)Activator.CreateInstance(progressWindowType, new object[] { progressOwner })!;
+            var progressWindow = (System.Windows.Window)Activator.CreateInstance(progressWindowType, new object[] { moduleWindow })!;
             var progressFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
             var cancelButton = (System.Windows.Controls.Button)progressWindowType.GetField("cancelButton", progressFlags)!.GetValue(progressWindow)!;
             var progressToken = (CancellationToken)progressWindowType.GetProperty("CancellationToken")!.GetValue(progressWindow)!;
@@ -1190,6 +1188,7 @@ internal static class Program
             Check(progressToken.IsCancellationRequested && !cancelButton.IsEnabled && ((System.Windows.Controls.TextBlock)progressWindowType.GetField("stageText", progressFlags)!.GetValue(progressWindow)!).Text == "در حال لغو درخواست…", "updater progress window cancels its request and shows cleanup status");
             progressWindowType.GetMethod("ShowCancelled")!.Invoke(progressWindow, null);
             Check(((System.Windows.Controls.TextBlock)progressWindowType.GetField("stageText", progressFlags)!.GetValue(progressWindow)!).Text == "دریافت لغو شد" && cancelButton.Content as string == "بستن", "updater displays a dismissible cancelled result");
+            progressWindow.Close(); moduleWindow.Close();
             Check(AppVersion.Display == "045.0.1.1-a6", "QAVNS version from version.txt");
             Check(ReleaseUpdater.CompareVersions("044.0.0.0-a2", "044.0.0.0-a1") > 0 && ReleaseUpdater.CompareVersions("044.0.0.0", "044.0.0.0-a2") > 0, "release updater orders prerelease and final versions");
             Check(ReleaseUpdater.CompareVersions("045.0.1.1-a1", "044.99.9.9") > 0 && ReleaseUpdater.CompareVersions("044.0.0.0-a2", "044.0.0.0-a2") == 0, "release updater compares version components and identical releases");
