@@ -16,12 +16,14 @@ namespace JacquardStudio;
 /// <summary>Inkscape-inspired, theme-aware SVG workspace with editable Bézier paths and layers.</summary>
 public sealed class VectorEditorWindow : Window
 {
-    private enum Tool { Select, Nodes, Bezier, Pencil, Rectangle, Ellipse, Star, Line, Text, Zoom }
+    private enum Tool { Select, Nodes, Bezier, Curve, ConvertLineToBezier, Pencil, Rectangle, Ellipse, Star, Line, Text, Zoom }
     private static readonly (Tool Tool, string Name, string Shortcut, string Glyph)[] ToolSpecs =
     {
         (Tool.Select, "انتخاب و جابه‌جایی", "F1", "M5,3 L19,15 12,15 9,21 Z"),
         (Tool.Nodes, "ویرایش گره‌ها و دسته‌ها", "N", "M4,4 H20 V20 H4 Z M4,4 L20,20 M20,4 L4,20"),
         (Tool.Bezier, "قلم بزیه؛ کلیک برای گوشه و کشیدن برای منحنی", "B", "M4,19 C4,5 20,5 20,19 M4,19 H20 M4,19 L4,16 M20,19 L20,16"),
+        (Tool.Curve, "منحنی بزیه سه‌مرحله‌ای؛ آغاز، پایان، قوس؛ Shift برای تقارن", "C", "M3,17 C7,2 17,2 21,17 M3,17 L21,17 M12,4 V2"),
+        (Tool.ConvertLineToBezier, "تبدیل خط مستقیم به منحنی بزیه قابل ویرایش", "K", "M4,19 L20,5 M4,19 L8,19 M20,5 L16,5 M11,12 L8,9 M13,12 L16,15"),
         (Tool.Pencil, "مداد آزاد", "P", "M4,20 L6,14 16,4 20,8 10,18 Z M6,14 L10,18"),
         (Tool.Rectangle, "مستطیل", "R", "M4,5 H20 V19 H4 Z"),
         (Tool.Ellipse, "بیضی و دایره", "E", "M12,4 C17,4 20,7 20,12 C20,17 17,20 12,20 C7,20 4,17 4,12 C4,7 7,4 12,4 Z"),
@@ -75,6 +77,8 @@ public sealed class VectorEditorWindow : Window
     private VectorDesignDocument? bezierOrigin;
     private int pendingBezierNode = -1;
     private Point bezierAnchorDown;
+    private VectorDesignPath? curveDraft;
+    private int curveStage;
     private List<Point>? freehandPoints;
     private Point? gestureStart;
     private Point pointer;
@@ -118,12 +122,12 @@ public sealed class VectorEditorWindow : Window
 
         surface = new DrawingSurface();
         drawingScroll = new ScrollViewer { Name = "VectorCanvasScrollViewer", Background = Brush("GraphBackground"), HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, CanContentScroll = false, Padding = new Thickness(0) };
-        statusText = new TextBlock { Text = "آماده · قلم بزیه: کلیک برای گره گوشه، کشیدن برای ساخت دسته منحنی", VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(12, 0, 8, 0), FontSize = 11 };
+        statusText = new TextBlock { Text = "آماده · B قلم بزیه · C منحنی سه‌مرحله‌ای · Shift قوس متقارن", VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(12, 0, 8, 0), FontSize = 11 };
         zoomText = new TextBlock { Text = "100٪", VerticalAlignment = VerticalAlignment.Center, MinWidth = 54, TextAlignment = TextAlignment.Center, Foreground = Brush("Accent"), FontWeight = FontWeights.Bold };
         undoButton = ToolbarButton("↶", "بازگشت (Ctrl+Z)", Undo);
         redoButton = ToolbarButton("↷", "بازانجام (Ctrl+Y)", Redo);
-        finishPathButton = ToolbarButton("✓ پایان مسیر", "پایان مسیر بزیه (Enter)", () => FinishBezier(false));
-        cancelPathButton = ToolbarButton("× لغو مسیر", "لغو مسیر جاری (Escape)", CancelBezier, danger: true);
+        finishPathButton = ToolbarButton("✓ پایان مسیر", "پایان مسیر جاری (Enter)", FinishActivePath);
+        cancelPathButton = ToolbarButton("× لغو مسیر", "لغو مسیر جاری (Escape)", CancelActivePath, danger: true);
 
         Content = BuildShell();
         PreviewKeyDown += Window_KeyDown;
@@ -286,7 +290,7 @@ public sealed class VectorEditorWindow : Window
         stack.Children.Add(BuildShapeSection());
         stack.Children.Add(BuildObjectSection());
         stack.Children.Add(BuildLayerSection());
-        stack.Children.Add(new TextBlock { Text = "راهنما: B قلم بزیه · N گره · F1 انتخاب · Ctrl+Z بازگشت · Enter پایان مسیر · Esc لغو", Foreground = Brush("Muted"), FontSize = 10, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(5, 8, 5, 10) });
+        stack.Children.Add(new TextBlock { Text = "راهنما: B قلم بزیه · C منحنی سه‌مرحله‌ای · K تبدیل خط به بزیه · N گره · F1 انتخاب · Ctrl+Z بازگشت · Enter پایان مسیر · Esc لغو", Foreground = Brush("Muted"), FontSize = 10, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(5, 8, 5, 10) });
         return new Border { Background = Brush("AppBackground"), BorderBrush = Brush("Border"), BorderThickness = new Thickness(1, 0, 0, 0), Child = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = stack } };
     }
 
@@ -408,6 +412,7 @@ public sealed class VectorEditorWindow : Window
     private void SelectTool(Tool next)
     {
         if (bezierDraft is not null && next != Tool.Bezier) FinishBezier(false);
+        if (curveStage > 0 && next != Tool.Curve) CancelCurve();
         tool = next;
         for (int i = 0; i < toolButtons.Count; i++)
         {
@@ -428,14 +433,14 @@ public sealed class VectorEditorWindow : Window
         updatingUi = false;
         RefreshLayers(); RefreshProperties(); RefreshSurface(); UpdateStatus();
         undoButton.IsEnabled = undo.Count > 0; redoButton.IsEnabled = redo.Count > 0;
-        finishPathButton.IsEnabled = bezierDraft is { Nodes.Count: >= 2 };
-        cancelPathButton.IsEnabled = bezierDraft is not null;
+        finishPathButton.IsEnabled = bezierDraft is { Nodes.Count: >= 2 } || curveStage == 2;
+        cancelPathButton.IsEnabled = bezierDraft is not null || curveStage > 0;
     }
 
     private void RefreshSurface()
     {
         surface.Document = document; surface.Zoom = zoom; surface.SelectedObjectId = selectedObjectId;
-        surface.ActivePath = BezierPreview(); surface.ShapePreview = previewObject;
+        surface.ActivePath = CurvePreview() ?? BezierPreview(); surface.ShapePreview = previewObject;
         surface.Pointer = pointer; surface.PointerInside = pointerInside;
         surface.EditorTool = tool; surface.SelectedNodePath = selectedNodePath; surface.SelectedNodeIndex = selectedNodeIndex; surface.SelectedHandle = selectedHandle;
         surface.InvalidateVisual();
@@ -451,6 +456,15 @@ public sealed class VectorEditorWindow : Window
             from.CurveToNext = from.HasOut;
             preview.Nodes.Add(VectorDesignDocument.Node(pointer.X, pointer.Y));
         }
+        return preview;
+    }
+
+    private VectorDesignPath? CurvePreview()
+    {
+        if (curveStage == 0 || curveDraft is null) return null;
+        if (curveStage == 2) return curveDraft.Clone();
+        var preview = curveDraft.Clone();
+        if (pointerInside) preview.Nodes.Add(VectorDesignDocument.Node(pointer.X, pointer.Y));
         return preview;
     }
 
@@ -503,19 +517,24 @@ public sealed class VectorEditorWindow : Window
     private void UpdateStatus()
     {
         string toolName = ToolSpecs.First(item => item.Tool == tool).Name;
-        string suffix = bezierDraft is null ? "" : $" · مسیر ناتمام: {bezierDraft.Nodes.Count} گره · Enter پایان / Esc لغو";
+        string suffix = curveStage switch
+        {
+            1 => " · منحنی: نقطه آغاز ثبت شد؛ روی نقطه پایان کلیک کنید",
+            2 => $" · منحنی: حرکت نشانگر برای قوس · {(Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift) ? "قوس متقارن" : "Shift برای تقارن")} · برای تکمیل کلیک کنید",
+            _ => bezierDraft is null ? "" : $" · مسیر ناتمام: {bezierDraft.Nodes.Count} گره · Enter پایان / Esc لغو"
+        };
         statusText.Text = $"{document.Width} × {document.Height} px  ·  {zoom * 100:0}%  ·  {document.Layers.Sum(layer => layer.Objects.Count)} شیء  ·  لایه: {document.CurrentLayer.Name}  ·  {toolName}{suffix}";
         zoomText.Text = $"{zoom * 100:0}%";
         undoButton.IsEnabled = undo.Count > 0; redoButton.IsEnabled = redo.Count > 0;
-        finishPathButton.IsEnabled = bezierDraft is { Nodes.Count: >= 2 };
-        cancelPathButton.IsEnabled = bezierDraft is not null;
+        finishPathButton.IsEnabled = bezierDraft is { Nodes.Count: >= 2 } || curveStage == 2;
+        cancelPathButton.IsEnabled = bezierDraft is not null || curveStage > 0;
     }
 
     private void Surface_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         surface.Focus();
         Point point = DocumentPoint(e.GetPosition(surface)); pointer = point; pointerInside = true;
-        if (tool is Tool.Bezier or Tool.Pencil or Tool.Rectangle or Tool.Ellipse or Tool.Star or Tool.Line or Tool.Text && document.CurrentLayer.Locked)
+        if (tool is Tool.Bezier or Tool.Curve or Tool.Pencil or Tool.Rectangle or Tool.Ellipse or Tool.Star or Tool.Line or Tool.Text && document.CurrentLayer.Locked)
         {
             statusText.Text = "لایه فعال قفل است؛ پیش از ترسیم آن را باز کنید."; return;
         }
@@ -524,6 +543,8 @@ public sealed class VectorEditorWindow : Window
             case Tool.Select: SelectDown(point); break;
             case Tool.Nodes: NodeDown(point); break;
             case Tool.Bezier: BezierDown(point, e.ClickCount); break;
+            case Tool.Curve: CurveDown(point); break;
+            case Tool.ConvertLineToBezier: ConvertLineToBezierAt(point); break;
             case Tool.Pencil:
                 gestureOrigin = document.Clone(); gestureChanged = false; freehandPoints = new List<Point> { point }; surface.CaptureMouse(); break;
             case Tool.Rectangle: case Tool.Ellipse: case Tool.Star: case Tool.Line:
@@ -582,6 +603,74 @@ public sealed class VectorEditorWindow : Window
         pathIndex = nodeIndex = handleKind = -1; return false;
     }
 
+    private void ConvertLineToBezierAt(Point point)
+    {
+        double threshold = 10 / zoom, bestDistance = threshold;
+        int bestLayer = -1, bestObject = -1, bestPath = -1, bestSegment = -1;
+        for (int layerIndex = document.Layers.Count - 1; layerIndex >= 0; layerIndex--)
+        {
+            var layer = document.Layers[layerIndex];
+            if (!layer.Visible || layer.Locked) continue;
+            for (int objectIndex = layer.Objects.Count - 1; objectIndex >= 0; objectIndex--)
+            {
+                var item = layer.Objects[objectIndex];
+                if (!item.Visible || item.Text is not null) continue;
+                for (int pathIndex = 0; pathIndex < item.Paths.Count; pathIndex++)
+                {
+                    var path = item.Paths[pathIndex];
+                    int segmentCount = path.Closed ? path.Nodes.Count : path.Nodes.Count - 1;
+                    for (int segment = 0; segment < segmentCount; segment++)
+                    {
+                        var from = path.Nodes[segment];
+                        if (from.CurveToNext) continue;
+                        var to = path.Nodes[(segment + 1) % path.Nodes.Count];
+                        if (Distance(new Point(from.X, from.Y), new Point(to.X, to.Y)) < 1e-6) continue;
+                        double distance = DistanceToSegment(point, new Point(from.X, from.Y), new Point(to.X, to.Y));
+                        if (distance <= bestDistance)
+                        {
+                            bestDistance = distance;
+                            bestLayer = layerIndex; bestObject = objectIndex; bestPath = pathIndex; bestSegment = segment;
+                        }
+                    }
+                }
+            }
+        }
+        if (bestLayer < 0)
+        {
+            statusText.Text = "روی یک خط مستقیم از مسیر قابل ویرایش کلیک کنید.";
+            return;
+        }
+
+        var before = document.Clone();
+        try
+        {
+            var item = document.Layers[bestLayer].Objects[bestObject].Clone();
+            if (!VectorDesignDocument.ConvertLineSegmentToBezier(item.Paths[bestPath], bestSegment))
+            {
+                statusText.Text = "این پاره‌خط از قبل منحنی است یا قابل تبدیل نیست.";
+                return;
+            }
+            document.Layers[bestLayer].Objects[bestObject] = item;
+            document.ActiveLayer = bestLayer;
+            selectedObjectId = item.Id; selectedNodePath = bestPath; selectedNodeIndex = bestSegment; selectedHandle = -1;
+            document.Validate(); Record(before); RefreshAll(); SelectTool(Tool.Nodes);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidDataException or InvalidOperationException or OverflowException or FormatException)
+        {
+            document = before; RefreshAll();
+            StudioDialogs.Show(this, ex.Message, "استودیو طراحی برداری", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private static double DistanceToSegment(Point point, Point start, Point end)
+    {
+        Vector line = end - start;
+        double lengthSquared = line.LengthSquared;
+        if (lengthSquared < 1e-12) return Distance(point, start);
+        double t = Math.Clamp(Vector.Multiply(point - start, line) / lengthSquared, 0, 1);
+        return Distance(point, start + line * t);
+    }
+
     private void BezierDown(Point point, int clickCount)
     {
         if (bezierDraft is not null && bezierDraft.Nodes.Count >= 3 && Distance(point, new Point(bezierDraft.Nodes[0].X, bezierDraft.Nodes[0].Y)) <= 10 / zoom)
@@ -600,10 +689,86 @@ public sealed class VectorEditorWindow : Window
         if (clickCount >= 2 && bezierDraft.Nodes.Count >= 2) FinishBezier(false);
     }
 
+    private void CurveDown(Point point)
+    {
+        if (curveStage == 0)
+        {
+            curveDraft = new VectorDesignPath();
+            curveDraft.Nodes.Add(VectorDesignDocument.Node(point.X, point.Y));
+            curveStage = 1;
+            pointer = point;
+            return;
+        }
+        if (curveDraft is null || curveDraft.Nodes.Count == 0) { CancelCurve(); return; }
+        if (curveStage == 1)
+        {
+            Point start = new(curveDraft.Nodes[0].X, curveDraft.Nodes[0].Y);
+            if (Distance(start, point) < 1 / zoom) { statusText.Text = "نقطه پایان باید با نقطه آغاز متفاوت باشد."; return; }
+            curveDraft.Nodes.Add(VectorDesignDocument.Node(point.X, point.Y));
+            curveStage = 2;
+            UpdateCurveDraft(point, IsShiftDown());
+            return;
+        }
+        if (curveStage == 2)
+        {
+            UpdateCurveDraft(point, IsShiftDown());
+            FinishCurve();
+        }
+    }
+
+    private void UpdateCurveDraft(Point control, bool symmetric)
+    {
+        if (curveStage != 2 || curveDraft is null || curveDraft.Nodes.Count < 2) return;
+        Point start = new(curveDraft.Nodes[0].X, curveDraft.Nodes[0].Y);
+        Point end = new(curveDraft.Nodes[1].X, curveDraft.Nodes[1].Y);
+        curveDraft = VectorDesignDocument.CreateCubicArc(start, end, control, symmetric);
+    }
+
+    private bool IsShiftDown() => Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+
+    private void FinishCurve()
+    {
+        if (curveStage != 2 || curveDraft is null || curveDraft.Nodes.Count != 2) { CancelCurve(); return; }
+        var before = document.Clone();
+        try
+        {
+            var item = NewPathObject(curveDraft, closed: false);
+            document.CurrentLayer.Objects.Add(item);
+            document.Validate();
+            selectedObjectId = item.Id;
+            curveDraft = null; curveStage = 0;
+            Record(before);
+            surface.ReleaseMouseCapture(); RefreshAll(); surface.Focus();
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidDataException or InvalidOperationException or OverflowException or FormatException)
+        {
+            document = before; curveDraft = null; curveStage = 0; surface.ReleaseMouseCapture(); RefreshAll();
+            StudioDialogs.Show(this, ex.Message, "استودیو طراحی برداری", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void CancelCurve()
+    {
+        curveDraft = null; curveStage = 0; surface.ReleaseMouseCapture(); RefreshSurface(); UpdateStatus();
+    }
+
+    private void FinishActivePath()
+    {
+        if (curveStage == 2) FinishCurve();
+        else if (bezierDraft is { Nodes.Count: >= 2 }) FinishBezier(false);
+    }
+
+    private void CancelActivePath()
+    {
+        if (curveStage > 0) CancelCurve();
+        else if (bezierDraft is not null) CancelBezier();
+    }
+
     private void Surface_MouseMove(object sender, MouseEventArgs e)
     {
         Point point = DocumentPoint(e.GetPosition(surface)); pointer = point; pointerInside = true;
-        if (pendingBezierNode >= 0 && e.LeftButton == MouseButtonState.Pressed && bezierDraft is not null)
+        if (tool == Tool.Curve && curveStage == 2) UpdateCurveDraft(point, IsShiftDown());
+        else if (pendingBezierNode >= 0 && e.LeftButton == MouseButtonState.Pressed && bezierDraft is not null)
         {
             VectorDesignNode node = bezierDraft.Nodes[pendingBezierNode];
             double dx = point.X - bezierAnchorDown.X, dy = point.Y - bezierAnchorDown.Y;
@@ -680,6 +845,7 @@ public sealed class VectorEditorWindow : Window
     private void Surface_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (tool == Tool.Bezier && bezierDraft is not null) { FinishBezier(false); e.Handled = true; }
+        else if (tool == Tool.Curve && curveStage > 0) { CancelCurve(); e.Handled = true; }
     }
 
     private void Surface_MouseWheel(object sender, MouseWheelEventArgs e)
@@ -1066,7 +1232,7 @@ public sealed class VectorEditorWindow : Window
     private void NewDocument()
     {
         if (!ConfirmReplaceDocument()) return;
-        document = new VectorDesignDocument(); currentFile = null; dirty = false; undo.Clear(); redo.Clear(); selectedObjectId = null; bezierDraft = null;
+        document = new VectorDesignDocument(); currentFile = null; dirty = false; undo.Clear(); redo.Clear(); selectedObjectId = null; bezierDraft = null; curveDraft = null; curveStage = 0;
         referenceImage = null; surface.ReferenceImage = null; SetZoom(1); RefreshAll(); FitPage();
     }
 
@@ -1106,7 +1272,7 @@ public sealed class VectorEditorWindow : Window
 
     private void ReplaceDocument(VectorDesignDocument next, BitmapSource? reference, string? filename)
     {
-        document = next; currentFile = filename; selectedObjectId = null; undo.Clear(); redo.Clear(); dirty = false; bezierDraft = null;
+        document = next; currentFile = filename; selectedObjectId = null; undo.Clear(); redo.Clear(); dirty = false; bezierDraft = null; curveDraft = null; curveStage = 0;
         surface.ReferenceImage = reference; SetZoom(1); RefreshAll(); FitPage();
     }
 
@@ -1188,13 +1354,14 @@ public sealed class VectorEditorWindow : Window
         if (control && e.Key == Key.Y) { Redo(); e.Handled = true; return; }
         if (control && e.Key == Key.S) { SaveSvg(); e.Handled = true; return; }
         if (control && e.Key == Key.O) { OpenDocument(); e.Handled = true; return; }
-        if (e.Key == Key.Escape) { if (bezierDraft is not null) CancelBezier(); else CancelDialog(); e.Handled = true; return; }
+        if (e.Key == Key.Escape) { if (curveStage > 0) CancelCurve(); else if (bezierDraft is not null) CancelBezier(); else CancelDialog(); e.Handled = true; return; }
+        if (e.Key == Key.Enter && curveStage == 2) { FinishCurve(); e.Handled = true; return; }
         if (e.Key == Key.Enter && bezierDraft is { Nodes.Count: >= 2 }) { FinishBezier(false); e.Handled = true; return; }
         if (e.Key == Key.Delete && e.OriginalSource is not TextBox) { DeleteSelection(); e.Handled = true; return; }
         if (e.OriginalSource is TextBox) return;
         Tool? selected = e.Key switch
         {
-            Key.F1 => Tool.Select, Key.N => Tool.Nodes, Key.B => Tool.Bezier, Key.P => Tool.Pencil,
+            Key.F1 => Tool.Select, Key.N => Tool.Nodes, Key.B => Tool.Bezier, Key.C => Tool.Curve, Key.K => Tool.ConvertLineToBezier, Key.P => Tool.Pencil,
             Key.R => Tool.Rectangle, Key.E => Tool.Ellipse, Key.L => Tool.Line, Key.T => Tool.Text, Key.Z => Tool.Zoom,
             _ => null
         };

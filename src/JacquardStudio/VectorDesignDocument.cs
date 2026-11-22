@@ -529,6 +529,53 @@ public sealed class VectorDesignDocument
         };
     }
 
+    /// <summary>Creates a two-anchor cubic arc from a quadratic-style control point.</summary>
+    public static VectorDesignPath CreateCubicArc(Point start, Point end, Point control, bool symmetric)
+    {
+        if (!double.IsFinite(start.X) || !double.IsFinite(start.Y) || !double.IsFinite(end.X) || !double.IsFinite(end.Y) || !double.IsFinite(control.X) || !double.IsFinite(control.Y))
+            throw new ArgumentOutOfRangeException(nameof(control), "مختصات منحنی باید محدود و معتبر باشند.");
+        Vector chord = end - start;
+        double length = chord.Length;
+        if (length < 1e-6) throw new ArgumentException("نقطه آغاز و پایان منحنی باید متفاوت باشند.", nameof(end));
+        if (symmetric)
+        {
+            Vector normal = new(-chord.Y / length, chord.X / length);
+            double offset = Vector.Multiply(control - start, normal);
+            control = new Point((start.X + end.X) / 2, (start.Y + end.Y) / 2) + normal * offset;
+        }
+        var first = Node(start.X, start.Y);
+        var last = Node(end.X, end.Y);
+        first.CurveToNext = true;
+        first.HasOut = true;
+        first.OutX = start.X + (control.X - start.X) * (2.0 / 3);
+        first.OutY = start.Y + (control.Y - start.Y) * (2.0 / 3);
+        last.HasIn = true;
+        last.InX = end.X + (control.X - end.X) * (2.0 / 3);
+        last.InY = end.Y + (control.Y - end.Y) * (2.0 / 3);
+        return new VectorDesignPath { Nodes = new List<VectorDesignNode> { first, last } };
+    }
+
+    /// <summary>Converts one straight path segment to an equivalent editable cubic Bézier segment.</summary>
+    public static bool ConvertLineSegmentToBezier(VectorDesignPath path, int startNodeIndex)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if ((uint)startNodeIndex >= (uint)path.Nodes.Count) throw new ArgumentOutOfRangeException(nameof(startNodeIndex));
+        if (path.Nodes.Count < 2 || !path.Closed && startNodeIndex == path.Nodes.Count - 1) return false;
+        var from = path.Nodes[startNodeIndex];
+        var to = path.Nodes[(startNodeIndex + 1) % path.Nodes.Count];
+        if (from.CurveToNext) return false;
+        double dx = to.X - from.X, dy = to.Y - from.Y;
+        if (dx * dx + dy * dy < 1e-12) return false;
+        from.HasOut = true;
+        from.OutX = from.X + dx / 3;
+        from.OutY = from.Y + dy / 3;
+        to.HasIn = true;
+        to.InX = from.X + 2 * dx / 3;
+        to.InY = from.Y + 2 * dy / 3;
+        from.CurveToNext = true;
+        return true;
+    }
+
     public static VectorDesignNode Node(double x, double y) => new() { X = x, Y = y };
 
     public BitmapSource Render(int width = 0, int height = 0)

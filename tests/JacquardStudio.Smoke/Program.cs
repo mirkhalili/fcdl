@@ -160,6 +160,13 @@ internal static class Program
             Check(editableSvg.Width == 32 && editableSvg.Height == 24 && editableSvg.Layers.Count == 2 && editableSvg.Layers[0].Name == "Curves & paths" && !editableSvg.Layers[1].Visible, "SVG dimensions, Inkscape layer labels, and hidden-layer state import");
             var importedCurve = editableSvg.Layers[0].Objects.Single(item => item.Name == "Bézier curve").Paths.Single();
             Check(importedCurve.Nodes.Count == 2 && importedCurve.Nodes[0].CurveToNext && importedCurve.Nodes[0].HasOut && importedCurve.Nodes[1].HasIn, "SVG cubic Bézier anchors and control handles remain editable");
+            var arcStart = new System.Windows.Point(10, 40); var arcEnd = new System.Windows.Point(90, 40); var arcControl = new System.Windows.Point(70, 60);
+            var asymmetricArc = VectorDesignDocument.CreateCubicArc(arcStart, arcEnd, arcControl, symmetric: false);
+            var symmetricArc = VectorDesignDocument.CreateCubicArc(arcStart, arcEnd, arcControl, symmetric: true);
+            Check(asymmetricArc.Nodes.Count == 2 && asymmetricArc.Nodes[0].CurveToNext && asymmetricArc.Nodes[0].HasOut && asymmetricArc.Nodes[1].HasIn && Math.Abs(asymmetricArc.Nodes[0].OutX + asymmetricArc.Nodes[1].InX - 100) > 1, "three-step curve control creates an editable asymmetric cubic arc");
+            Check(Math.Abs(symmetricArc.Nodes[0].OutX + symmetricArc.Nodes[1].InX - 100) < 1e-9 && Math.Abs(symmetricArc.Nodes[0].OutY - symmetricArc.Nodes[1].InY) < 1e-9, "Shift-constrained arc uses mirrored cubic handles");
+            var convertedLine = new VectorDesignPath { Nodes = new() { VectorDesignDocument.Node(0, 0), VectorDesignDocument.Node(90, 45) } };
+            Check(VectorDesignDocument.ConvertLineSegmentToBezier(convertedLine, 0) && convertedLine.Nodes[0].CurveToNext && convertedLine.Nodes[0].HasOut && convertedLine.Nodes[1].HasIn && Math.Abs(convertedLine.Nodes[0].OutX - 30) < 1e-9 && Math.Abs(convertedLine.Nodes[1].InX - 60) < 1e-9 && !VectorDesignDocument.ConvertLineSegmentToBezier(convertedLine, 0), "straight path segment converts once to a standard editable cubic Bézier");
             Check(VectorDesignDocument.ParseColor("#f08") == Color.FromRgb(255, 0, 136) && VectorDesignDocument.ParseColor("rgba(240,128,16,0.75)").A == 191, "SVG CSS short-hex and RGBA colors parse");
             const string stylePrecedenceSvg = """
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
