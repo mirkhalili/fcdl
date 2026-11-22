@@ -77,7 +77,7 @@ jobs:
           if ($setupInfo.ProductName.Trim() -ne 'Jacquard Studio') { throw "Installer product metadata is incorrect: $($setupInfo.ProductName)" }
           if ($setupInfo.FileVersion.Trim() -ne $version -or $setupInfo.ProductVersion.Trim() -ne $version) { throw "Installer text version metadata is incorrect: file=$($setupInfo.FileVersion), product=$($setupInfo.ProductVersion)" }
           if ($setupInfo.OriginalFilename.Trim() -ne 'JacquardStudio-Setup.exe') { throw "Installer original filename metadata is incorrect: $($setupInfo.OriginalFilename)" }
-          if ($setupInfo.FileDescription.Trim() -notmatch 'Designed by Mirkhalili' -or $setupInfo.FileDescription.Trim() -notmatch [regex]::Escape($buildTimestamp)) { throw "Installer description/design/build-date metadata is incomplete: $($setupInfo.FileDescription)" }
+          if ($setupInfo.FileDescription.Trim() -notmatch 'Jacquard Studio by Mirkhalili' -or $setupInfo.FileDescription.Trim() -notmatch [regex]::Escape($buildTimestamp)) { throw "Installer description/design/build-date metadata is incomplete: $($setupInfo.FileDescription)" }
           $binaryParts = @($binaryVersion.Split('.') | ForEach-Object { [int]$_ })
           while ($binaryParts.Count -lt 4) { $binaryParts += 0 }
           if ($setupInfo.FileMajorPart -ne $binaryParts[0] -or $setupInfo.FileMinorPart -ne $binaryParts[1] -or $setupInfo.FileBuildPart -ne $binaryParts[2] -or $setupInfo.FilePrivatePart -ne $binaryParts[3]) { throw "Installer numeric file version metadata is incorrect: $($setupInfo.FileVersion)" }
