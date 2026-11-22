@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 
 namespace JacquardStudio;
 
-public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData, PeriodicFloats, MatchPalette, RectangleMask, ApplyMask, DesignEditor, BlankDesign }
+public enum ModuleKind { Load, Resize, Colors, Weaves, ApplyWeaves, Selvedge, Floats, Tension, Weft, Simulation, Machine, CreateWeave, Crop, Repeat, Report, VectorLoad, MachineDefinition, DesignIdentity, AiEdit, AutoWeaves, BinaryLoad, BinaryConvert, SeamCheck, Compare, QualityCheck, ExportData, PeriodicFloats, MatchPalette, RectangleMask, ApplyMask, DesignEditor, BlankDesign, VectorDesign }
 public enum ModuleData { Image, Palette, Weaves, Fabric, Preview, Report, Any, MachineConfig, Metadata, Visual, Mask }
 public sealed record DesignField(string Title, string Text);
 public sealed record ModuleColorEdit(string InputHash, PaletteResult Palette, bool[] Locks);
@@ -20,6 +20,7 @@ public sealed class ModuleNode
     // Non-null means a module inserted on an existing wire is a transparent bypass until explicitly applied.
     public string? PendingInsertionPort { get; set; }
     public string? VectorPdfBase64 { get; set; }
+    public string? VectorSvgBase64 { get; set; }
     public int SourcePage { get; set; }
     public string Manufacturer { get; set; } = "Other";
     public List<DesignField> DesignFields { get; set; } = new();
@@ -79,7 +80,7 @@ public sealed class ModuleGraph
     public List<ModuleEdge> Edges { get; set; } = new();
     public static ModuleData Output(ModuleKind kind) => kind switch
     {
-        ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.SeamCheck or ModuleKind.Compare or ModuleKind.ExportData or ModuleKind.ApplyMask or ModuleKind.DesignEditor or ModuleKind.BlankDesign => ModuleData.Image,
+        ModuleKind.Load or ModuleKind.VectorLoad or ModuleKind.VectorDesign or ModuleKind.Resize or ModuleKind.Crop or ModuleKind.Repeat or ModuleKind.AiEdit or ModuleKind.SeamCheck or ModuleKind.Compare or ModuleKind.ExportData or ModuleKind.ApplyMask or ModuleKind.DesignEditor or ModuleKind.BlankDesign => ModuleData.Image,
         ModuleKind.RectangleMask => ModuleData.Mask,
         ModuleKind.Colors or ModuleKind.MatchPalette => ModuleData.Palette,
         ModuleKind.Weaves or ModuleKind.CreateWeave => ModuleData.Weaves,
@@ -165,6 +166,16 @@ public sealed class ModuleGraph
         if (Nodes.Any(n => n.Kind == ModuleKind.CreateWeave && (n.Weaves.Count > 1 || n.Weaves.Any(p => p is null || p.Width > WeaveEditor.MaxSide || p.Height > WeaveEditor.MaxSide)))) throw new InvalidDataException("A weave designer node holds at most one weave.");
         foreach (var n in Nodes) {
             if(n.DesignFields is null || n.DesignFields.Count>50 || n.DesignFields.Any(f=>f is null || string.IsNullOrWhiteSpace(f.Title) || f.Title.Length>100 || f.Text is null || f.Text.Length>2000) || n.Manufacturer is null || n.Manufacturer.Length>100 || n.AiPrompt is null || n.AiPrompt.Length>4000 || n.SourcePage<0 || n.SourcePage>=ImageLoader.MaxFrames) throw new InvalidDataException("Invalid module metadata.");
+            if(n.VectorSvgBase64 is { } svgPayload)
+            {
+                if(n.Kind is not (ModuleKind.VectorLoad or ModuleKind.VectorDesign) || n.VectorPdfBase64 is not null || svgPayload.Length>ImageLoader.MaxFileBytes*2) throw new InvalidDataException("Invalid embedded SVG source.");
+                byte[] svgBytes; try { svgBytes=Convert.FromBase64String(svgPayload); } catch(FormatException ex) { throw new InvalidDataException("Invalid embedded SVG encoding.",ex); }
+                if(svgBytes.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("Embedded SVG source is too large.");
+                string svg; try { svg=new System.Text.UTF8Encoding(false,true).GetString(svgBytes); } catch(System.Text.DecoderFallbackException ex) { throw new InvalidDataException("Invalid embedded SVG text.",ex); }
+                _=VectorDesignDocument.FromSvg(svg);
+            }
+            if(n.Kind==ModuleKind.VectorDesign && (n.VectorPdfBase64 is not null || n.Configured && n.VectorSvgBase64 is null)) throw new InvalidDataException("Vector design module is not configured correctly.");
+            if(n.Kind==ModuleKind.VectorLoad && n.VectorPdfBase64 is not null && n.VectorSvgBase64 is not null) throw new InvalidDataException("A vector load cannot contain both PDF and SVG sources.");
             if(n.Kind==ModuleKind.DesignEditor && n.DesignStandalone) { try {new DesignBlankSettings(n.DesignWidth,n.DesignHeight,n.DesignWarpDensity,n.DesignWeftDensity).Validate();} catch(ArgumentException ex){throw new InvalidDataException("Invalid blank design settings.",ex);} }
             if(n.PendingInsertionPort is { } pending && (pending.Length>32 || !Inputs(n.Kind).ContainsKey(pending)))throw new InvalidDataException("Invalid pending insertion port.");
             if(n.DesignEditDocument is { } doc && (n.Kind!=ModuleKind.DesignEditor || n.DesignEditInputHash is null || n.DesignEditInputHash.Length!=64 || doc.Layers is null || doc.Layers.Count is <1 or >DesignCanvas.MaxLayers || doc.Active<0 || doc.Active>=doc.Layers.Count || doc.Layers.Any(l=>l is null || string.IsNullOrWhiteSpace(l.Name) || l.Name.Length>80 || l.Opacity is <0 or >100 || string.IsNullOrEmpty(l.Png) || l.Png.Length>ImageLoader.MaxFileBytes*2) || doc.TraceOpacity is <0 or >100 || doc.TraceWidth is <0 or >16000 || doc.TraceHeight is <0 or >16000 || Math.Abs((long)doc.TraceX)>16000 || Math.Abs((long)doc.TraceY)>16000 || doc.TracePng?.Length>ImageLoader.MaxFileBytes*2)) throw new InvalidDataException("Invalid design document.");
@@ -214,7 +225,12 @@ public static class ModuleExecutor
                 case ModuleKind.VectorLoad:
                     if (string.IsNullOrEmpty(node.ImagePng)) throw new InvalidOperationException("Choose an input image.");
                     byte[] bytes = Convert.FromBase64String(node.ImagePng); if (bytes.Length > ImageLoader.MaxFileBytes) throw new InvalidDataException("Embedded image is too large.");
-                    using (var stream = new MemoryStream(bytes)) { var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad); var bitmap = decoder.Frames[0]; bitmap.Freeze(); VectorDocument? vector=null; if(node.Kind==ModuleKind.VectorLoad && !string.IsNullOrEmpty(node.VectorPdfBase64)) { var pdf=Convert.FromBase64String(node.VectorPdfBase64); if(pdf.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("Vector source is too large."); vector=new VectorDocument(pdf,node.SourcePage); } result = new(ModuleData.Image, bitmap, Vector:vector); } break;
+                    using (var stream = new MemoryStream(bytes)) { var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad); var bitmap = decoder.Frames[0]; bitmap.Freeze(); VectorDocument? vector=null; if(node.Kind==ModuleKind.VectorLoad && node.VectorSvgBase64 is { } svg64) { var svg=System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(svg64)); vector=new VectorDocument(svg); } else if(node.Kind==ModuleKind.VectorLoad && !string.IsNullOrEmpty(node.VectorPdfBase64)) { var pdf=Convert.FromBase64String(node.VectorPdfBase64); if(pdf.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("Vector source is too large."); vector=new VectorDocument(pdf,node.SourcePage); } result = new(ModuleData.Image, bitmap, Vector:vector); } break;
+                case ModuleKind.VectorDesign:
+                    if(string.IsNullOrEmpty(node.VectorSvgBase64)) throw new InvalidOperationException("ابتدا استودیوی طراحی برداری را باز و طرح را اعمال کنید.");
+                    byte[] vectorSvgBytes=Convert.FromBase64String(node.VectorSvgBase64); if(vectorSvgBytes.Length>ImageLoader.MaxFileBytes) throw new InvalidDataException("طرح SVG جاسازی‌شده بیش از حد بزرگ است.");
+                    string vectorSvg=new System.Text.UTF8Encoding(false,true).GetString(vectorSvgBytes); var vectorDocument=VectorDesignDocument.FromSvg(vectorSvg);
+                    result=new(ModuleData.Image,vectorDocument.Render(),Vector:new VectorDocument(vectorSvg)); break;
                 case ModuleKind.RectangleMask:
                     var maskSource=Input("image").Image!; var rectangle=GraphMasks.Rectangle(maskSource,node.MaskX,node.MaskY,node.MaskWidth,node.MaskHeight);
                     result=new(ModuleData.Mask,rectangle,QualityNotes:new[]{$"ناحیه: X={node.MaskX}, Y={node.MaskY} · عرض={node.MaskWidth} · ارتفاع={node.MaskHeight}","سفید: انتخاب؛ سیاه: خارج انتخاب. اندازه صفر تا انتهای تصویر است."});break;
@@ -243,7 +259,9 @@ public static class ModuleExecutor
                 case ModuleKind.Resize:
                     var sourceValue = Input("image"); var source = sourceValue.Image!; int w = node.Width == 0 ? source.PixelWidth : node.Width, h = node.Height == 0 ? source.PixelHeight : node.Height;
                     if(w<1 || h<1 || (long)w*h>DesignProcessor.MaxPixels) throw new ArgumentOutOfRangeException(nameof(node.Width),"Resize exceeds the 4 million pixel limit.");
-                    result = new(ModuleData.Image, sourceValue.Vector is { } vectorSource ? PdfImageLoader.Render(vectorSource.PdfBytes,vectorSource.PageIndex,w,h).Image : DesignProcessor.Resize(source,w,h), Vector:sourceValue.Vector); break;
+                    result = new(ModuleData.Image, sourceValue.Vector is { } vectorSource
+                        ? vectorSource.SvgMarkup is { } svg ? VectorDesignDocument.FromSvg(svg).Render(w,h) : PdfImageLoader.Render(vectorSource.PdfBytes,vectorSource.PageIndex,w,h).Image
+                        : DesignProcessor.Resize(source,w,h), Vector:sourceValue.Vector); break;
                 case ModuleKind.MachineDefinition:
                     MachineProfile.Validate(node.Machine,node.Manufacturer); result=new(ModuleData.MachineConfig,Machine:node.Machine); break;
                 case ModuleKind.DesignIdentity:

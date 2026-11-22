@@ -71,7 +71,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         moduleEditorKind=kind; connectedWeaves=projectWeaves ?? Array.Empty<BankItem>(); AllowDrop=false; session=prepared.Snapshot(); path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"jacquard-graph-input"); sourceName="Graph input"; current=new ImageResult(session.Source,1,0,"Graph");
         WidthInput.Text=session.Resized!.PixelWidth.ToString(); HeightInput.Text=session.Resized.PixelHeight.ToString(); ColorInput.Text=(session.AppliedColorLimit ?? 256).ToString(); ColorDistanceInput.Text=session.AppliedColorDistance.ToString();
         stage=kind switch { ModuleKind.Resize => Stage.Size, ModuleKind.ApplyWeaves => Stage.Patterns, ModuleKind.Floats => Stage.Floats, ModuleKind.Tension => Stage.Analysis, _ => Stage.Colors }; Navigation.Visibility=Visibility.Collapsed;
-        OpenButton.Visibility=SaveProjectButton.Visibility=SaveProjectAsButton.Visibility=InfoButton.Visibility=ReportButton.Visibility=BankButton.Visibility=Visibility.Collapsed;
+        OpenButton.Visibility=SaveProjectButton.Visibility=SaveProjectAsButton.Visibility=InfoButton.Visibility=ReportButton.Visibility=BankButton.Visibility=VectorDesignButton.Visibility=Visibility.Collapsed;
         ModuleApplyButton.Visibility=ModuleCancelButton.Visibility=Visibility.Visible; ToColorButton.Visibility=ToPatternButton.Visibility=Visibility.Collapsed;
         RebuildPaletteEntries(); ShowStage(); UpdateWindowTitle();
     }
@@ -87,7 +87,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         moduleEditorKind=ModuleKind.CreateWeave; AllowDrop=false; bankOpen=true;
         Navigation.Visibility=Visibility.Collapsed;
-        OpenButton.Visibility=SaveProjectButton.Visibility=SaveProjectAsButton.Visibility=InfoButton.Visibility=ReportButton.Visibility=BankButton.Visibility=Visibility.Collapsed;
+        OpenButton.Visibility=SaveProjectButton.Visibility=SaveProjectAsButton.Visibility=InfoButton.Visibility=ReportButton.Visibility=BankButton.Visibility=VectorDesignButton.Visibility=Visibility.Collapsed;
         BankBackButton.Visibility=BankUseButton.Visibility=Visibility.Collapsed;
         ModuleApplyButton.Visibility=ModuleCancelButton.Visibility=Visibility.Visible;
         if(initial is not null) { WeaveCanvas.SetPattern(initial); WeaveWidth.Text=initial.Width.ToString(); WeaveHeight.Text=initial.Height.ToString(); }
@@ -126,7 +126,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private async void Open_Click(object sender, RoutedEventArgs e)
     {
         if (busy) return;
-        var dialog = new OpenFileDialog { Filter = "Supported files|*.sam;*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr;*.pdf;*.ai;*.jc5;*.jc6|SAM project (*.sam)|*.sam|Images and PDF/AI|*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr;*.pdf;*.ai|Machine (*.jc5;*.jc6)|*.jc5;*.jc6|All files (*.*)|*.*", CheckFileExists = true, Multiselect = false };
+        var dialog = new OpenFileDialog { Filter = "Supported files|*.sam;*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr;*.pdf;*.ai;*.svg;*.jc5;*.jc6|SAM project (*.sam)|*.sam|Images, SVG, PDF/AI|*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr;*.pdf;*.ai;*.svg|Machine (*.jc5;*.jc6)|*.jc5;*.jc6|All files (*.*)|*.*", CheckFileExists = true, Multiselect = false };
         if (dialog.ShowDialog(this) != true || !await ConfirmDiscardAsync()) return;
         await OpenAnyAsync(dialog.FileName);
     }
@@ -177,7 +177,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void RefreshControls()
     {
         if (!IsInitialized) return;
-        OpenButton.IsEnabled = !busy; SaveProjectButton.IsEnabled = !busy && session is not null; SaveProjectAsButton.IsEnabled = !busy && session is not null; BankButton.IsEnabled = !busy; EmptyButton.IsEnabled = !busy; SettingsBorder.IsEnabled = !busy; BankWorkspace.IsEnabled = !busy;
+        OpenButton.IsEnabled = !busy; VectorDesignButton.IsEnabled = !busy && !bankOpen; SaveProjectButton.IsEnabled = !busy && session is not null; SaveProjectAsButton.IsEnabled = !busy && session is not null; BankButton.IsEnabled = !busy; EmptyButton.IsEnabled = !busy; SettingsBorder.IsEnabled = !busy; BankWorkspace.IsEnabled = !busy;
         SizeStepButton.IsEnabled = !busy && session is not null;
         ColorStepButton.IsEnabled = !busy && session?.Resized is not null && !SizeDirty;
         PatternStepButton.IsEnabled = !busy && session?.Palette is not null && !SizeDirty && !ColorsDirty;
@@ -294,6 +294,34 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
     private async void MachineStep_Click(object sender, RoutedEventArgs e) { if (!busy) { stage = Stage.Machine; ShowStage(); await RefreshMachineBankAsync(); if (!busy && MachineInput() is not null) await ComposeMachineAsync(false); } }
     private void OpenNavigation_Click(object sender, RoutedEventArgs e) => Open_Click(sender, e);
+    private async void VectorDesign_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || bankOpen || !await ConfirmDiscardAsync()) return;
+        try
+        {
+            VectorDesignDocument? initial = session?.Vector?.SvgMarkup is { } markup ? VectorDesignDocument.FromSvg(markup) : null;
+            BitmapSource? reference = initial is null ? session?.Source : null;
+            var editor = new VectorEditorWindow(initial, reference) { Owner = this };
+            if (editor.ShowDialog() != true || editor.ResultSvg is not { } svg || editor.ResultImage is not { } image) return;
+
+            var vector = new VectorDocument(svg);
+            var next = new WorkflowSession(image, vector);
+            SetBusy(true);
+            try { await Task.Run(() => next.ApplySize(image.PixelWidth, image.PixelHeight)); }
+            finally { SetBusy(false); }
+
+            session = next; current = new ImageResult(image, 1, 0, "SVG", vector);
+            path = Path.Combine(Path.GetTempPath(), "JacquardStudio-vector-" + Guid.NewGuid().ToString("N") + ".svg");
+            projectPath = null; sourceName = "Vector design.svg"; projectCreated = DateTimeOffset.Now; metadata = new();
+            LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); LoadSimulationSettings(new SimulationSettings()); ClearHistory();
+            WidthInput.Text = image.PixelWidth.ToString(); HeightInput.Text = image.PixelHeight.ToString(); ColorInput.Text = "256"; ColorDistanceInput.Text = "12";
+            FileValue.Text = sourceName; FormatValue.Text = "SVG · vector"; RebuildPaletteEntries();
+            zoom = 1; SetZoom(1); stage = Stage.Size; projectDirty = true; ShowStage();
+            StatusText.Text = "طرح برداری به گردش‌کار اضافه شد؛ منبع SVG در پروژه SAM حفظ می‌شود.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException)
+        { StudioDialogs.Show(this, "استودیوی طراحی برداری باز یا اعمال نشد:\n" + ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
+    }
     private async void SelvedgeStep_Click(object sender, RoutedEventArgs e)
     {
         if (busy || session?.CanSave != true || SizeDirty || ColorsDirty) return;
@@ -1416,7 +1444,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
         SettingsBorder.FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
-        LanguageButton.Content = english ? "FA" : "EN"; LanguageButton.ToolTip = T("تغییر زبان", "Change language"); AboutButton.ToolTip = T("درباره", "About"); HelpButton.ToolTip = T("راهنمای برنامه (F1)", "Help (F1)"); SaveProjectButton.ToolTip = T("ذخیره پروژه", "Save project"); SaveProjectAsButton.ToolTip = T("ذخیره با نام دیگر", "Save project as"); ThemeButton.ToolTip = T("تغییر تم", "Change theme"); BankButton.ToolTip = T("بانک و طراحی بافت", "Weave bank and editor"); UndoButton.ToolTip = T("بازگشت (Ctrl+Z)", "Undo (Ctrl+Z)"); RedoButton.ToolTip = T("بازانجام (Ctrl+Y)", "Redo (Ctrl+Y)"); ReportButton.ToolTip = T("گزارش PDF و چاپ", "PDF report and print"); InfoButton.Content = T("اطلاعات طرح", "Design info"); InfoButton.ToolTip = T("طراح، کاربرد و توضیحات", "Designer, use and description");
+        LanguageButton.Content = english ? "FA" : "EN"; LanguageButton.ToolTip = T("تغییر زبان", "Change language"); AboutButton.ToolTip = T("درباره", "About"); HelpButton.ToolTip = T("راهنمای برنامه (F1)", "Help (F1)"); SaveProjectButton.ToolTip = T("ذخیره پروژه", "Save project"); SaveProjectAsButton.ToolTip = T("ذخیره با نام دیگر", "Save project as"); ThemeButton.ToolTip = T("تغییر تم", "Change theme"); BankButton.ToolTip = T("بانک و طراحی بافت", "Weave bank and editor"); VectorDesignButton.ToolTip = T("استودیو طراحی برداری و رسم منحنی", "Vector design studio and Bezier drawing"); UndoButton.ToolTip = T("بازگشت (Ctrl+Z)", "Undo (Ctrl+Z)"); RedoButton.ToolTip = T("بازانجام (Ctrl+Y)", "Redo (Ctrl+Y)"); ReportButton.ToolTip = T("گزارش PDF و چاپ", "PDF report and print"); InfoButton.Content = T("اطلاعات طرح", "Design info"); InfoButton.ToolTip = T("طراح، کاربرد و توضیحات", "Designer, use and description");
         SimulationStepButton.ToolTip = T("شبیه‌سازی پارچه", "Fabric simulation");
         SimulationWeftsLabel.Text = T("نخ و رنگ هر پود اعمال‌شده", "Yarn and color for each applied weft");
         SimulationModeLabel.Text = T("حالت نمایش", "Appearance"); SimulationTitle.Text = T("شبیه‌سازی پارچه", "Fabric simulation"); SimulationHint.Text = T("نمای تصویری تقریبی؛ رفتار واقعی پارچه نیست و بر خروجی ماشین اثر ندارد.", "Stylized preview, not a physical simulation; it does not change loom output."); SimulationReferencePreset.Content = T("پیش‌نمایش نمونه: چهارخانه قرمز و سفید", "Load red and ivory reference preset"); SimulationRenderButton.Content = T("ساخت پیش‌نمایش", "Render preview"); SimulationSaveButton.Content = T("ذخیره تصویر شبیه‌سازی", "Save preview image");

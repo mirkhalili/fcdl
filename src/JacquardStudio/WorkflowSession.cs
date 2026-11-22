@@ -25,7 +25,9 @@ public sealed class WorkflowSession
     {
         // Commit only after successful processing so failures never discard previous work.
         if (width < 1 || height < 1 || (long)width * height > DesignProcessor.MaxPixels) throw new ArgumentOutOfRangeException(nameof(width));
-        var image = Vector is null ? DesignProcessor.Resize(Source, width, height) : PdfImageLoader.Render(Vector.PdfBytes, Vector.PageIndex, width, height).Image;
+        var image = Vector is null ? DesignProcessor.Resize(Source, width, height)
+            : Vector.SvgMarkup is { } svg ? VectorDesignDocument.FromSvg(svg).Render(width, height)
+            : PdfImageLoader.Render(Vector.PdfBytes, Vector.PageIndex, width, height).Image;
         Resized = image; Palette = null; ColorPreview = null; AppliedColorLimit = null; LockedColors = Array.Empty<bool>();
         Patterns = Array.Empty<WeavePattern?>(); PatternPreview = null; BasePatternPreview = null; PixelOverrides = null;
     }

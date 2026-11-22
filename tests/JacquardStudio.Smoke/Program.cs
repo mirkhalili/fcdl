@@ -67,14 +67,14 @@ internal static class Program
             using (var zip = ZipFile.Open(legacySam, ZipArchiveMode.Update))
             {
                 var entryManifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(entryManifest.Open())) json = reader.ReadToEnd();
-                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":1"));
+                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":1"));
             }
             Check(ProjectFile.Load(legacySam).Session.CanSave, "legacy SAM version one loads");
             string legacyV2 = Path.Combine(dir, "legacy-v2.sam"); File.Copy(projectPath, legacyV2);
             using (var zip = ZipFile.Open(legacyV2, ZipArchiveMode.Update))
             {
                 var old = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(old.Open())) json = reader.ReadToEnd();
-                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":2"));
+                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":2"));
             }
             Check(ProjectFile.Load(legacyV2).Session.CanSave, "legacy SAM version two loads");
             Expect<IOException>(() => ProjectFile.Save(projectPath, projectState, new[] { projectPath }));
@@ -134,8 +134,70 @@ internal static class Program
             string vectorProject = Path.Combine(dir, "vector-project.sam"); ProjectFile.Save(vectorProject, new ProjectState(vectorSession, "curves.pdf", "211", "177", "50", "Size", false, 0, Array.Empty<string?>()), Array.Empty<string>());
             var reopenedVector = ProjectFile.Load(vectorProject).Session; reopenedVector.ApplySize(211, 177); var restoredVectorPixels = new byte[vectorPixels.Length]; reopenedVector.Resized!.CopyPixels(restoredVectorPixels, 211 * 4, 0);
             Check(reopenedVector.Vector is not null && vectorPixels.SequenceEqual(restoredVectorPixels), "SAM embeds vector source and rerenders identical curves after reopen");
+            string pdfVectorV13 = Path.Combine(dir, "pdf-vector-v13.sam"); File.Copy(vectorProject, pdfVectorV13);
+            using (var zip = ZipFile.Open(pdfVectorV13, ZipArchiveMode.Update))
+            {
+                var manifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(manifest.Open())) json = reader.ReadToEnd();
+                manifest.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":13"));
+            }
+            var reopenedV13 = ProjectFile.Load(pdfVectorV13).Session; reopenedV13.ApplySize(211, 177); var v13Pixels = new byte[vectorPixels.Length]; reopenedV13.Resized!.CopyPixels(v13Pixels, 211 * 4, 0);
+            Check(reopenedV13.Vector is { SvgMarkup: null, PageIndex: 0 } && vectorPixels.SequenceEqual(v13Pixels), "SAM v13 PDF vector sources remain compatible after adding SVG storage in v14");
             var vectorAi = Path.Combine(dir, "curves.ai"); File.Copy(Path.Combine(repository, "tests", "fixtures", "vector-curves.pdf"), vectorAi); var aiInput = ImageLoader.Load(vectorAi, 0);
             var aiSession = new WorkflowSession(aiInput.Image, aiInput.Vector); aiSession.ApplySize(211, 177); var aiPixels = new byte[vectorPixels.Length]; aiSession.Resized!.CopyPixels(aiPixels, 211 * 4, 0); Check(aiPixels.SequenceEqual(vectorPixels), "PDF-compatible AI uses same curve engine");
+            const string svgMarkup = """
+                <svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="32" height="24" viewBox="0 0 32 24">
+                  <rect id="page-background" x="0" y="0" width="32" height="24" fill="#ffffff" />
+                  <g inkscape:groupmode="layer" inkscape:label="Curves &amp; paths" data-layer="true">
+                    <path id="curve" data-name="Bézier curve" d="M 3 20 C 6 2 24 2 29 20" fill="none" stroke="#102030" stroke-width="2" />
+                    <circle id="dot" cx="16" cy="12" r="2" fill="rgba(240, 128, 16, 0.75)" />
+                  </g>
+                  <g inkscape:groupmode="layer" inkscape:label="Hidden layer" data-layer="true" display="none">
+                    <path id="hidden" d="M 1 1 L 8 8" stroke="#ff0000" />
+                  </g>
+                </svg>
+                """;
+            var editableSvg = VectorDesignDocument.FromSvg(svgMarkup);
+            Check(editableSvg.Width == 32 && editableSvg.Height == 24 && editableSvg.Layers.Count == 2 && editableSvg.Layers[0].Name == "Curves & paths" && !editableSvg.Layers[1].Visible, "SVG dimensions, Inkscape layer labels, and hidden-layer state import");
+            var importedCurve = editableSvg.Layers[0].Objects.Single(item => item.Name == "Bézier curve").Paths.Single();
+            Check(importedCurve.Nodes.Count == 2 && importedCurve.Nodes[0].CurveToNext && importedCurve.Nodes[0].HasOut && importedCurve.Nodes[1].HasIn, "SVG cubic Bézier anchors and control handles remain editable");
+            Check(VectorDesignDocument.ParseColor("#f08") == Color.FromRgb(255, 0, 136) && VectorDesignDocument.ParseColor("rgba(240,128,16,0.75)").A == 191, "SVG CSS short-hex and RGBA colors parse");
+            const string stylePrecedenceSvg = """
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                  <g color="#0000ff" fill="#ff0000">
+                    <rect x="1" y="1" width="14" height="14" fill="#ffff00" stroke="#ff0000" style="fill: currentColor; stroke: #00ff00" />
+                  </g>
+                </svg>
+                """;
+            var styledObject = VectorDesignDocument.FromSvg(stylePrecedenceSvg).Layers[0].Objects.Single();
+            Check(VectorDesignDocument.ParseColor(styledObject.Fill) == Color.FromRgb(0, 0, 255) && VectorDesignDocument.ParseColor(styledObject.Stroke) == Color.FromRgb(0, 255, 0), "SVG style declarations override presentation attributes and inherit currentColor");
+            const string roundedRectSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"16\"><rect x=\"1\" y=\"1\" width=\"30\" height=\"14\" rx=\"3\" ry=\"3\" /></svg>";
+            var roundedRect = VectorDesignDocument.FromSvg(roundedRectSvg).Layers[0].Objects.Single().Paths.Single();
+            Check(roundedRect.Nodes.Count == 8 && !roundedRect.Nodes[0].CurveToNext && roundedRect.Nodes[1].CurveToNext && roundedRect.Nodes[7].CurveToNext, "rounded SVG rectangles preserve straight edges and curved corners");
+            var roundTripSvg = VectorDesignDocument.FromSvg(editableSvg.ToSvg());
+            Check(roundTripSvg.Layers.Count == 2 && roundTripSvg.Layers[0].Objects.Count == editableSvg.Layers[0].Objects.Count && !roundTripSvg.Layers[1].Visible, "SVG editable object and layer roundtrip");
+            var svgRaster = editableSvg.Render(64, 48);
+            Check(svgRaster.PixelWidth == 64 && svgRaster.PixelHeight == 48, "SVG vector renderer supports explicit output dimensions");
+            string svgPath = Path.Combine(dir, "editable.svg"); File.WriteAllText(svgPath, svgMarkup, System.Text.Encoding.UTF8);
+            var svgInput = ImageLoader.Load(svgPath, 0);
+            Check(svgInput.Format == "SVG" && svgInput.PageCount == 1 && svgInput.Vector?.IsSvg == true, "SVG is a vector-preserving image source");
+            Expect<ArgumentOutOfRangeException>(() => ImageLoader.Load(svgPath, 1));
+            var svgSession = new WorkflowSession(svgInput.Image, svgInput.Vector); svgSession.ApplySize(64, 48);
+            string svgProject = Path.Combine(dir, "svg-source.sam");
+            ProjectFile.Save(svgProject, new ProjectState(svgSession, "editable.svg", "64", "48", "256", "Size", false, 0, Array.Empty<string?>()), Array.Empty<string>());
+            var reopenedSvgSession = ProjectFile.Load(svgProject).Session; reopenedSvgSession.ApplySize(64, 48);
+            var svgPixels = new byte[64 * 48 * 4]; var reopenedSvgPixels = new byte[svgPixels.Length]; svgSession.Resized!.CopyPixels(svgPixels, 64 * 4, 0); reopenedSvgSession.Resized!.CopyPixels(reopenedSvgPixels, 64 * 4, 0);
+            Check(reopenedSvgSession.Vector?.IsSvg == true && reopenedSvgSession.Vector.SvgMarkup == svgMarkup && svgPixels.SequenceEqual(reopenedSvgPixels), "SAM v14 embeds SVG source and deterministically rerenders it after reopen");
+            var vectorGraph = new ModuleGraph();
+            var vectorSourceNode = vectorGraph.Add(ModuleKind.VectorLoad, 0, 0); vectorSourceNode.ImagePng = ModuleExecutor.EmbedImage(svgInput.Image); vectorSourceNode.VectorSvgBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(svgMarkup));
+            var vectorResizeNode = vectorGraph.Add(ModuleKind.Resize, 150, 0); vectorResizeNode.Width = 64; vectorResizeNode.Height = 48; vectorGraph.Connect(vectorSourceNode.Id, vectorResizeNode.Id, "image");
+            var vectorDesignNode = vectorGraph.Add(ModuleKind.VectorDesign, 300, 0); vectorDesignNode.VectorSvgBase64 = vectorSourceNode.VectorSvgBase64; vectorDesignNode.Configured = true;
+            var graphValues = ModuleExecutor.Run(vectorGraph, vectorResizeNode.Id);
+            Check(graphValues[vectorResizeNode.Id].Image is { PixelWidth: 64, PixelHeight: 48 } && graphValues[vectorResizeNode.Id].Vector?.IsSvg == true, "vector-load graph nodes retain SVG for downstream vector resizing");
+            var designValues = ModuleExecutor.Run(vectorGraph, vectorDesignNode.Id);
+            Check(designValues[vectorDesignNode.Id].Image is { PixelWidth: 32, PixelHeight: 24 } && designValues[vectorDesignNode.Id].Vector?.IsSvg == true, "vector-design graph node emits a rendered image and editable SVG source");
+            string vectorGraphPath = Path.Combine(dir, "vector-graph.sam"); ModuleProjectFile.Save(vectorGraphPath, vectorGraph);
+            var reopenedVectorGraph = ModuleProjectFile.Load(vectorGraphPath); var restoredDesignNode = reopenedVectorGraph.Nodes.Single(item => item.Kind == ModuleKind.VectorDesign);
+            Check(ModuleExecutor.Run(reopenedVectorGraph, restoredDesignNode.Id)[restoredDesignNode.Id].Vector?.SvgMarkup == svgMarkup, "graph project preserves its editable SVG module");
             string zipped = Path.Combine(repository, "tests", "fixtures", "designscope-reference.zip");
             using (var archive = ZipFile.OpenRead(zipped))
             {
@@ -525,10 +587,10 @@ internal static class Program
             ProjectFile.Save(colorProject, new ProjectState(colorProjectSession, "sample.bmp", "3", "2", "50", "Patterns", false, 1, colorProjectSession.Patterns.Select(_ => (string?)"composite").ToArray()), Array.Empty<string>());
             Check(ProjectFile.Load(colorProject).Session.Patterns[0]!.WeftColors!.SequenceEqual(restoredComposite.WeftColors), "composite colors survive SAM v8");
             string colorV7 = Path.Combine(dir, "colored-v7.sam"); File.Copy(colorProject, colorV7);
-            using (var zip = ZipFile.Open(colorV7, ZipArchiveMode.Update)) { var coloredManifestEntry = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestEntry.Open())) json = r.ReadToEnd(); coloredManifestEntry.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":7")); }
+            using (var zip = ZipFile.Open(colorV7, ZipArchiveMode.Update)) { var coloredManifestEntry = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestEntry.Open())) json = r.ReadToEnd(); coloredManifestEntry.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":7")); }
             Check(ProjectFile.Load(colorV7).Session.Patterns[0]!.WeftColors is null, "SAM v7 still loads without new visual metadata");
             string colorV8 = Path.Combine(dir, "colored-v8.sam"); File.Copy(colorProject, colorV8);
-            using (var zip = ZipFile.Open(colorV8, ZipArchiveMode.Update)) { var coloredManifestV8 = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestV8.Open())) json = r.ReadToEnd(); coloredManifestV8.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":8")); }
+            using (var zip = ZipFile.Open(colorV8, ZipArchiveMode.Update)) { var coloredManifestV8 = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestV8.Open())) json = r.ReadToEnd(); coloredManifestV8.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":8")); }
             Check(ProjectFile.Load(colorV8).Session.Patterns[0]!.WeftColors!.SequenceEqual(restoredComposite.WeftColors), "SAM v8 composite colors remain compatible");
 
             Check(Math.Abs(YarnGeometry.ToTex(90, 2) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 1) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 4) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(59.0541, 3) - 10) < .0001, "yarn count conversions");
@@ -665,7 +727,7 @@ internal static class Program
             var v10Settings = simSettings with { Mode = 2 }; string v10File = Path.Combine(dir, "sim-v10.sam");
             ProjectFile.Save(v10File, new ProjectState(autoSession,"sample.bmp","3","2","50","Simulation",false,1,autoSession.Patterns.Select(_ => (string?)"pattern").ToArray(), Simulation:v10Settings), Array.Empty<string>());
             Check(ProjectFile.Load(v10File).Simulation!.Mode == 2, "SAM v10 preserves simulation mode");
-            using (var zip = ZipFile.Open(v10File, ZipArchiveMode.Update)) { var old = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(old.Open())) json = r.ReadToEnd(); old.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":9")); }
+            using (var zip = ZipFile.Open(v10File, ZipArchiveMode.Update)) { var old = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(old.Open())) json = r.ReadToEnd(); old.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":9")); }
             Check(ProjectFile.Load(v10File).Simulation!.Mode == 1, "SAM v9 defaults to the legacy relief appearance");
             var multiSettings = simSettings with { WarpCount = "۲۰", WarpUnit = 3, WarpDensity = "۳۵", WeftDensity = "۲۵", MaterialDensity = "۰٫۸", Wefts = new[] { new SimulatedYarn("1", 1, "#FF0000", "40", 0), new SimulatedYarn("2", 2, "#00FF00", "30", 3), new SimulatedYarn("3", 0, "#0000FF", "150", 1) } };
             var whiteMap = BitmapSource.Create(1, 2, 96, 96, PixelFormats.Gray8, null, new byte[]{255,255}, 1);
@@ -691,7 +753,7 @@ internal static class Program
             using (var zip = ZipFile.Open(simV6, ZipArchiveMode.Update))
             {
                 var manifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(manifest.Open())) json = reader.ReadToEnd();
-                manifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":6"));
+                manifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":6"));
             }
             Check(ProjectFile.Load(simV6).Simulation!.Wefts is null, "SAM v6 uses its original single-weft fallback");
             var invalidPosition = new MachineSetup(BoxEnabled:true, AbsoluteLayout:true, DesignStart:"3", WeftStart:PositionNumbers.ToStored("0"), WeftCount:"1"); Expect<ArgumentException>(() => MachineComposer.Compose(image, invalidPosition));
@@ -766,7 +828,7 @@ internal static class Program
             using (var zip = ZipFile.Open(v4File, ZipArchiveMode.Update))
             {
                 var item = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(item.Open())) json = reader.ReadToEnd();
-                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":4"));
+                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":4"));
             }
             var oldV4 = ProjectFile.Load(v4File); Check(oldV4.DraftWeft is null && oldV4.Machine!.AbsoluteLayout && DesignAnalysis.ReadBinary(MachineComposer.Compose(image, oldV4.Machine).Image).SequenceEqual(positionedPixels), "SAM v4 absolute settings remain applied");
             var composedState = new ProjectState(bankSession,"sample.bmp","3","2","50","Machine",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,setup);

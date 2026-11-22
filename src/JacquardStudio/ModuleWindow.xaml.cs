@@ -46,7 +46,8 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
         (ModuleKind.Compare,"مقایسه دو طرح","\uE8A5","#61A9F7","COMPARISON"),
         (ModuleKind.QualityCheck,"کنترل کیفیت نقشه","\uE73E","#AFA5D1","QUALITY CHECK"),
         (ModuleKind.Load,"طرح نقشه‌بیتی","\uE8B7","#47D4B3","IMAGE SOURCE"),
-        (ModuleKind.VectorLoad,"طرح برداری","\uE8B7","#80B8DC","VECTOR SOURCE"),
+        (ModuleKind.VectorLoad,"بارگذاری طرح برداری","\uE8B7","#80B8DC","VECTOR SOURCE"),
+        (ModuleKind.VectorDesign,"استودیو طراحی برداری","\uE8B7","#68C6B5","VECTOR DESIGN"),
         (ModuleKind.MachineDefinition,"تعریف ماشین","\uE90F","#AFA5D1","MACHINE PROFILE"),
         (ModuleKind.DesignIdentity,"شناسنامه طرح","\uE8A5","#A3C6A6","DESIGN IDENTITY"),
         (ModuleKind.AiEdit,"هوش مصنوعی","\uE945","#D1A4BC","AI IMAGE EDIT"),
@@ -264,7 +265,8 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
             ModuleKind.Compare => "دو تصویر یا دو نقشه هم‌اندازه را مقایسه و نقاط متفاوت را قرمز نمایش می‌دهد.",
             ModuleKind.QualityCheck => "دودویی بودن نقشه و در صورت اتصال، عرض ماشین را بررسی می‌کند؛ تأیید صنعتی نیست.",
             ModuleKind.Load => "تصویر نقشه‌بیتی از جمله TIFF و GIF را انتخاب کنید و در فایل چندصفحه‌ای صفحه مورد نظر را برگزینید.",
-            ModuleKind.VectorLoad => "PDF یا AI سازگار با PDF و صفحه دلخواه را انتخاب کنید. منبع برای تغییر اندازه برداری در پروژه ذخیره می‌شود.",
+            ModuleKind.VectorLoad => "فایل SVG، PDF یا AI سازگار با PDF را انتخاب کنید؛ منبع برداری در پروژه حفظ و هنگام تغییر اندازه دوباره رسم می‌شود.",
+            ModuleKind.VectorDesign => "استودیوی مستقل طراحی SVG را باز کنید؛ منحنی‌های بزیه و گره‌ها، لایه‌ها، شکل‌ها و خروجی PNG/SVG را ویرایش کنید.",
             ModuleKind.MachineDefinition => "تعداد زه و شروع طرح و پود را تعیین و خروجی را به ورودی ماشین پودگذاری وصل کنید. برند به تنهایی قالب و قطبیت دستگاه را مشخص نمی‌کند.",
             ModuleKind.DesignIdentity => "فیلدهای عنوان و متن دلخواه را وارد کرده و به گزارش متصل کنید.",
             ModuleKind.AiEdit => "تصویر و پرامپت فقط پس از تأیید به OpenAI ارسال می‌شود و خروجی در پروژه ذخیره می‌شود. کلید از متغیر محیطی خوانده می‌شود.",
@@ -422,6 +424,7 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
             var inputs=ModuleGraph.Inputs(node.Kind);
             bool Optional(string port) => port=="palette" && node.Kind==ModuleKind.ExportData || port=="machine" && (node.Kind is ModuleKind.QualityCheck or ModuleKind.Weft) || port=="image" && node.Kind==ModuleKind.DesignEditor && node.DesignStandalone;
             if(node.Kind==ModuleKind.DesignEditor && node.DesignStandalone && links.Any(e=>e.Port=="image"))return "بوم مستقل نمی‌تواند ورودی تصویر هم‌زمان داشته باشد.";
+            if(node.Kind==ModuleKind.VectorDesign && links.Any(e=>e.Port=="image"))return "استودیوی برداری مستقل است و ورودی تصویر نمی‌پذیرد.";
             foreach(string port in inputs.Keys)
                 if(!Optional(port) && !links.Any(e=>e.Port==port))return "ورودی «"+PortName(port)+"» متصل نیست.";
             if(node.Kind==ModuleKind.Report && !links.Any(e=>e.Port=="report"))return "حداقل یک ماژول را به گزارش متصل کنید.";
@@ -436,6 +439,9 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
                     case ModuleKind.VectorLoad:
                     case ModuleKind.BinaryLoad:
                         settings=ImagePayloadInvalidReason(node);
+                        break;
+                    case ModuleKind.VectorDesign:
+                        if(string.IsNullOrEmpty(node.VectorSvgBase64) || !node.Configured)settings="در استودیوی طراحی برداری طرح بسازید و اعمال کنید.";
                         break;
                     case ModuleKind.BlankDesign:
                         new DesignBlankSettings(node.Width,node.Height,40,40).Validate();
@@ -780,6 +786,14 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
             case ModuleKind.BinaryLoad:
                 Category("منبع و بارگذاری");
                 AddInspector(BuildImageSourceCard(node)); break;
+            case ModuleKind.VectorDesign:
+                Category("استودیوی برداری");
+                AddInspector(Note(node.VectorSvgBase64 is null
+                    ? "یک سند مستقل بسازید یا SVG را از داخل استودیو باز کنید. ابزار قلم بزیه با کلیک و کشیدن دسته‌ها منحنی می‌سازد؛ خروجی SVG قابل ویرایش می‌ماند."
+                    : "سند SVG در پروژه جاسازی شده است؛ برای ویرایش گره‌ها، منحنی‌های بزیه، شکل‌ها و لایه‌ها استودیو را باز کنید."));
+                Button(node.VectorSvgBase64 is null ? "بازکردن استودیو و ساخت SVG" : "ویرایش سند برداری", async () => await EditVectorDesignAsync(node));
+                if (node.VectorSvgBase64 is not null) Button("اجرای سند برداری", async () => await ExecuteAsync(node));
+                break;
             case ModuleKind.BlankDesign:
                 Category("ابعاد و رنگ بوم");
                 AddInspector(Note("برای شروع طراحی از صفر، بوم را با ابعاد و رنگ دلخواه بسازید. سقف چهار میلیون پیکسل است."));
@@ -1001,15 +1015,18 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
     private async Task ChooseImage(ModuleNode node)
     {
         bool vector=node.Kind==ModuleKind.VectorLoad, binary=node.Kind==ModuleKind.BinaryLoad;
-        var picker=new OpenFileDialog { Filter=vector ? "PDF / AI سازگار با PDF|*.pdf;*.ai" : binary ? "نقشه سیاه‌وسفید یا JC5|*.bmp;*.tif;*.tiff;*.png;*.jc5" : "طرح نقشه‌بیتی|*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr", CheckFileExists=true };
+        var picker=new OpenFileDialog { Filter=vector ? "SVG، PDF یا AI سازگار با PDF|*.svg;*.pdf;*.ai" : binary ? "نقشه سیاه‌وسفید یا JC5|*.bmp;*.tif;*.tiff;*.png;*.jc5" : "طرح نقشه‌بیتی|*.bmp;*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.ico;*.wdp;*.jxr", CheckFileExists=true };
         var owner=Window.GetWindow(Inspector) ?? this; if(picker.ShowDialog(owner)!=true) return;
-        string ext=System.IO.Path.GetExtension(picker.FileName).ToLowerInvariant(); if(vector ? ext is not (".pdf" or ".ai") : binary ? ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jc5") : ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".ico" or ".wdp" or ".jxr")) { StudioDialogs.Show(owner,"پسوند فایل با نوع ماژول سازگار نیست."); return; }
+        string ext=System.IO.Path.GetExtension(picker.FileName).ToLowerInvariant(); if(vector ? ext is not (".pdf" or ".ai" or ".svg") : binary ? ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jc5") : ext is not (".bmp" or ".tif" or ".tiff" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".ico" or ".wdp" or ".jxr")) { StudioDialogs.Show(owner,"پسوند فایل با نوع ماژول سازگار نیست."); return; }
         bool limitRaster=!binary && !vector;
         try
         {
             busy=true; Status.Text="در حال بارگذاری طرح…"; var first=await Task.Run(()=>ext==".jc5" ? new ImageResult(Jc5Codec.Load(picker.FileName),1,0,"JC5") : ImageLoader.Load(picker.FileName,0,limitRaster,limitRaster)); busy=false;
             ImageResult chosen=first; if(ext!=".jc5") { var pages=new SourcePageWindow(picker.FileName,first,limitRaster,limitRaster) { Owner=owner }; if(pages.ShowDialog()!=true || pages.Result is not { } selectedPage) return; chosen=selectedPage; } if(binary) await Task.Run(()=> {if((long)chosen.Image.PixelWidth*chosen.Image.PixelHeight>DesignProcessor.MaxPixels)throw new InvalidDataException("نقشه باید حداکثر چهار میلیون پیکسل باشد."); _=DesignAnalysis.ReadBinary(chosen.Image);});
-            busy=true; var png=await Task.Run(()=>ModuleExecutor.EmbedImage(chosen.Image)); node.ImagePng=png; node.VectorPdfBase64=chosen.Vector is null ? null : Convert.ToBase64String(chosen.Vector.PdfBytes); node.SourcePage=chosen.PageIndex; node.Label=System.IO.Path.GetFileName(picker.FileName); Changed(); RenderGraph(); Inspect(); Status.Text=$"صفحه {chosen.PageIndex+1} از {chosen.PageCount} انتخاب شد." + (chosen.OriginalWidth>0 ? $" عرض از {chosen.OriginalWidth} به {chosen.Image.PixelWidth} پیکسل کاهش یافت." : "") + (chosen.ColorLimitApplied ? " پالت ورودی حداکثر ۲۵۶ رنگ دارد." : "");
+            busy=true; var png=await Task.Run(()=>ModuleExecutor.EmbedImage(chosen.Image)); node.ImagePng=png;
+            node.VectorPdfBase64=chosen.Vector is { SvgMarkup: null } pdfVector ? Convert.ToBase64String(pdfVector.PdfBytes) : null;
+            node.VectorSvgBase64=chosen.Vector?.SvgMarkup is { } svgMarkup ? Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(svgMarkup)) : null;
+            node.SourcePage=chosen.PageIndex; node.Label=System.IO.Path.GetFileName(picker.FileName); Changed(node.Id); RenderGraph(); Inspect(); Status.Text=$"صفحه {chosen.PageIndex+1} از {chosen.PageCount} انتخاب شد." + (chosen.OriginalWidth>0 ? $" عرض از {chosen.OriginalWidth} به {chosen.Image.PixelWidth} پیکسل کاهش یافت." : "") + (chosen.ColorLimitApplied ? " پالت ورودی حداکثر ۲۵۶ رنگ دارد." : "");
         }
         catch(Exception ex) when(ex is IOException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or UnauthorizedAccessException) { ModuleErrors.Show(owner,ex); }
         finally { busy=false; }
@@ -1095,6 +1112,7 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
         if (node.Kind == ModuleKind.ApplyWeaves) { await EditWeaveMappingAsync(node); return; }
         if (node.Kind == ModuleKind.AutoWeaves) { await EditAutoWeavesAsync(node); return; }
         if (node.Kind == ModuleKind.Crop) { await EditCropAsync(node); return; }
+        if (node.Kind == ModuleKind.VectorDesign) { await EditVectorDesignAsync(node); return; }
         if (node.Kind == ModuleKind.DesignEditor) { await EditDesignAsync(node); return; }
         if (node.Kind == ModuleKind.CreateWeave) { await EditWeaveDesignerAsync(node); return; }
         if (node.Kind is ModuleKind.Resize or ModuleKind.Colors) { await EditLegacyModuleAsync(node); return; }
@@ -1248,6 +1266,36 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
             Changed(node.Id);MergeResults(inputs);await ExecuteAsync(node,applyPending:true);RenderGraph();
         }
         catch(Exception ex) when(ex is IOException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException) {ModuleErrors.Show(this,ex);}
+    }
+    private async Task EditVectorDesignAsync(ModuleNode node)
+    {
+        try
+        {
+            VectorDesignDocument? initial = null;
+            if (!string.IsNullOrEmpty(node.VectorSvgBase64))
+            {
+                if (node.VectorSvgBase64.Length > ImageLoader.MaxFileBytes * 2) throw new InvalidDataException("سند SVG جاسازی‌شده بیش از حد بزرگ است.");
+                byte[] bytes = Convert.FromBase64String(node.VectorSvgBase64);
+                if (bytes.Length > ImageLoader.MaxFileBytes) throw new InvalidDataException("سند SVG جاسازی‌شده بیش از حد بزرگ است.");
+                string markup = new System.Text.UTF8Encoding(false, true).GetString(bytes);
+                initial = VectorDesignDocument.FromSvg(markup);
+            }
+
+            var editor = new VectorEditorWindow(initial) { Owner = this };
+            if (editor.ShowDialog() != true || editor.ResultSvg is not { } svg) return;
+            byte[] svgBytes = System.Text.Encoding.UTF8.GetBytes(svg);
+            if (svgBytes.Length > ImageLoader.MaxFileBytes) throw new InvalidDataException("سند SVG بیش از سقف ۱۲۸ مگابایت است.");
+            node.VectorSvgBase64 = Convert.ToBase64String(svgBytes);
+            node.VectorPdfBase64 = null;
+            node.SourcePage = 0;
+            Changed(node.Id);
+            await ExecuteAsync(node, applyPending: true);
+            RenderGraph();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or InvalidOperationException or NotSupportedException or FormatException)
+        {
+            ModuleErrors.Show(Window.GetWindow(Inspector) ?? this, ex, "خطای سند SVG");
+        }
     }
     private async Task EditCropAsync(ModuleNode node)
     {

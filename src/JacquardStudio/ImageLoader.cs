@@ -5,7 +5,26 @@ using System.Windows;
 
 namespace JacquardStudio;
 
-public sealed record VectorDocument(byte[] PdfBytes, int PageIndex);
+public sealed class VectorDocument
+{
+    public byte[] PdfBytes { get; }
+    public int PageIndex { get; }
+    public string? SvgMarkup { get; }
+    public bool IsSvg => SvgMarkup is not null;
+
+    public VectorDocument(byte[] pdfBytes, int pageIndex)
+    {
+        PdfBytes = pdfBytes ?? throw new ArgumentNullException(nameof(pdfBytes));
+        PageIndex = pageIndex;
+    }
+
+    public VectorDocument(string svgMarkup)
+    {
+        SvgMarkup = svgMarkup ?? throw new ArgumentNullException(nameof(svgMarkup));
+        PdfBytes = Array.Empty<byte>();
+        PageIndex = 0;
+    }
+}
 public record ImageResult(
     BitmapSource Image,
     int PageCount,
@@ -145,6 +164,13 @@ public static class ImageLoader
         if (info.Length > MaxFileBytes) throw new InvalidDataException("File exceeds the 128 MiB preview limit.");
         string ext = Path.GetExtension(path).ToLowerInvariant();
         if (ext is ".pdf" or ".ai") return PdfImageLoader.Load(path, pageIndex);
+        if (ext == ".svg")
+        {
+            if (pageIndex != 0) throw new ArgumentOutOfRangeException(nameof(pageIndex));
+            string markup = File.ReadAllText(path, new System.Text.UTF8Encoding(false, true));
+            var document = VectorDesignDocument.FromSvg(markup);
+            return new ImageResult(document.Render(), 1, 0, "SVG", new VectorDocument(markup));
+        }
         if (ext == ".webp") return WebpImageLoader.Load(path, pageIndex);
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);

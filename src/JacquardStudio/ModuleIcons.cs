@@ -20,6 +20,7 @@ public static class ModuleIcons
         ModuleKind.QualityCheck => "M5,12 L10,17 20,6 M5,5 H19 V19 H5 Z",
         ModuleKind.Load => "M4,5 H20 V19 H4 Z M5,17 L10,11 13,14 16,10 20,16",
         ModuleKind.VectorLoad => "M5,19 C5,5 19,5 19,19 M5,19 H19 M5,5 H19 M3,3 H7 V7 H3 Z M17,3 H21 V7 H17 Z M3,17 H7 V21 H3 Z M17,17 H21 V21 H17 Z",
+        ModuleKind.VectorDesign => "M3,20 C3,6 10,4 15,9 C18,12 17,17 21,18 M3,20 L6,17 M15,9 L12,8 M18,17 L21,18 M4,20 H21",
         ModuleKind.MachineDefinition => "M12,3 V6 M12,18 V21 M3,12 H6 M18,12 H21 M7,7 H17 V17 H7 Z",
         ModuleKind.DesignIdentity => "M5,4 H19 V20 H5 Z M8,8 H16 M8,11 H16 M8,14 H14 M8,17 H12",
         ModuleKind.AiEdit => "M12,3 L14,9 20,11 14,13 12,19 10,13 4,11 10,9 Z M18,3 V7 M16,5 H20",
