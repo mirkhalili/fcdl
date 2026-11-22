@@ -32,6 +32,7 @@
     <Content Include="Assets/SkiaSharp-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets/PDFium-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets/HelixToolkit-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../Docs/THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Resource Include="Assets/Fonts/*.ttf" />
     <Resource Include="Assets/app.ico" />
     <Resource Include="Assets/sam-emblem.png" />

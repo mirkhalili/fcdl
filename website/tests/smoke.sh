@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 find website -name '*.php' -print0 | xargs -0 -n1 php -l
+php website/tests/jalali.php
 mysql -h 127.0.0.1 -uroot -ptest-only-password -e 'CREATE DATABASE jacquard_migration CHARACTER SET utf8mb4'
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_migration < website/tests/schema-038.sql
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_migration -e "INSERT INTO installations VALUES ('3b01a77c-85a6-491e-94d8-28c4ec5e7138', REPEAT('a',64),REPEAT('A',64),'approved',UTC_TIMESTAMP(),UTC_TIMESTAMP(),'127.0.0.1','v','os','cpu',1,'pc'), ('f6bc3945-7683-4da5-b3c8-4d6e69d845f8',REPEAT('b',64),REPEAT('A',64),'blocked',UTC_TIMESTAMP(),UTC_TIMESTAMP(),'127.0.0.1','v','os','cpu',1,'pc'); INSERT INTO execution_events(installation_id,observed_at,ip) VALUES ('3b01a77c-85a6-491e-94d8-28c4ec5e7138',UTC_TIMESTAMP(),'127.0.0.1');"
@@ -156,11 +157,13 @@ device=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 # Site accepts an opaque code without checking its signature or device; date is mandatory.
 mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE devices SET status='pending',activation_code=NULL"
 curl -fsS -b "$cookies" --data-urlencode "csrf=$csrf" --data-urlencode 'action=save_device' --data-urlencode "device=$device" --data-urlencode 'status=approved' --data-urlencode 'activation_code=not-a-signed-code' http://127.0.0.1:18999/admin.php > "$html"
-grep -q 'تاریخ پایان اعتبار' "$html"
-curl -fsS -b "$cookies" --data-urlencode "csrf=$csrf" --data-urlencode 'action=save_device' --data-urlencode "device=$device" --data-urlencode 'status=pending' --data-urlencode 'activation_code=not-a-signed-code' --data-urlencode 'expiry=2090-01-01' --data-urlencode 'customer_name=Test User' --data-urlencode 'phone=12345' --data-urlencode 'city=Amsterdam' --data-urlencode 'notes=<script>' http://127.0.0.1:18999/admin.php > "$html"
+grep -q 'آخرین روز اعتبار (شمسی)' "$html"
+curl -fsS -b "$cookies" --data-urlencode "csrf=$csrf" --data-urlencode 'action=save_device' --data-urlencode "device=$device" --data-urlencode 'status=pending' --data-urlencode 'activation_code=not-a-signed-code' --data-urlencode 'expiry=۱۴۶۸/۱۰/۱۲' --data-urlencode 'customer_name=Test User' --data-urlencode 'phone=12345' --data-urlencode 'city=Amsterdam' --data-urlencode 'notes=<script>' http://127.0.0.1:18999/admin.php > "$html"
 grep -q 'Test User' "$html"; grep -q 'Amsterdam' "$html"
+mysql -h 127.0.0.1 -uroot -ptest-only-password jacquard_test -e "UPDATE installations SET last_seen='2023-03-21 12:34:56'; UPDATE execution_events SET observed_at='2023-03-21 12:34:56'"
 curl -fsS -b "$cookies" "http://127.0.0.1:18999/admin.php?device=$device" > "$html"
-grep -q 'تاریخچه اتصال' "$html";grep -q 'Windows' "$html";grep -q '&lt;script&gt;' "$html";grep -q '2090-01-01' "$html";grep -q 'not-a-signed-code' "$html"
+grep -q 'تاریخچه اتصال' "$html";grep -q 'Windows' "$html";grep -q '&lt;script&gt;' "$html";grep -q '۱۴۶۸/۱۰/۱۲' "$html";grep -q '۱۴۰۲/۰۱/۰۱ ۱۲:۳۴ UTC' "$html";grep -q 'not-a-signed-code' "$html"
+! grep -Eq '20[0-9]{2}-[0-9]{2}-[0-9]{2}' "$html"
 online=$(curl -fsS -H 'Content-Type: application/json' --data "$request" http://127.0.0.1:18999/api.php)
 export ONLINE_REPLY="$online";python3 - <<'PYTEST'
 import json,os
@@ -180,6 +183,9 @@ md5=$(md5sum "$fake" | awk '{print $1}')
 sha256=$(sha256sum "$fake" | awk '{print $1}')
 curl -fsSL -b "$cookies" -F "csrf=$csrf" -F 'action=upload' -F "installer=@$fake;filename=setup.exe" -F "version_file=@$version_file;filename=version.txt" --form-string "md5=$md5" http://127.0.0.1:18999/releases.php > "$html"
 grep -q 'نسخهٔ 044.0.0.0-a2 با MD5' "$html"
+curl -fsS -b "$cookies" http://127.0.0.1:18999/releases.php > "$html"
+grep -q 'به‌روزرسانی (شمسی، UTC)' "$html"
+! grep -Eq '20[0-9]{2}-[0-9]{2}-[0-9]{2}T' "$html"
 manifest=$(curl -fsS 'http://127.0.0.1:18999/download.php?manifest=1')
 export TEST_RELEASE_MANIFEST="$manifest" TEST_INSTALLER="$fake"
 python3 - <<'PYTEST'
@@ -197,6 +203,7 @@ grep -q '044.0.0.0-a2' "$html"
 grep -q "$md5" "$html"
 grep -q "$sha256" "$html"
 grep -q 'حجم فایل' "$html"
+! grep -Eq '20[0-9]{2}-[0-9]{2}-[0-9]{2}' "$html"
 curl -fsS -D "$headers" -o "$downloaded" http://127.0.0.1:18999/download.php
 cmp "$fake" "$downloaded"
 grep -Fiq 'Content-Disposition: attachment; filename="JacquardStudio-Setup-044.0.0.0-a2.exe"' "$headers"

@@ -2,13 +2,36 @@
 #ifndef AppVersion
 #error Pass /DAppVersion from version.txt
 #endif
+#ifndef BinaryVersion
+#error Pass /DBinaryVersion from the numeric product version
+#endif
+#ifndef BuildTimestamp
+#error Pass /DBuildTimestamp as a UTC ISO-8601 build timestamp
+#endif
+#define AppPublisher "Mirkhalili"
+#define AppUrl "https://www.mirkhalili.com"
 #define AppExeName "JacquardStudio.exe"
+#define AppCopyrightText "Copyright (C) 2026 Mirkhalili. All rights reserved."
 [Setup]
 AppId={{5C0E5A7E-DF2A-4D61-9039-B9EC80CD87AD}
 AppName={#AppName}
-AppVerName={#AppName}
+AppVerName={#AppName} {#AppVersion}
 AppVersion={#AppVersion}
-VersionInfoVersion=45.0.1.1
+AppPublisher={#AppPublisher}
+AppPublisherURL={#AppUrl}
+AppSupportURL={#AppUrl}
+AppUpdatesURL={#AppUrl}
+AppCopyright={#AppCopyrightText}
+AppComments=Designed by {#AppPublisher} | Built UTC {#BuildTimestamp}
+VersionInfoVersion={#BinaryVersion}
+VersionInfoTextVersion={#AppVersion}
+VersionInfoCompany={#AppPublisher}
+VersionInfoCopyright={#AppCopyrightText}
+VersionInfoDescription={#AppName} installer - Designed by {#AppPublisher} - Built UTC {#BuildTimestamp}
+VersionInfoOriginalFileName=JacquardStudio-Setup.exe
+VersionInfoProductName={#AppName}
+VersionInfoProductVersion={#BinaryVersion}
+VersionInfoProductTextVersion={#AppVersion}
 DefaultDirName={autopf}\Jacquard Studio
 DefaultGroupName=Jacquard Studio
 UsePreviousAppDir=yes
@@ -24,6 +47,7 @@ WizardStyle=modern
 SetupIconFile=..\src\JacquardStudio\Assets\app.ico
 CloseApplications=yes
 UninstallDisplayIcon={app}\{#AppExeName}
+UninstallDisplayName={#AppName} {#AppVersion}
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]

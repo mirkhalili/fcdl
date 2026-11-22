@@ -98,6 +98,7 @@ public static class ReleaseUpdater
     public static async Task CheckForUpdatesAsync(Window owner, bool manual = false)
     {
         bool updateAccepted = false;
+        UpdateProgressWindow? progressWindow = null;
         try
         {
             ReleaseManifest? release = await ReadManifestAsync();
@@ -115,24 +116,72 @@ public static class ReleaseUpdater
                 return;
             }
 
-            string prompt = $"نسخهٔ تازهٔ {release.Version} در دسترس است؛ نسخهٔ نصب‌شده: {AppVersion.Display}.\n\nآیا فایل نصب را دریافت و اجرا می‌کنید؟ پس از تأیید، اندازه و MD5 و SHA-256 فایل بررسی می‌شود. این بررسی از همان وب‌سایت می‌آید و جایگزین امضای دیجیتال ناشر نیست.";
+            string prompt = $"نسخهٔ تازهٔ {release.Version} در دسترس است؛ نسخهٔ نصب‌شده: {AppVersion.Display}.\n\nآیا فایل نصب را دریافت و اجرا می‌کنید؟ در پنجرهٔ پیشرفت، مراحل دریافت، راستی‌آزمایی و راه‌اندازی نصب‌کننده نمایش داده می‌شود. چک‌سام از همان وب‌سایت می‌آید و جایگزین امضای دیجیتال ناشر نیست.";
             if (!owner.IsVisible || StudioDialogs.Show(owner, prompt, "به‌روزرسانی Jacquard Studio", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
                 return;
             updateAccepted = true;
 
-            string installerPath = await DownloadAndVerifyAsync(release);
-            _ = Process.Start(new ProcessStartInfo { FileName = installerPath, UseShellExecute = true })
-                ?? throw new InvalidOperationException("Windows could not start the installer.");
+            progressWindow = new UpdateProgressWindow(owner);
+            progressWindow.Show();
+            progressWindow.Reporter.Report(new UpdateProgressState("در حال آماده‌سازی دریافت", $"نسخهٔ {release.Version} · حداکثر حجم {FormatBytes(release.Size)}", null));
+
+            string? installerPath = null;
+            try
+            {
+                installerPath = await DownloadAndVerifyAsync(release, progressWindow.CancellationToken, progressWindow.Reporter);
+                progressWindow.CancellationToken.ThrowIfCancellationRequested();
+                progressWindow.Reporter.Report(new UpdateProgressState("در حال راه‌اندازی نصب‌کننده", "راستی‌آزمایی موفق بود؛ نصب‌کنندهٔ ویندوز در حال بازشدن است.", 1));
+                await Task.Delay(350, progressWindow.CancellationToken);
+                progressWindow.CancellationToken.ThrowIfCancellationRequested();
+                using Process process = Process.Start(new ProcessStartInfo { FileName = installerPath, UseShellExecute = true })
+                    ?? throw new InvalidOperationException("Windows could not start the installer.");
+                progressWindow.ShowCompleted();
+            }
+            catch (OperationCanceledException) when (progressWindow.CancellationToken.IsCancellationRequested)
+            {
+                TryDelete(installerPath);
+                progressWindow.ShowCancelled();
+            }
+            catch (Exception ex)
+            {
+                progressWindow.ShowFailure(DescribeUpdateFailure(ex));
+            }
         }
         catch (Exception) when (!manual && !updateAccepted)
         {
             // Update checks are best-effort and never block startup or the design workflow.
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            if (owner.IsVisible)
-                StudioDialogs.Show(owner, "بررسی یا آماده‌سازی به‌روزرسانی انجام نشد. اتصال اینترنت و انتشار فایل را بررسی و دوباره تلاش کنید.", "خطای به‌روزرسانی", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (progressWindow is { IsVisible: true }) progressWindow.ShowFailure(DescribeUpdateFailure(ex));
+            else if (manual && owner.IsVisible)
+                StudioDialogs.Show(owner, "بررسی به‌روزرسانی انجام نشد. اتصال اینترنت و انتشار نسخه را بررسی کنید.\n\nجزئیات: " + ex.Message, "خطای به‌روزرسانی", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    private static string DescribeUpdateFailure(Exception exception) => exception switch
+    {
+        InvalidDataException => "فایل دریافت‌شده با مشخصات انتشار مطابقت نداشت یا راستی‌آزمایی آن ناموفق بود. نسخهٔ منتشرشده را بررسی و دوباره تلاش کنید.\n\nجزئیات: " + exception.Message,
+        HttpRequestException => "اتصال امن یا دریافت فایل به مشکل خورد. اتصال اینترنت را بررسی و دوباره تلاش کنید.\n\nجزئیات: " + exception.Message,
+        UnauthorizedAccessException or IOException => "ذخیره یا راه‌اندازی نصب‌کننده ممکن نشد. فضای دیسک و مجوز پوشهٔ به‌روزرسانی را بررسی کنید.\n\nجزئیات: " + exception.Message,
+        OperationCanceledException => "مهلت دریافت به پایان رسید. اتصال اینترنت را بررسی و دوباره تلاش کنید.",
+        _ => "به‌روزرسانی انجام نشد.\n\nجزئیات: " + exception.Message,
+    };
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return bytes.ToString(CultureInfo.InvariantCulture) + " B";
+        double value = bytes;
+        string[] units = { "B", "KB", "MB", "GB" };
+        int unit = 0;
+        while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
+        return value.ToString("0.0", CultureInfo.InvariantCulture) + " " + units[unit];
+    }
+
+    private static void TryDelete(string? path)
+    {
+        if (path is null) return;
+        try { if (File.Exists(path)) File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
     private static async Task<ReleaseManifest?> ReadManifestAsync()
@@ -165,10 +214,13 @@ public static class ReleaseUpdater
         return manifest;
     }
 
-    private static async Task<string> DownloadAndVerifyAsync(ReleaseManifest release)
+    private static async Task<string> DownloadAndVerifyAsync(ReleaseManifest release, CancellationToken cancellationToken, IProgress<UpdateProgressState> progress)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(15));
-        using var response = await DownloadClient.GetAsync(InstallerEndpoint, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(15));
+        CancellationToken token = timeout.Token;
+        progress.Report(new UpdateProgressState("در حال دریافت فایل نصب", "اتصال امن برقرار می‌شود…", 0));
+        using var response = await DownloadClient.GetAsync(InstallerEndpoint, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength is long contentLength && contentLength != release.Size)
             throw new InvalidDataException("Installer length does not match the release manifest.");
@@ -181,16 +233,17 @@ public static class ReleaseUpdater
         {
             using var md5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
             using var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            await using var input = await response.Content.ReadAsStreamAsync();
+            await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
             await using (var output = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
                 byte[] buffer = new byte[128 * 1024];
                 byte[] signature = new byte[2];
-                int signatureLength = 0;
+                int signatureLength = 0, lastPercent = -1;
                 long total = 0;
+                var lastReport = System.Diagnostics.Stopwatch.StartNew();
                 while (true)
                 {
-                    int read = await input.ReadAsync(buffer.AsMemory(), timeout.Token);
+                    int read = await input.ReadAsync(buffer.AsMemory(), token).ConfigureAwait(false);
                     if (read == 0) break;
                     total += read;
                     if (total > MaximumInstallerSize || total > release.Size) throw new InvalidDataException("Installer exceeds its declared size.");
@@ -202,25 +255,38 @@ public static class ReleaseUpdater
                     }
                     md5.AppendData(buffer, 0, read);
                     sha256.AppendData(buffer, 0, read);
-                    await output.WriteAsync(buffer.AsMemory(0, read), timeout.Token);
+                    await output.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
+
+                    int percent = (int)Math.Floor(total * 100d / release.Size);
+                    if (percent != lastPercent || lastReport.ElapsedMilliseconds >= 250 || total == release.Size)
+                    {
+                        lastPercent = percent;
+                        lastReport.Restart();
+                        progress.Report(new UpdateProgressState(
+                            "در حال دریافت فایل نصب",
+                            $"{FormatBytes(total)} از {FormatBytes(release.Size)} دریافت شد.",
+                            (double)total / release.Size));
+                    }
                 }
-                await output.FlushAsync(timeout.Token);
+                await output.FlushAsync(token).ConfigureAwait(false);
                 if (total != release.Size || signatureLength != 2 || signature[0] != (byte)'M' || signature[1] != (byte)'Z')
                     throw new InvalidDataException("Downloaded installer is incomplete or invalid.");
             }
 
+            progress.Report(new UpdateProgressState("در حال راستی‌آزمایی فایل", "اندازه، امضای اجرایی MZ، MD5 و SHA-256 با مشخصات انتشار مقایسه می‌شوند.", null));
             byte[] expectedMd5 = Convert.FromHexString(release.Md5!);
             byte[] expectedSha256 = Convert.FromHexString(release.Sha256!);
             if (!CryptographicOperations.FixedTimeEquals(md5.GetHashAndReset(), expectedMd5) ||
                 !CryptographicOperations.FixedTimeEquals(sha256.GetHashAndReset(), expectedSha256))
                 throw new InvalidDataException("Downloaded installer checksum does not match.");
             File.Move(tempPath, installerPath);
+            progress.Report(new UpdateProgressState("راستی‌آزمایی کامل شد", "حجم فایل، قالب اجرایی و هر دو چک‌سام با انتشار تطبیق دارند.", 1));
             return installerPath;
         }
         catch
         {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch (IOException) { }
-            try { if (File.Exists(installerPath)) File.Delete(installerPath); } catch (IOException) { }
+            TryDelete(tempPath);
+            TryDelete(installerPath);
             throw;
         }
     }

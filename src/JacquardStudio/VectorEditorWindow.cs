@@ -16,7 +16,7 @@ namespace JacquardStudio;
 /// <summary>Inkscape-inspired, theme-aware SVG workspace with editable Bézier paths and layers.</summary>
 public sealed class VectorEditorWindow : Window
 {
-    private enum Tool { Select, Nodes, Bezier, Curve, ConvertLineToBezier, Pencil, Rectangle, Ellipse, Star, Line, Text, Zoom }
+    private enum Tool { Select, Nodes, Bezier, Curve, ConvertLineToBezier, Pencil, SmoothPath, Rectangle, Ellipse, Star, Line, Text, Zoom }
     private static readonly (Tool Tool, string Name, string Shortcut, string Glyph)[] ToolSpecs =
     {
         (Tool.Select, "انتخاب و جابه‌جایی", "F1", "M5,3 L19,15 12,15 9,21 Z"),
@@ -25,6 +25,7 @@ public sealed class VectorEditorWindow : Window
         (Tool.Curve, "منحنی بزیه سه‌مرحله‌ای؛ آغاز، پایان، قوس؛ Shift برای تقارن", "C", "M3,17 C7,2 17,2 21,17 M3,17 L21,17 M12,4 V2"),
         (Tool.ConvertLineToBezier, "تبدیل خط مستقیم به منحنی بزیه قابل ویرایش", "K", "M4,19 L20,5 M4,19 L8,19 M20,5 L16,5 M11,12 L8,9 M13,12 L16,15"),
         (Tool.Pencil, "مداد آزاد", "P", "M4,20 L6,14 16,4 20,8 10,18 Z M6,14 L10,18"),
+        (Tool.SmoothPath, "هموارسازی هوشمند خط آزاد به منحنی بزیهٔ قابل ویرایش", "S", "M3,18 C6,18 6,6 10,9 C13,12 14,17 17,10 C19,6 20,5 21,5"),
         (Tool.Rectangle, "مستطیل", "R", "M4,5 H20 V19 H4 Z"),
         (Tool.Ellipse, "بیضی و دایره", "E", "M12,4 C17,4 20,7 20,12 C20,17 17,20 12,20 C7,20 4,17 4,12 C4,7 7,4 12,4 Z"),
         (Tool.Star, "ستاره و چندضلعی", "*", "M12,3 L14.5,9 21,9.5 16,14 17.5,21 12,17.5 6.5,21 8,14 3,9.5 9.5,9 Z"),
@@ -60,6 +61,8 @@ public sealed class VectorEditorWindow : Window
     private readonly StackPanel textObjectPanel = new() { Visibility = Visibility.Collapsed };
     private readonly Slider starPointsSlider = new() { Minimum = 3, Maximum = 16, Value = 5, TickFrequency = 1, IsSnapToTickEnabled = true, FlowDirection = FlowDirection.LeftToRight, Margin = new Thickness(2, 4, 2, 2) };
     private readonly TextBlock starPointsValue = new() { Text = "۵", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4) };
+    private readonly Slider curveFitToleranceSlider = new() { Name = "BezierFitTolerance", Minimum = 0.5, Maximum = 12, Value = 2, TickFrequency = 0.5, IsSnapToTickEnabled = false, Width = 86, FlowDirection = FlowDirection.LeftToRight, Margin = new Thickness(3, 4, 3, 2), ToolTip = "تلرانس برازش به پیکسل؛ مقدار کمتر شکل را دقیق‌تر و با گره‌های بیشتر حفظ می‌کند." };
+    private readonly TextBlock curveFitToleranceValue = new() { Text = "2 px", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 5, 0), MinWidth = 35 };
     private BitmapSource? referenceImage;
     private string fillValue = "#C9A58B";
     private string strokeValue = "#242424";
@@ -137,6 +140,8 @@ public sealed class VectorEditorWindow : Window
         strokeSwatch.ColorChanged += (_, _) => { strokeValue = strokeSwatch.Value; strokeEnabled = true; ApplyStyle(); };
         layerList.SelectionChanged += LayerSelection_Changed;
         starPointsSlider.ValueChanged += (_, _) => { starPointsValue.Text = ((int)Math.Round(starPointsSlider.Value)).ToString(Invariant); RefreshSurface(); };
+        curveFitToleranceSlider.ValueChanged += (_, _) => curveFitToleranceValue.Text = curveFitToleranceSlider.Value.ToString("0.#", Invariant) + " px";
+        AutomationProperties.SetName(curveFitToleranceSlider, "تلرانس حفظ شکل در هموارسازی بزیه به پیکسل");
         RefreshAll();
     }
 
@@ -215,6 +220,10 @@ public sealed class VectorEditorWindow : Window
         rail.Children.Add(zoomText);
         AddToolbarButton(rail, "+", "بزرگ‌نمایی", () => SetZoom(zoom * 1.2));
         AddToolbarButton(rail, "برازش", "جای‌دادن صفحه در فضای کاری", FitPage);
+        AddToolbarSeparator(rail);
+        rail.Children.Add(new TextBlock { Text = "دقت منحنی", ToolTip = "تلرانس هموارسازی به پیکسل؛ کمتر یعنی حفظ شکل دقیق‌تر و گره‌های بیشتر.", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 1, 0), FontSize = 11 });
+        rail.Children.Add(curveFitToleranceSlider);
+        rail.Children.Add(curveFitToleranceValue);
         AddToolbarSeparator(rail);
         rail.Children.Add(finishPathButton); rail.Children.Add(cancelPathButton);
         AddToolbarSeparator(rail);
@@ -517,12 +526,14 @@ public sealed class VectorEditorWindow : Window
     private void UpdateStatus()
     {
         string toolName = ToolSpecs.First(item => item.Tool == tool).Name;
-        string suffix = curveStage switch
-        {
-            1 => " · منحنی: نقطه آغاز ثبت شد؛ روی نقطه پایان کلیک کنید",
-            2 => $" · منحنی: حرکت نشانگر برای قوس · {(Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift) ? "قوس متقارن" : "Shift برای تقارن")} · برای تکمیل کلیک کنید",
-            _ => bezierDraft is null ? "" : $" · مسیر ناتمام: {bezierDraft.Nodes.Count} گره · Enter پایان / Esc لغو"
-        };
+        string suffix = tool == Tool.SmoothPath
+            ? $" · روی خط آزاد کلیک کنید تا بزیهٔ کم‌گره و قابل ویرایش ساخته شود · تلرانس {curveFitToleranceSlider.Value:0.#} px"
+            : curveStage switch
+            {
+                1 => " · منحنی: نقطه آغاز ثبت شد؛ روی نقطه پایان کلیک کنید",
+                2 => $" · منحنی: حرکت نشانگر برای قوس · {(Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift) ? "قوس متقارن" : "Shift برای تقارن")} · برای تکمیل کلیک کنید",
+                _ => bezierDraft is null ? "" : $" · مسیر ناتمام: {bezierDraft.Nodes.Count} گره · Enter پایان / Esc لغو"
+            };
         statusText.Text = $"{document.Width} × {document.Height} px  ·  {zoom * 100:0}%  ·  {document.Layers.Sum(layer => layer.Objects.Count)} شیء  ·  لایه: {document.CurrentLayer.Name}  ·  {toolName}{suffix}";
         zoomText.Text = $"{zoom * 100:0}%";
         undoButton.IsEnabled = undo.Count > 0; redoButton.IsEnabled = redo.Count > 0;
@@ -545,6 +556,7 @@ public sealed class VectorEditorWindow : Window
             case Tool.Bezier: BezierDown(point, e.ClickCount); break;
             case Tool.Curve: CurveDown(point); break;
             case Tool.ConvertLineToBezier: ConvertLineToBezierAt(point); break;
+            case Tool.SmoothPath: SmoothPathAt(point); break;
             case Tool.Pencil:
                 gestureOrigin = document.Clone(); gestureChanged = false; freehandPoints = new List<Point> { point }; surface.CaptureMouse(); break;
             case Tool.Rectangle: case Tool.Ellipse: case Tool.Star: case Tool.Line:
@@ -669,6 +681,63 @@ public sealed class VectorEditorWindow : Window
         if (lengthSquared < 1e-12) return Distance(point, start);
         double t = Math.Clamp(Vector.Multiply(point - start, line) / lengthSquared, 0, 1);
         return Distance(point, start + line * t);
+    }
+
+    private void SmoothPathAt(Point point)
+    {
+        double threshold = 10 / zoom, bestDistance = threshold;
+        int bestLayer = -1, bestObject = -1, bestPath = -1;
+        for (int layerIndex = document.Layers.Count - 1; layerIndex >= 0; layerIndex--)
+        {
+            var layer = document.Layers[layerIndex];
+            if (!layer.Visible || layer.Locked) continue;
+            for (int objectIndex = layer.Objects.Count - 1; objectIndex >= 0; objectIndex--)
+            {
+                var item = layer.Objects[objectIndex];
+                if (!item.Visible || item.Text is not null) continue;
+                for (int pathIndex = 0; pathIndex < item.Paths.Count; pathIndex++)
+                {
+                    var path = item.Paths[pathIndex];
+                    if (path.Closed || path.Nodes.Count < 3) continue;
+                    for (int segment = 0; segment < path.Nodes.Count - 1; segment++)
+                    {
+                        var from = path.Nodes[segment];
+                        var to = path.Nodes[segment + 1];
+                        double distance = DistanceToSegment(point, new Point(from.X, from.Y), new Point(to.X, to.Y));
+                        if (distance <= bestDistance)
+                        {
+                            bestDistance = distance;
+                            bestLayer = layerIndex; bestObject = objectIndex; bestPath = pathIndex;
+                        }
+                    }
+                }
+            }
+        }
+        if (bestLayer < 0)
+        {
+            statusText.Text = "روی خط آزادِ باز با دست‌کم سه گره کلیک کنید؛ مسیر بسته و متن قابل هموارسازی نیست.";
+            return;
+        }
+
+        var before = document.Clone();
+        try
+        {
+            var item = document.Layers[bestLayer].Objects[bestObject].Clone();
+            var original = item.Paths[bestPath];
+            int originalCount = original.Nodes.Count;
+            var fitted = BezierCurveFitter.Fit(original.Nodes.Select(node => new Point(node.X, node.Y)).ToArray(), curveFitToleranceSlider.Value);
+            item.Paths[bestPath] = fitted;
+            document.Layers[bestLayer].Objects[bestObject] = item;
+            document.ActiveLayer = bestLayer;
+            selectedObjectId = item.Id; selectedNodePath = bestPath; selectedNodeIndex = -1; selectedHandle = -1;
+            document.Validate(); Record(before); RefreshAll(); SelectTool(Tool.Nodes);
+            statusText.Text = $"خط آزاد با برازش بزیه هموار شد: {originalCount} ← {fitted.Nodes.Count} گره · تلرانس {curveFitToleranceSlider.Value:0.#} px · گره‌ها و دسته‌ها قابل ویرایش‌اند.";
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidDataException or InvalidOperationException or OverflowException or FormatException)
+        {
+            document = before; RefreshAll();
+            StudioDialogs.Show(this, ex.Message, "هموارسازی هوشمند خط آزاد", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void BezierDown(Point point, int clickCount)
@@ -1361,7 +1430,7 @@ public sealed class VectorEditorWindow : Window
         if (e.OriginalSource is TextBox) return;
         Tool? selected = e.Key switch
         {
-            Key.F1 => Tool.Select, Key.N => Tool.Nodes, Key.B => Tool.Bezier, Key.C => Tool.Curve, Key.K => Tool.ConvertLineToBezier, Key.P => Tool.Pencil,
+            Key.F1 => Tool.Select, Key.N => Tool.Nodes, Key.B => Tool.Bezier, Key.C => Tool.Curve, Key.K => Tool.ConvertLineToBezier, Key.P => Tool.Pencil, Key.S => Tool.SmoothPath,
             Key.R => Tool.Rectangle, Key.E => Tool.Ellipse, Key.L => Tool.Line, Key.T => Tool.Text, Key.Z => Tool.Zoom,
             _ => null
         };
@@ -1394,6 +1463,13 @@ public sealed class VectorEditorWindow : Window
 /// <summary>Vector page and editing overlays, drawn as one retained-mode WPF visual.</summary>
 internal sealed class DrawingSurface : FrameworkElement
 {
+    public DrawingSurface()
+    {
+        RenderOptions.SetEdgeMode(this, EdgeMode.Aliased);
+        RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.NearestNeighbor);
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.Aliased);
+    }
+
     public VectorDesignDocument Document { get; set; } = new();
     public double Zoom { get; set; } = 1;
     public Guid? SelectedObjectId { get; set; }

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require __DIR__.'/_lib/bootstrap.php';
 require_once __DIR__.'/_lib/release.php';
+require_once __DIR__.'/_lib/jalali.php';
 start_admin_session($config);
 header('Cache-Control: no-store');
 
@@ -69,6 +70,7 @@ if($_SERVER['REQUEST_METHOD']==='POST') {
 }
 
 $release=$logged ? jacquard_current_release($config,$configPath) : null;
+$releaseDate=$release ? jacquard_format_jalali_date($release['published_at'],true) : '—';
 ?><!doctype html>
 <html lang="fa" dir="rtl">
 <head>
@@ -92,7 +94,7 @@ $release=$logged ? jacquard_current_release($config,$configPath) : null;
   <div class="table-heading"><div><span class="eyebrow">صفحهٔ عمومی دانلود</span><h2>انتشار نسخهٔ تازه</h2></div><a href="download-info.php">پیش‌نمایش صفحهٔ دانلود ↙</a></div>
   <p>فایل نصب EXE (حداکثر ۲۰۰ مگابایت)، فایل <code>version.txt</code> همان ساخت و MD5 فایل نصب را بارگذاری کنید. سایت اندازه، MD5 و SHA-256 را بررسی می‌کند و فایل را بیرون وب‌روت نگه می‌دارد. checksum به‌تنهایی امضای ناشر نیست.</p>
   <?php if($release):?>
-   <div class="release-current"><strong>نسخهٔ فعال: <bdi><?=esc($release['version'])?></bdi></strong><span>نام فایل: <code dir="ltr"><?=esc($release['filename'])?></code></span><span>MD5: <code dir="ltr"><?=esc($release['md5'])?></code></span><span>به‌روزرسانی: <bdi><?=esc($release['published_at'])?> UTC</bdi></span></div>
+   <div class="release-current"><strong>نسخهٔ فعال: <bdi><?=esc($release['version'])?></bdi></strong><span>نام فایل: <code dir="ltr"><?=esc($release['filename'])?></code></span><span>MD5: <code dir="ltr"><?=esc($release['md5'])?></code></span><span>به‌روزرسانی (شمسی، UTC): <bdi><?=esc($releaseDate)?></bdi></span></div>
   <?php else:?>
    <p class="release-empty">هنوز انتشار معتبری ثبت نشده است. پس از بارگذاری موفق، مشخصات نسخه در صفحهٔ عمومی نمایش داده می‌شود.</p>
   <?php endif;?>

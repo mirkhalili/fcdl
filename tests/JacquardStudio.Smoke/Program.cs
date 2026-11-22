@@ -184,6 +184,22 @@ internal static class Program
             Check(roundTripSvg.Layers.Count == 2 && roundTripSvg.Layers[0].Objects.Count == editableSvg.Layers[0].Objects.Count && !roundTripSvg.Layers[1].Visible, "SVG editable object and layer roundtrip");
             var svgRaster = editableSvg.Render(64, 48);
             Check(svgRaster.PixelWidth == 64 && svgRaster.PixelHeight == 48, "SVG vector renderer supports explicit output dimensions");
+            const string crispSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"8\" height=\"8\"><rect x=\"2\" y=\"1\" width=\"3\" height=\"5\" fill=\"#000000\" stroke=\"none\"/></svg>";
+            var crispPixels = new byte[8 * 8 * 4]; VectorDesignDocument.FromSvg(crispSvg).Render().CopyPixels(crispPixels, 8 * 4, 0);
+            Check(Enumerable.Range(0, 8 * 8).All(i => crispPixels[i * 4 + 3] == 255 && (crispPixels[i * 4] is 0 or 255) && (crispPixels[i * 4 + 1] is 0 or 255) && (crispPixels[i * 4 + 2] is 0 or 255)), "vector-to-pixel transfer disables antialiasing and emits crisp hard-edge pixels");
+            var freehandSamples = Enumerable.Range(0, 241).Select(i => new System.Windows.Point(i, 64 + 14 * Math.Sin(i * Math.PI * 4 / 240) + 1.25 * Math.Sin(i * .81))).ToArray();
+            var fittedPath = BezierCurveFitter.Fit(freehandSamples, 1.5);
+            var tightFit = BezierCurveFitter.Fit(freehandSamples, .75);
+            var looseFit = BezierCurveFitter.Fit(freehandSamples, 4);
+            bool editableCubics = fittedPath.Nodes.Count >= 2 && fittedPath.Nodes[0].X == freehandSamples[0].X && fittedPath.Nodes[^1].X == freehandSamples[^1].X;
+            for (int i = 0; i < fittedPath.Nodes.Count - 1; i++) editableCubics &= fittedPath.Nodes[i].CurveToNext && fittedPath.Nodes[i].HasOut && fittedPath.Nodes[i + 1].HasIn;
+            double maximumFitError = freehandSamples.Max(sample => DistanceToFittedPath(fittedPath, sample));
+            Check(fittedPath.Nodes.Count < freehandSamples.Length / 3 && tightFit.Nodes.Count >= looseFit.Nodes.Count && editableCubics && maximumFitError <= 2.1, "Schneider/Paper.js curve fitting reduces a wavy freehand line to editable Bézier anchors within tolerance");
+            var fittedDocument = new VectorDesignDocument(256, 128);
+            fittedDocument.CurrentLayer.Objects.Add(new VectorDesignObject { Name = "هموارشده", Fill = "none", Stroke = "#000000", StrokeWidth = 2, Paths = new List<VectorDesignPath> { fittedPath } });
+            fittedDocument.Validate();
+            var fittedRoundTrip = VectorDesignDocument.FromSvg(fittedDocument.ToSvg()).Layers[0].Objects.Single().Paths.Single();
+            Check(fittedRoundTrip.Nodes.Count == fittedPath.Nodes.Count && fittedRoundTrip.Nodes.Take(fittedRoundTrip.Nodes.Count - 1).All(node => node.CurveToNext && node.HasOut), "smart-smooth result remains editable after SVG save/reopen");
             string svgPath = Path.Combine(dir, "editable.svg"); File.WriteAllText(svgPath, svgMarkup, System.Text.Encoding.UTF8);
             var svgInput = ImageLoader.Load(svgPath, 0);
             Check(svgInput.Format == "SVG" && svgInput.PageCount == 1 && svgInput.Vector?.IsSvg == true, "SVG is a vector-preserving image source");
@@ -1160,7 +1176,20 @@ internal static class Program
             try{soloTimer.Start();var soloCard=(System.Windows.Controls.Border)nodeLayer.Children[nodeLayer.Children.Count-1];soloCard.ContextMenu.Items.OfType<System.Windows.Controls.MenuItem>().Single(x=>Equals(x.Header,"تنظیمات ماژول")).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));if(soloFrame.Continue)System.Windows.Threading.Dispatcher.PushFrame(soloFrame);}finally{soloTimer.Stop();System.Threading.SynchronizationContext.SetSynchronizationContext(soloOldContext);}
             Check(sawSetup && sawDesign && liveSolo.DesignStandalone && liveSolo.DesignWidth==12 && liveSolo.DesignHeight==8 && liveSolo.DesignWeftDensity==20 && ModuleExecutor.Run(moduleGraph,liveSolo.Id)[liveSolo.Id].Image!.PixelWidth==12,"unconnected design card creates a white project canvas and stores requested density");
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "045.0.1.1-a5", "QAVNS version from version.txt");
+            var drawingSurfaceType = typeof(VectorEditorWindow).Assembly.GetType("JacquardStudio.DrawingSurface", true)!;
+            var drawingSurface = (System.Windows.FrameworkElement)Activator.CreateInstance(drawingSurfaceType, true)!;
+            Check(RenderOptions.GetEdgeMode(drawingSurface) == EdgeMode.Aliased && RenderOptions.GetBitmapScalingMode(drawingSurface) == BitmapScalingMode.NearestNeighbor && TextOptions.GetTextRenderingMode(drawingSurface) == TextRenderingMode.Aliased, "live vector canvas uses aliased edges and text with nearest-neighbor bitmap scaling");
+            var progressWindowType = typeof(ReleaseUpdater).Assembly.GetType("JacquardStudio.UpdateProgressWindow", true)!;
+            var progressOwner = new System.Windows.Window();
+            var progressWindow = (System.Windows.Window)Activator.CreateInstance(progressWindowType, new object[] { progressOwner })!;
+            var progressFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var cancelButton = (System.Windows.Controls.Button)progressWindowType.GetField("cancelButton", progressFlags)!.GetValue(progressWindow)!;
+            var progressToken = (CancellationToken)progressWindowType.GetProperty("CancellationToken")!.GetValue(progressWindow)!;
+            cancelButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Check(progressToken.IsCancellationRequested && !cancelButton.IsEnabled && ((System.Windows.Controls.TextBlock)progressWindowType.GetField("stageText", progressFlags)!.GetValue(progressWindow)!).Text == "در حال لغو درخواست…", "updater progress window cancels its request and shows cleanup status");
+            progressWindowType.GetMethod("ShowCancelled")!.Invoke(progressWindow, null);
+            Check(((System.Windows.Controls.TextBlock)progressWindowType.GetField("stageText", progressFlags)!.GetValue(progressWindow)!).Text == "دریافت لغو شد" && cancelButton.Content as string == "بستن", "updater displays a dismissible cancelled result");
+            Check(AppVersion.Display == "045.0.1.1-a6", "QAVNS version from version.txt");
             Check(ReleaseUpdater.CompareVersions("044.0.0.0-a2", "044.0.0.0-a1") > 0 && ReleaseUpdater.CompareVersions("044.0.0.0", "044.0.0.0-a2") > 0, "release updater orders prerelease and final versions");
             Check(ReleaseUpdater.CompareVersions("045.0.1.1-a1", "044.99.9.9") > 0 && ReleaseUpdater.CompareVersions("044.0.0.0-a2", "044.0.0.0-a2") == 0, "release updater compares version components and identical releases");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
@@ -1343,6 +1372,28 @@ internal static class Program
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }
         finally { Directory.Delete(dir, true); }
     }
+    private static double DistanceToFittedPath(VectorDesignPath path, System.Windows.Point sample)
+    {
+        double minimumSquared = double.PositiveInfinity;
+        for (int i = 0; i < path.Nodes.Count - 1; i++)
+        {
+            var from = path.Nodes[i]; var to = path.Nodes[i + 1];
+            var p0 = new System.Windows.Point(from.X, from.Y);
+            var p1 = from.HasOut ? new System.Windows.Point(from.OutX, from.OutY) : p0;
+            var p3 = new System.Windows.Point(to.X, to.Y);
+            var p2 = to.HasIn ? new System.Windows.Point(to.InX, to.InY) : p3;
+            for (int step = 0; step <= 64; step++)
+            {
+                double t = step / 64d, u = 1 - t;
+                var point = new System.Windows.Point(
+                    u * u * u * p0.X + 3 * u * u * t * p1.X + 3 * u * t * t * p2.X + t * t * t * p3.X,
+                    u * u * u * p0.Y + 3 * u * u * t * p1.Y + 3 * u * t * t * p2.Y + t * t * t * p3.Y);
+                minimumSquared = Math.Min(minimumSquared, (point - sample).LengthSquared);
+            }
+        }
+        return Math.Sqrt(minimumSquared);
+    }
+
     private static void Check(bool condition, string description) { if (!condition) throw new Exception("Failed: " + description); }
     private static void Expect<T>(Action action) where T : Exception
     {
