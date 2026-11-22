@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'status=$?; printf "::error file=website/tests/smoke.sh,line=%d,title=Website smoke test failed::%s\n" "$LINENO" "$BASH_COMMAND"; exit "$status"' ERR
 find website -name '*.php' -print0 | xargs -0 -n1 php -l
 php website/tests/jalali.php
 mysql -h 127.0.0.1 -uroot -ptest-only-password -e 'CREATE DATABASE jacquard_migration CHARACTER SET utf8mb4'

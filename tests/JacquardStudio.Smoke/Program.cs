@@ -1180,7 +1180,8 @@ internal static class Program
             var drawingSurface = (System.Windows.FrameworkElement)Activator.CreateInstance(drawingSurfaceType, true)!;
             Check(RenderOptions.GetEdgeMode(drawingSurface) == EdgeMode.Aliased && RenderOptions.GetBitmapScalingMode(drawingSurface) == BitmapScalingMode.NearestNeighbor && TextOptions.GetTextRenderingMode(drawingSurface) == TextRenderingMode.Aliased, "live vector canvas uses aliased edges and text with nearest-neighbor bitmap scaling");
             var progressWindowType = typeof(ReleaseUpdater).Assembly.GetType("JacquardStudio.UpdateProgressWindow", true)!;
-            var progressOwner = new System.Windows.Window();
+            var progressOwner = new System.Windows.Window { Width = 1, Height = 1, Opacity = 0, ShowInTaskbar = false, WindowStyle = System.Windows.WindowStyle.None };
+            progressOwner.Show(); progressOwner.Hide();
             var progressWindow = (System.Windows.Window)Activator.CreateInstance(progressWindowType, new object[] { progressOwner })!;
             var progressFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
             var cancelButton = (System.Windows.Controls.Button)progressWindowType.GetField("cancelButton", progressFlags)!.GetValue(progressWindow)!;
