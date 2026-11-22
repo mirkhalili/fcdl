@@ -75,7 +75,6 @@ public sealed class VectorEditorWindow : Window
     private VectorDesignDocument? bezierOrigin;
     private int pendingBezierNode = -1;
     private Point bezierAnchorDown;
-    private VectorDesignPath? freehandDraft;
     private List<Point>? freehandPoints;
     private Point? gestureStart;
     private Point pointer;
@@ -161,7 +160,7 @@ public sealed class VectorEditorWindow : Window
         footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         footerGrid.Children.Add(statusText);
-        var safety = new TextBlock { Text = "SVG · خروجی تصویر پیکسلی است؛ فایل ماشین نیاز به کنترل جداگانه دارد", VerticalAlignment = VerticalAlignment.Center, Foreground = Brush("Muted"), FontSize = 10, Margin = new Thickness(12, 0) };
+        var safety = new TextBlock { Text = "SVG · خروجی تصویر پیکسلی است؛ فایل ماشین نیاز به کنترل جداگانه دارد", VerticalAlignment = VerticalAlignment.Center, Foreground = Brush("Muted"), FontSize = 10, Margin = new Thickness(12, 0, 12, 0) };
         Grid.SetColumn(safety, 1); footerGrid.Children.Add(safety); footer.Child = footerGrid;
         Grid.SetRow(footer, 3); shell.Children.Add(footer);
         return shell;
@@ -537,7 +536,7 @@ public sealed class VectorEditorWindow : Window
 
     private void SelectDown(Point point)
     {
-        if (selectedObjectId is Guid currentId && FindObject(currentId, out int currentLayer, out var current) is { } selected && !document.Layers[currentLayer].Locked)
+        if (selectedObjectId is Guid currentId && FindObject(currentId, out int currentLayer, out _) is { } selected && !document.Layers[currentLayer].Locked)
         {
             int handle = HitResizeHandle(selected, point);
             if (handle >= 0)
@@ -556,7 +555,9 @@ public sealed class VectorEditorWindow : Window
 
     private void NodeDown(Point point)
     {
-        if (selectedObjectId is not Guid id || FindObject(id, out int layerIndex, out var selected) is null || selected.Text is not null || document.Layers[layerIndex].Locked) return;
+        if (selectedObjectId is not Guid id) return;
+        var selected = FindObject(id, out int layerIndex, out _);
+        if (selected is null || selected.Text is not null || document.Layers[layerIndex].Locked) return;
         if (!FindNodeHandle(selected, point, out int pathIndex, out int nodeIndex, out int handleKind)) return;
         gestureOrigin = document.Clone(); gestureObjectOrigin = selected.Clone(); gestureChanged = false; gesturePoint = point; movingPathIndex = pathIndex; movingNodeIndex = nodeIndex; movingHandleKind = handleKind;
         selectedNodePath = pathIndex; selectedNodeIndex = nodeIndex; selectedHandle = handleKind; movingNode = true; surface.CaptureMouse(); RefreshSurface();
