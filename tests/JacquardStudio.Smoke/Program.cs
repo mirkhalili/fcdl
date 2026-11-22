@@ -67,14 +67,14 @@ internal static class Program
             using (var zip = ZipFile.Open(legacySam, ZipArchiveMode.Update))
             {
                 var entryManifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(entryManifest.Open())) json = reader.ReadToEnd();
-                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":1"));
+                entryManifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":1"));
             }
             Check(ProjectFile.Load(legacySam).Session.CanSave, "legacy SAM version one loads");
             string legacyV2 = Path.Combine(dir, "legacy-v2.sam"); File.Copy(projectPath, legacyV2);
             using (var zip = ZipFile.Open(legacyV2, ZipArchiveMode.Update))
             {
                 var old = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(old.Open())) json = reader.ReadToEnd();
-                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":2"));
+                old.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":2"));
             }
             Check(ProjectFile.Load(legacyV2).Session.CanSave, "legacy SAM version two loads");
             Expect<IOException>(() => ProjectFile.Save(projectPath, projectState, new[] { projectPath }));
@@ -134,8 +134,77 @@ internal static class Program
             string vectorProject = Path.Combine(dir, "vector-project.sam"); ProjectFile.Save(vectorProject, new ProjectState(vectorSession, "curves.pdf", "211", "177", "50", "Size", false, 0, Array.Empty<string?>()), Array.Empty<string>());
             var reopenedVector = ProjectFile.Load(vectorProject).Session; reopenedVector.ApplySize(211, 177); var restoredVectorPixels = new byte[vectorPixels.Length]; reopenedVector.Resized!.CopyPixels(restoredVectorPixels, 211 * 4, 0);
             Check(reopenedVector.Vector is not null && vectorPixels.SequenceEqual(restoredVectorPixels), "SAM embeds vector source and rerenders identical curves after reopen");
+            string pdfVectorV13 = Path.Combine(dir, "pdf-vector-v13.sam"); File.Copy(vectorProject, pdfVectorV13);
+            using (var zip = ZipFile.Open(pdfVectorV13, ZipArchiveMode.Update))
+            {
+                var manifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(manifest.Open())) json = reader.ReadToEnd();
+                manifest.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":13"));
+            }
+            var reopenedV13 = ProjectFile.Load(pdfVectorV13).Session; reopenedV13.ApplySize(211, 177); var v13Pixels = new byte[vectorPixels.Length]; reopenedV13.Resized!.CopyPixels(v13Pixels, 211 * 4, 0);
+            Check(reopenedV13.Vector is { SvgMarkup: null, PageIndex: 0 } && vectorPixels.SequenceEqual(v13Pixels), "SAM v13 PDF vector sources remain compatible after adding SVG storage in v14");
             var vectorAi = Path.Combine(dir, "curves.ai"); File.Copy(Path.Combine(repository, "tests", "fixtures", "vector-curves.pdf"), vectorAi); var aiInput = ImageLoader.Load(vectorAi, 0);
             var aiSession = new WorkflowSession(aiInput.Image, aiInput.Vector); aiSession.ApplySize(211, 177); var aiPixels = new byte[vectorPixels.Length]; aiSession.Resized!.CopyPixels(aiPixels, 211 * 4, 0); Check(aiPixels.SequenceEqual(vectorPixels), "PDF-compatible AI uses same curve engine");
+            const string svgMarkup = """
+                <svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="32" height="24" viewBox="0 0 32 24">
+                  <rect id="page-background" x="0" y="0" width="32" height="24" fill="#ffffff" />
+                  <g inkscape:groupmode="layer" inkscape:label="Curves &amp; paths" data-layer="true">
+                    <path id="curve" data-name="Bézier curve" d="M 3 20 C 6 2 24 2 29 20" fill="none" stroke="#102030" stroke-width="2" />
+                    <circle id="dot" cx="16" cy="12" r="2" fill="rgba(240, 128, 16, 0.75)" />
+                  </g>
+                  <g inkscape:groupmode="layer" inkscape:label="Hidden layer" data-layer="true" display="none">
+                    <path id="hidden" d="M 1 1 L 8 8" stroke="#ff0000" />
+                  </g>
+                </svg>
+                """;
+            var editableSvg = VectorDesignDocument.FromSvg(svgMarkup);
+            Check(editableSvg.Width == 32 && editableSvg.Height == 24 && editableSvg.Layers.Count == 2 && editableSvg.Layers[0].Name == "Curves & paths" && !editableSvg.Layers[1].Visible, "SVG dimensions, Inkscape layer labels, and hidden-layer state import");
+            var importedCurve = editableSvg.Layers[0].Objects.Single(item => item.Name == "Bézier curve").Paths.Single();
+            Check(importedCurve.Nodes.Count == 2 && importedCurve.Nodes[0].CurveToNext && importedCurve.Nodes[0].HasOut && importedCurve.Nodes[1].HasIn, "SVG cubic Bézier anchors and control handles remain editable");
+            var arcStart = new System.Windows.Point(10, 40); var arcEnd = new System.Windows.Point(90, 40); var arcControl = new System.Windows.Point(70, 60);
+            var asymmetricArc = VectorDesignDocument.CreateCubicArc(arcStart, arcEnd, arcControl, symmetric: false);
+            var symmetricArc = VectorDesignDocument.CreateCubicArc(arcStart, arcEnd, arcControl, symmetric: true);
+            Check(asymmetricArc.Nodes.Count == 2 && asymmetricArc.Nodes[0].CurveToNext && asymmetricArc.Nodes[0].HasOut && asymmetricArc.Nodes[1].HasIn && Math.Abs(asymmetricArc.Nodes[0].OutX + asymmetricArc.Nodes[1].InX - 100) > 1, "three-step curve control creates an editable asymmetric cubic arc");
+            Check(Math.Abs(symmetricArc.Nodes[0].OutX + symmetricArc.Nodes[1].InX - 100) < 1e-9 && Math.Abs(symmetricArc.Nodes[0].OutY - symmetricArc.Nodes[1].InY) < 1e-9, "Shift-constrained arc uses mirrored cubic handles");
+            var convertedLine = new VectorDesignPath { Nodes = new() { VectorDesignDocument.Node(0, 0), VectorDesignDocument.Node(90, 45) } };
+            Check(VectorDesignDocument.ConvertLineSegmentToBezier(convertedLine, 0) && convertedLine.Nodes[0].CurveToNext && convertedLine.Nodes[0].HasOut && convertedLine.Nodes[1].HasIn && Math.Abs(convertedLine.Nodes[0].OutX - 30) < 1e-9 && Math.Abs(convertedLine.Nodes[1].InX - 60) < 1e-9 && !VectorDesignDocument.ConvertLineSegmentToBezier(convertedLine, 0), "straight path segment converts once to a standard editable cubic Bézier");
+            Check(VectorDesignDocument.ParseColor("#f08") == Color.FromRgb(255, 0, 136) && VectorDesignDocument.ParseColor("rgba(240,128,16,0.75)").A == 191, "SVG CSS short-hex and RGBA colors parse");
+            const string stylePrecedenceSvg = """
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                  <g color="#0000ff" fill="#ff0000">
+                    <rect x="1" y="1" width="14" height="14" fill="#ffff00" stroke="#ff0000" style="fill: currentColor; stroke: #00ff00" />
+                  </g>
+                </svg>
+                """;
+            var styledObject = VectorDesignDocument.FromSvg(stylePrecedenceSvg).Layers[0].Objects.Single();
+            Check(VectorDesignDocument.ParseColor(styledObject.Fill) == Color.FromRgb(0, 0, 255) && VectorDesignDocument.ParseColor(styledObject.Stroke) == Color.FromRgb(0, 255, 0), "SVG style declarations override presentation attributes and inherit currentColor");
+            const string roundedRectSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"16\"><rect x=\"1\" y=\"1\" width=\"30\" height=\"14\" rx=\"3\" ry=\"3\" /></svg>";
+            var roundedRect = VectorDesignDocument.FromSvg(roundedRectSvg).Layers[0].Objects.Single().Paths.Single();
+            Check(roundedRect.Nodes.Count == 8 && !roundedRect.Nodes[0].CurveToNext && roundedRect.Nodes[1].CurveToNext && roundedRect.Nodes[7].CurveToNext, "rounded SVG rectangles preserve straight edges and curved corners");
+            var roundTripSvg = VectorDesignDocument.FromSvg(editableSvg.ToSvg());
+            Check(roundTripSvg.Layers.Count == 2 && roundTripSvg.Layers[0].Objects.Count == editableSvg.Layers[0].Objects.Count && !roundTripSvg.Layers[1].Visible, "SVG editable object and layer roundtrip");
+            var svgRaster = editableSvg.Render(64, 48);
+            Check(svgRaster.PixelWidth == 64 && svgRaster.PixelHeight == 48, "SVG vector renderer supports explicit output dimensions");
+            string svgPath = Path.Combine(dir, "editable.svg"); File.WriteAllText(svgPath, svgMarkup, System.Text.Encoding.UTF8);
+            var svgInput = ImageLoader.Load(svgPath, 0);
+            Check(svgInput.Format == "SVG" && svgInput.PageCount == 1 && svgInput.Vector?.IsSvg == true, "SVG is a vector-preserving image source");
+            Expect<ArgumentOutOfRangeException>(() => ImageLoader.Load(svgPath, 1));
+            var svgSession = new WorkflowSession(svgInput.Image, svgInput.Vector); svgSession.ApplySize(64, 48);
+            string svgProject = Path.Combine(dir, "svg-source.sam");
+            ProjectFile.Save(svgProject, new ProjectState(svgSession, "editable.svg", "64", "48", "256", "Size", false, 0, Array.Empty<string?>()), Array.Empty<string>());
+            var reopenedSvgSession = ProjectFile.Load(svgProject).Session; reopenedSvgSession.ApplySize(64, 48);
+            var svgPixels = new byte[64 * 48 * 4]; var reopenedSvgPixels = new byte[svgPixels.Length]; svgSession.Resized!.CopyPixels(svgPixels, 64 * 4, 0); reopenedSvgSession.Resized!.CopyPixels(reopenedSvgPixels, 64 * 4, 0);
+            Check(reopenedSvgSession.Vector?.IsSvg == true && reopenedSvgSession.Vector.SvgMarkup == svgMarkup && svgPixels.SequenceEqual(reopenedSvgPixels), "SAM v14 embeds SVG source and deterministically rerenders it after reopen");
+            var vectorGraph = new ModuleGraph();
+            var vectorSourceNode = vectorGraph.Add(ModuleKind.VectorLoad, 0, 0); vectorSourceNode.ImagePng = ModuleExecutor.EmbedImage(svgInput.Image); vectorSourceNode.VectorSvgBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(svgMarkup));
+            var vectorResizeNode = vectorGraph.Add(ModuleKind.Resize, 150, 0); vectorResizeNode.Width = 64; vectorResizeNode.Height = 48; vectorGraph.Connect(vectorSourceNode.Id, vectorResizeNode.Id, "image");
+            var vectorDesignNode = vectorGraph.Add(ModuleKind.VectorDesign, 300, 0); vectorDesignNode.VectorSvgBase64 = vectorSourceNode.VectorSvgBase64; vectorDesignNode.Configured = true;
+            var graphValues = ModuleExecutor.Run(vectorGraph, vectorResizeNode.Id);
+            Check(graphValues[vectorResizeNode.Id].Image is { PixelWidth: 64, PixelHeight: 48 } && graphValues[vectorResizeNode.Id].Vector?.IsSvg == true, "vector-load graph nodes retain SVG for downstream vector resizing");
+            var designValues = ModuleExecutor.Run(vectorGraph, vectorDesignNode.Id);
+            Check(designValues[vectorDesignNode.Id].Image is { PixelWidth: 32, PixelHeight: 24 } && designValues[vectorDesignNode.Id].Vector?.IsSvg == true, "vector-design graph node emits a rendered image and editable SVG source");
+            string vectorGraphPath = Path.Combine(dir, "vector-graph.sam"); ModuleProjectFile.Save(vectorGraphPath, vectorGraph);
+            var reopenedVectorGraph = ModuleProjectFile.Load(vectorGraphPath); var restoredDesignNode = reopenedVectorGraph.Nodes.Single(item => item.Kind == ModuleKind.VectorDesign);
+            Check(ModuleExecutor.Run(reopenedVectorGraph, restoredDesignNode.Id)[restoredDesignNode.Id].Vector?.SvgMarkup == svgMarkup, "graph project preserves its editable SVG module");
             string zipped = Path.Combine(repository, "tests", "fixtures", "designscope-reference.zip");
             using (var archive = ZipFile.OpenRead(zipped))
             {
@@ -382,6 +451,8 @@ internal static class Program
             string colorGraphPath=Path.Combine(dir,"rgb-threshold.jgw");ModuleProjectFile.Save(colorGraphPath,colorGraph);var colorGraphReload=ModuleProjectFile.Load(colorGraphPath);Check(colorGraphReload.Nodes.Single(n=>n.Id==colorNode.Id).ColorDistance==12 && ModuleExecutor.Run(colorGraphReload,colorNode.Id)[colorNode.Id].Palette!.Colors.SequenceEqual(automaticColors.Colors),"graph persists RGB similarity threshold and result");
             var wideRaw=new byte[5001*2*4];for(int i=0;i<wideRaw.Length;i+=4){wideRaw[i]=17;wideRaw[i+1]=40;wideRaw[i+2]=90;wideRaw[i+3]=120;}var wideImage=BitmapSource.Create(5001,2,96,96,PixelFormats.Bgra32,null,wideRaw,5001*4);var widePng=new PngBitmapEncoder();widePng.Frames.Add(BitmapFrame.Create(wideImage));string widePath=Path.Combine(dir,"wide.png");using(var wideFile=File.Create(widePath))widePng.Save(wideFile);
             var originalWide=ImageLoader.Load(widePath,0);var limitedWide=ImageLoader.Load(widePath,0,true);var limitedPixel=new byte[4];limitedWide.Image.CopyPixels(new System.Windows.Int32Rect(0,0,1,1),limitedPixel,4,0);Check(originalWide.Image.PixelWidth==5001 && limitedWide.Image.PixelWidth==4000 && limitedWide.Image.PixelHeight==2 && limitedWide.OriginalWidth==5001 && limitedPixel[3]==120,"image import width cap is opt-in, proportional and preserves alpha");
+            byte[] colorPixels={0,0,255,255, 0,255,0,255, 255,0,0,255, 32,32,32,0};var colorBitmap=BitmapSource.Create(4,1,96,96,PixelFormats.Bgra32,null,colorPixels,16);var indexedImport=ImageLoader.LimitColors(colorBitmap,2);Check(indexedImport.Format==PixelFormats.Indexed8 && indexedImport.PixelWidth==4 && indexedImport.Palette!.Colors.Count<=2 && indexedImport.Palette.Colors.All(c=>c.A==255),"raster import becomes an opaque indexed palette with the requested maximum");
+            var colorEncoder=new PngBitmapEncoder();colorEncoder.Frames.Add(BitmapFrame.Create(colorBitmap));string colorPath=Path.Combine(dir,"color-import.png");using(var colorFile=File.Create(colorPath))colorEncoder.Save(colorFile);var importedColors=ImageLoader.Load(colorPath,0,true,true);Check(importedColors.ColorLimitApplied && importedColors.Image.Format==PixelFormats.Indexed8 && importedColors.Image.Palette!.Colors.Count<=ImageLoader.MaxImportColors,"opt-in color import reports and preserves the 256-color cap");
             var masksGraph=new ModuleGraph();var masksSource=masksGraph.Add(ModuleKind.Load,0,0);masksSource.ImagePng=ModuleExecutor.EmbedImage(b.Image);var maskNode=masksGraph.Add(ModuleKind.RectangleMask,250,0);maskNode.MaskX=1;maskNode.MaskWidth=1;var applyMaskNode=masksGraph.Add(ModuleKind.ApplyMask,500,0);applyMaskNode.MaskFill="#112233";masksGraph.Connect(masksSource.Id,maskNode.Id,"image");masksGraph.Connect(masksSource.Id,applyMaskNode.Id,"image");masksGraph.Connect(maskNode.Id,applyMaskNode.Id,"mask");
             var graphMaskResult=ModuleExecutor.Run(masksGraph,applyMaskNode.Id);Check(graphMaskResult[maskNode.Id].Type==ModuleData.Mask && graphMaskResult[applyMaskNode.Id].Image!.PixelWidth==3,"graph mask ports execute connected branches");Expect<ArgumentException>(()=>masksGraph.Connect(masksSource.Id,applyMaskNode.Id,"mask"));
             string maskPath=Path.Combine(dir,"mask-graph.sam");ModuleProjectFile.SaveEncrypted(maskPath,masksGraph,"user pass 123");var restoredMasks=ModuleProjectFile.LoadEncrypted(maskPath,"user pass 123");Check(DesignAnalysis.ReadBinary(ModuleExecutor.Run(restoredMasks,maskNode.Id)[maskNode.Id].Image!).SequenceEqual(DesignAnalysis.ReadBinary(rectMask)),"mask settings and connections survive encrypted project roundtrip");
@@ -523,10 +594,10 @@ internal static class Program
             ProjectFile.Save(colorProject, new ProjectState(colorProjectSession, "sample.bmp", "3", "2", "50", "Patterns", false, 1, colorProjectSession.Patterns.Select(_ => (string?)"composite").ToArray()), Array.Empty<string>());
             Check(ProjectFile.Load(colorProject).Session.Patterns[0]!.WeftColors!.SequenceEqual(restoredComposite.WeftColors), "composite colors survive SAM v8");
             string colorV7 = Path.Combine(dir, "colored-v7.sam"); File.Copy(colorProject, colorV7);
-            using (var zip = ZipFile.Open(colorV7, ZipArchiveMode.Update)) { var coloredManifestEntry = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestEntry.Open())) json = r.ReadToEnd(); coloredManifestEntry.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":7")); }
+            using (var zip = ZipFile.Open(colorV7, ZipArchiveMode.Update)) { var coloredManifestEntry = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestEntry.Open())) json = r.ReadToEnd(); coloredManifestEntry.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":7")); }
             Check(ProjectFile.Load(colorV7).Session.Patterns[0]!.WeftColors is null, "SAM v7 still loads without new visual metadata");
             string colorV8 = Path.Combine(dir, "colored-v8.sam"); File.Copy(colorProject, colorV8);
-            using (var zip = ZipFile.Open(colorV8, ZipArchiveMode.Update)) { var coloredManifestV8 = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestV8.Open())) json = r.ReadToEnd(); coloredManifestV8.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":8")); }
+            using (var zip = ZipFile.Open(colorV8, ZipArchiveMode.Update)) { var coloredManifestV8 = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(coloredManifestV8.Open())) json = r.ReadToEnd(); coloredManifestV8.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":8")); }
             Check(ProjectFile.Load(colorV8).Session.Patterns[0]!.WeftColors!.SequenceEqual(restoredComposite.WeftColors), "SAM v8 composite colors remain compatible");
 
             Check(Math.Abs(YarnGeometry.ToTex(90, 2) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 1) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(100, 4) - 10) < .0001 && Math.Abs(YarnGeometry.ToTex(59.0541, 3) - 10) < .0001, "yarn count conversions");
@@ -613,7 +684,10 @@ internal static class Program
             Check(earlyMap.Image.PixelWidth == 5 && earlyMap.DesignStart == 1 && earlyMap.SignalHooks.Length == 0, "pre-weft stages exclude later absolute layout and signal columns");
             var simSettings = new SimulationSettings(1, 0, "#۱۲3ABC", "#AABBCC", 2, 75);
             var sim = FabricSimulation.Render(image, simSettings);
-            Check(sim.PixelWidth == 48 && sim.PixelHeight == 32 && sim.IsFrozen && DesignAnalysis.ReadBinary(image).SequenceEqual(pixels), "simulation is bounded, immutable and leaves machine bitmap unchanged");
+            Check(sim.PixelWidth == 144 && sim.PixelHeight == 96 && sim.IsFrozen && DesignAnalysis.ReadBinary(image).SequenceEqual(pixels), "simulation uses high-resolution fibers, is immutable and leaves machine bitmap unchanged");
+            var capSource = BitmapSource.Create(80,1,96,96,PixelFormats.Gray8,null,new byte[80],80); capSource.Freeze();
+            var cappedPreview = FabricSimulation.Render(capSource, new SimulationSettings(Mode:0,RepeatX:16));
+            Check(Math.Max(cappedPreview.PixelWidth,cappedPreview.PixelHeight)==FabricSimulation.MaxPreviewDimension, "oversized textile previews obey the 2400-pixel render bound");
             Expect<ArgumentException>(() => FabricSimulation.Render(image, simSettings with { WarpColor = "bad" }));
             string simFile = Path.Combine(dir, "simulation.sam");
             ProjectFile.Save(simFile, new ProjectState(autoSession,"sample.bmp","3","2","50","Simulation",false,1,autoSession.Patterns.Select(_ => (string?)"pattern").ToArray(), Simulation:simSettings), Array.Empty<string>());
@@ -624,6 +698,9 @@ internal static class Program
             var flatBytes = new byte[flat.PixelWidth * flat.PixelHeight * 4]; var reliefBytes = new byte[flatBytes.Length]; flat.CopyPixels(flatBytes, flat.PixelWidth * 4, 0); relief.CopyPixels(reliefBytes, relief.PixelWidth * 4, 0);
             Check(!flatBytes.SequenceEqual(reliefBytes), "flat and relief rendering are distinct");
             Check(FabricSimulation.WarpOnTop(new byte[]{0,255}, 2, 0, 0, 0) == false && FabricSimulation.WarpOnTop(new byte[]{0,255}, 2, 1, 0, 0), "black places weft on top and white places warp on top");
+            Check(Enumerable.Range(0,8).Select(x=>FabricSimulation.WarpOnTop(Array.Empty<byte>(),1,x,0,2)).SequenceEqual(new[]{true,true,false,false,true,true,false,false}), "twill preview uses a balanced two-over, two-under diagonal repeat");
+            var referencePreset = FabricSimulation.CreateReferencePreset(simSettings, new[]{"1","2"}); FabricSimulation.Validate(referencePreset);
+            Check(referencePreset.WarpColor==FabricSimulation.ReferenceWarpColor && referencePreset.Weave==1 && referencePreset.Mode==1 && referencePreset.Wefts!.Length==2 && referencePreset.Wefts.All(y=>y.Color==FabricSimulation.ReferenceWeftColor && y.Yarn==2), "reference preset configures red warp, ivory cotton weft, and textured plain weave");
             var structure = new SimulationSettings(WarpColor:"#CC0000", WeftColor:"#00AA00", Mode:0, WarpCount:"30", WarpDensity:"40", WeftDensity:"40");
             var oneCross = BitmapSource.Create(1,1,96,96,PixelFormats.Gray8,null,new byte[]{0},1); oneCross.Freeze();
             byte[] View(SimulationSettings value) { var im = FabricSimulation.Render(oneCross, value); var bytes = new byte[im.PixelWidth * im.PixelHeight * 4]; im.CopyPixels(bytes, im.PixelWidth * 4, 0); return bytes; }
@@ -637,14 +714,14 @@ internal static class Program
             Expect<ArgumentException>(()=>FabricSimulation.Validate(structure with {RepeatX=17}));
             var defaultSim=System.Text.Json.JsonSerializer.Deserialize<SimulationSettings>("{}");Check(defaultSim!.RepeatX==1 && defaultSim.RepeatY==1 && !defaultSim.ReverseSide,"older simulation settings get compatible defaults");
             var differentSpacing = FabricSimulation.Render(image, structure with { WarpDensity="20", WeftDensity="40" });
-            Check(differentSpacing.PixelWidth == 96 && differentSpacing.PixelHeight == 32, "fabric aspect ratio follows physical warp and weft spacing");
+            Check(differentSpacing.PixelWidth == 288 && differentSpacing.PixelHeight == 96, "fabric aspect ratio follows physical warp and weft spacing at fiber-preview resolution");
             var noGap = View(structure with { WarpDensity="50", WeftDensity="50" }); var moreGap = View(structure with { WarpDensity="20", WeftDensity="20" });
             int White(byte[] b) => Enumerable.Range(0,b.Length/4).Count(i => b[i*4] >= 230 && b[i*4+1] >= 230 && b[i*4+2] >= 230);
             Check(White(moreGap) > White(noGap), "lower thread density creates visible openings");
             var crossingMap = BitmapSource.Create(2,1,96,96,PixelFormats.Gray8,null,new byte[]{0,255},2); var crossing = FabricSimulation.Render(crossingMap, structure); var crossingBytes = new byte[crossing.PixelWidth * crossing.PixelHeight * 4]; crossing.CopyPixels(crossingBytes, crossing.PixelWidth * 4, 0);
-            int weftPixel = (8 * crossing.PixelWidth + 8) * 4, warpPixel = (8 * crossing.PixelWidth + 24) * 4;
-            Check(crossingBytes[weftPixel+1] > crossingBytes[weftPixel+2] && crossingBytes[warpPixel+2] > crossingBytes[warpPixel+1], "normal simulation draws black map pixels as weft and white as warp");
-            int nearJoin = (8 * crossing.PixelWidth + 15) * 4; Check(crossingBytes[nearJoin+1] < crossingBytes[weftPixel+1], "weft softly darkens approaching an overlying warp");
+            int weftPixel = (24 * crossing.PixelWidth + 24) * 4, warpPixel = (24 * crossing.PixelWidth + 72) * 4;
+            Check(crossingBytes[weftPixel+1] > crossingBytes[weftPixel+2] && crossingBytes[warpPixel+2] > crossingBytes[warpPixel+1], "normal simulation preserves the map's black-weft and white-warp crossings");
+            int nearJoin = (24 * crossing.PixelWidth + 47) * 4; Check(crossingBytes[nearJoin+1] < crossingBytes[weftPixel+1], "weft softly darkens approaching an overlying warp");
             Check(Math.Abs(FabricSimulation.Number("۱٫۵") - 1.5) < .001, "Persian decimal input");
             Expect<ArgumentException>(() => FabricSimulation.Validate(structure with { WarpDensity="0" }));
             Expect<ArgumentException>(() => FabricSimulation.Validate(structure with { Wefts = new[]{new SimulatedYarn("1",0,"#00AA00","0")} }));
@@ -657,7 +734,7 @@ internal static class Program
             var v10Settings = simSettings with { Mode = 2 }; string v10File = Path.Combine(dir, "sim-v10.sam");
             ProjectFile.Save(v10File, new ProjectState(autoSession,"sample.bmp","3","2","50","Simulation",false,1,autoSession.Patterns.Select(_ => (string?)"pattern").ToArray(), Simulation:v10Settings), Array.Empty<string>());
             Check(ProjectFile.Load(v10File).Simulation!.Mode == 2, "SAM v10 preserves simulation mode");
-            using (var zip = ZipFile.Open(v10File, ZipArchiveMode.Update)) { var old = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(old.Open())) json = r.ReadToEnd(); old.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":9")); }
+            using (var zip = ZipFile.Open(v10File, ZipArchiveMode.Update)) { var old = zip.GetEntry("manifest.json")!; string json; using (var r = new StreamReader(old.Open())) json = r.ReadToEnd(); old.Delete(); using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":9")); }
             Check(ProjectFile.Load(v10File).Simulation!.Mode == 1, "SAM v9 defaults to the legacy relief appearance");
             var multiSettings = simSettings with { WarpCount = "۲۰", WarpUnit = 3, WarpDensity = "۳۵", WeftDensity = "۲۵", MaterialDensity = "۰٫۸", Wefts = new[] { new SimulatedYarn("1", 1, "#FF0000", "40", 0), new SimulatedYarn("2", 2, "#00FF00", "30", 3), new SimulatedYarn("3", 0, "#0000FF", "150", 1) } };
             var whiteMap = BitmapSource.Create(1, 2, 96, 96, PixelFormats.Gray8, null, new byte[]{255,255}, 1);
@@ -683,7 +760,7 @@ internal static class Program
             using (var zip = ZipFile.Open(simV6, ZipArchiveMode.Update))
             {
                 var manifest = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(manifest.Open())) json = reader.ReadToEnd();
-                manifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":6"));
+                manifest.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":6"));
             }
             Check(ProjectFile.Load(simV6).Simulation!.Wefts is null, "SAM v6 uses its original single-weft fallback");
             var invalidPosition = new MachineSetup(BoxEnabled:true, AbsoluteLayout:true, DesignStart:"3", WeftStart:PositionNumbers.ToStored("0"), WeftCount:"1"); Expect<ArgumentException>(() => MachineComposer.Compose(image, invalidPosition));
@@ -758,7 +835,7 @@ internal static class Program
             using (var zip = ZipFile.Open(v4File, ZipArchiveMode.Update))
             {
                 var item = zip.GetEntry("manifest.json")!; string json; using (var reader = new StreamReader(item.Open())) json = reader.ReadToEnd();
-                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":13", "\"Version\":4"));
+                item.Delete(); var replacement = zip.CreateEntry("manifest.json"); using var writer = new StreamWriter(replacement.Open()); writer.Write(json.Replace("\"Version\":14", "\"Version\":4"));
             }
             var oldV4 = ProjectFile.Load(v4File); Check(oldV4.DraftWeft is null && oldV4.Machine!.AbsoluteLayout && DesignAnalysis.ReadBinary(MachineComposer.Compose(image, oldV4.Machine).Image).SequenceEqual(positionedPixels), "SAM v4 absolute settings remain applied");
             var composedState = new ProjectState(bankSession,"sample.bmp","3","2","50","Machine",false,1,bankSession.Patterns.Select(_ => (string?)"pattern").ToArray(),null,null,setup);
@@ -856,10 +933,23 @@ internal static class Program
             foreach(var artwork in new[]{"Settings","YarnDefinition","MergeDesign","ImageToWeave"})Check(ModuleIcons.CreateResourceImage(artwork,24)?.Source is BitmapSource bitmap && bitmap.PixelWidth>0 && bitmap.PixelHeight>0,"extra icon resource loads " + artwork);
             Check(ModuleIcons.CreateResourceImage("missing-resource-for-test",24) is null && ModuleIcons.Create(ModuleKind.Load,24,(_,size)=>ModuleIcons.CreateResourceImage("missing-resource-for-test",size)) is System.Windows.Controls.Grid,"missing icon resource falls back to vector");
             var activationUi=new ActivationWindow(new UserPreferences());var activationFlags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+            var licenseConsent=(System.Windows.Controls.CheckBox)typeof(ActivationWindow).GetField("licenseConsent",activationFlags)!.GetValue(activationUi)!;var telemetryConsent=(System.Windows.Controls.CheckBox)typeof(ActivationWindow).GetField("telemetryConsent",activationFlags)!.GetValue(activationUi)!;var registrationConsent=(System.Windows.Controls.CheckBox)typeof(ActivationWindow).GetField("registrationConsent",activationFlags)!.GetValue(activationUi)!;
+            Check(licenseConsent.IsChecked==false && telemetryConsent.IsChecked==false && registrationConsent.IsChecked==false,"license lookup, full reporting, and online registration each start with separate consent");
+            var licenseConsentMethod=typeof(ActivationWindow).GetMethod("LicenseCheckConsent",activationFlags)!;
+            var reportOnlyPrefs=new UserPreferences {TelemetryEnabled=true};var reportOnlyActivation=new ActivationWindow(reportOnlyPrefs);
+            Check(!(bool)licenseConsentMethod.Invoke(activationUi,null)! && !(bool)licenseConsentMethod.Invoke(reportOnlyActivation,null)! && !reportOnlyPrefs.SiteLicenseCheckEnabled,"full-report consent alone never grants minimal license-lookup permission");reportOnlyActivation.Close();
+            var failedPrefs=new UserPreferences();var failingSaver=new Action<UserPreferences>(_=>throw new IOException("test-only save failure"));var failingCtor=typeof(ActivationWindow).GetConstructor(activationFlags,null,new[]{typeof(UserPreferences),typeof(Action<UserPreferences>)},null)!;var failingActivation=(ActivationWindow)failingCtor.Invoke(new object?[]{failedPrefs,failingSaver});
+            var failedTelemetry=(System.Windows.Controls.CheckBox)typeof(ActivationWindow).GetField("telemetryConsent",activationFlags)!.GetValue(failingActivation)!;var persistTelemetry=typeof(ActivationWindow).GetMethod("PersistTelemetryConsent",activationFlags)!;persistTelemetry.Invoke(failingActivation,new object?[]{true});
+            Check(!failedPrefs.TelemetryEnabled && failedTelemetry.IsChecked==false,"failed opt-in save restores the prior telemetry preference and checkbox");
+            failedPrefs.TelemetryEnabled=true;failedTelemetry.IsChecked=true;persistTelemetry.Invoke(failingActivation,new object?[]{false});
+            Check(failedPrefs.TelemetryEnabled && failedTelemetry.IsChecked==true,"failed opt-out save restores the prior telemetry preference and checkbox");
+            var failedLicense=(System.Windows.Controls.CheckBox)typeof(ActivationWindow).GetField("licenseConsent",activationFlags)!.GetValue(failingActivation)!;failedLicense.IsChecked=true;
+            Check(!(bool)licenseConsentMethod.Invoke(failingActivation,null)! && !failedPrefs.SiteLicenseCheckEnabled && !failedPrefs.SiteLicenseCheckPrompted && failedLicense.IsChecked==false,"failed license-consent save restores preference, prompted state, and checkbox");failingActivation.Close();
             typeof(ActivationWindow).GetField("device",activationFlags)!.SetValue(activationUi,new string('A',64));
             System.Windows.Controls.TextBox ActivationText(string name)=>(System.Windows.Controls.TextBox)typeof(ActivationWindow).GetField(name,activationFlags)!.GetValue(activationUi)!;
             var onlineButton=(System.Windows.Controls.Button)typeof(ActivationWindow).GetField("online",activationFlags)!.GetValue(activationUi)!;var siteCheckButton=(System.Windows.Controls.Button)typeof(ActivationWindow).GetField("siteCheck",activationFlags)!.GetValue(activationUi)!;var manualButton=(System.Windows.Controls.Button)typeof(ActivationWindow).GetField("manual",activationFlags)!.GetValue(activationUi)!;
             ActivationText("customerName").Text="علی";ActivationText("phone").Text="09120000000";Check(!onlineButton.IsEnabled && siteCheckButton.IsEnabled,"license lookup works without contact details, while new request needs all fields");ActivationText("city").Text="تهران";Check(onlineButton.IsEnabled && siteCheckButton.IsEnabled && !manualButton.IsEnabled,"online registration and license lookup are available independently of the pinned key");
+            ((Task)typeof(ActivationWindow).GetMethod("ActivateOnlineAsync",activationFlags)!.Invoke(activationUi,null)!).GetAwaiter().GetResult();var activationMessage=(System.Windows.Controls.TextBlock)typeof(ActivationWindow).GetField("message",activationFlags)!.GetValue(activationUi)!;Check(activationMessage.Text.Contains("رضایت ثبت‌نام"),"online registration is blocked until its own consent is checked");
             ActivationText("token").Text="JSL1.test.test";Check(manualButton.IsEnabled && activationUi.Icon is not null && activationUi.FontFamily.Source.Contains("Vazirmatn"),"manual action responds to code and activation window has Persian font and logo");activationUi.Close();
 
             var blankDialog=new DesignBlankWindow(new DesignBlankSettings(120,80,32.5,25));var blankRoot=(System.Windows.Controls.DockPanel)blankDialog.Content;var blankForm=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)blankRoot.Children[1]).Content;var blankFields=blankForm.Children.OfType<System.Windows.Controls.TextBox>().ToArray();blankFields[0].Text="۱۲۰";blankFields[1].Text="۸۰";blankFields[2].Text="۳۲٫۵";blankFields[3].Text="۲۵";var blankButtons=(System.Windows.Controls.WrapPanel)blankRoot.Children[0];var blankApply=blankButtons.Children.OfType<System.Windows.Controls.Button>().Single(x=>Equals(x.Content,"ایجاد صفحه"));blankDialog.Loaded+=(_,_)=>blankDialog.Dispatcher.BeginInvoke(new Action(()=>blankApply.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent))));Check(blankDialog.ShowDialog()==true && blankDialog.Result is {Width:120,Height:80,WarpDensity:32.5,WeftDensity:25},"blank canvas dialog accepts Persian dimensions and densities");
@@ -880,31 +970,58 @@ internal static class Program
             var cancelEditor=new SimulationEditorWindow(b.Image,Array.Empty<string>(),new SimulationSettings(Mode:0));var cancelRoot=(System.Windows.Controls.DockPanel)cancelEditor.Content;var cancelColumns=(System.Windows.Controls.Grid)cancelRoot.Children[1];var simSettingsPanel=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)cancelColumns.Children[1]).Content;var cancelFooter=(System.Windows.Controls.StackPanel)cancelRoot.Children[0];var simCancel=cancelFooter.Children.OfType<System.Windows.Controls.Button>().Single(button=>Equals(button.Content,"انصراف"));var simSave=cancelFooter.Children.OfType<System.Windows.Controls.Button>().Single(button=>Equals(button.Content,"ذخیره تصویر"));var cancelTicks=0;bool staleDisabled=false;var cancelTimer=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromMilliseconds(20)};
             cancelTimer.Tick+=(_,_)=>{if(++cancelTicks>500){cancelTimer.Stop();cancelEditor.Close();}else if(simSave.IsEnabled){simSettingsPanel.Children.OfType<System.Windows.Controls.TextBox>().First().Text="2";staleDisabled=!simSave.IsEnabled;cancelTimer.Stop();simCancel.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));}};cancelTimer.Start();Check(cancelEditor.ShowDialog()==false && cancelEditor.Result is null && staleDisabled,"simulation edits invalidate preview and cancel discards draft");
             var multiEditor=new SimulationEditorWindow(b.Image,new[]{"1","2"},new SimulationSettings(Mode:0,Wefts:new[]{new SimulatedYarn("1",0,"#FF0000","20",0),new SimulatedYarn("2",1,"#00FF00","25",1),new SimulatedYarn("extra",2,"#0000FF","31",0)}));
-            var multiRoot=(System.Windows.Controls.DockPanel)multiEditor.Content;var multiGrid=(System.Windows.Controls.Grid)multiRoot.Children[1];var multiPanel=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)multiGrid.Children[1]).Content;multiPanel.Children.OfType<System.Windows.Controls.TextBox>().Last().Text="42";
-            var readSimulationDraft=typeof(SimulationEditorWindow).GetMethod("ReadDraft",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance)!;var simulationDraft=(SimulationSettings)readSimulationDraft.Invoke(multiEditor,null)!;Check(simulationDraft.Wefts!.Single(x=>x.Id=="2").Count=="42" && simulationDraft.Wefts.Single(x=>x.Id=="extra").Color=="#0000FF","per-weft editor updates active row and preserves inactive yarn settings");multiEditor.Close();
+            var multiRoot=(System.Windows.Controls.DockPanel)multiEditor.Content;var multiGrid=(System.Windows.Controls.Grid)multiRoot.Children[1];var multiPanel=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)multiGrid.Children[1]).Content;
+            var editorPresetButton=multiPanel.Children.OfType<System.Windows.Controls.Button>().Single(button=>button.Name=="ReferencePresetButton");editorPresetButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            var readSimulationDraft=typeof(SimulationEditorWindow).GetMethod("ReadDraft",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance)!;var presetDraft=(SimulationSettings)readSimulationDraft.Invoke(multiEditor,null)!;
+            Check(presetDraft.WarpColor==FabricSimulation.ReferenceWarpColor && presetDraft.Weave==1 && presetDraft.Mode==1 && presetDraft.Wefts!.Single(x=>x.Id=="2").Color==FabricSimulation.ReferenceWeftColor,"graph simulation editor applies the red/ivory plain-weave preset transactionally");
+            multiPanel.Children.OfType<System.Windows.Controls.TextBox>().Last().Text="42";var simulationDraft=(SimulationSettings)readSimulationDraft.Invoke(multiEditor,null)!;Check(simulationDraft.Wefts!.Single(x=>x.Id=="2").Count=="42" && simulationDraft.Wefts.Single(x=>x.Id=="extra").Color=="#0000FF","per-weft editor updates active row and preserves inactive yarn settings");multiEditor.Close();
             var graphGuide=new GraphGuideWindow();Check(graphGuide.Title.Contains("راهنما"),"offline graph guide creates successfully");graphGuide.Close();
             var reportPages=GraphReport.Render(reportValues); Check(reportPages.Count>=2 && reportPages.All(p=>p.IsFrozen), "portfolio combines connected results and paginated palette");
             string graphReportPath=Path.Combine(dir,"graph-report.pdf"); DesignReport.SavePdf(reportPages,graphReportPath,Array.Empty<string>()); Check(File.ReadAllText(graphReportPath,System.Text.Encoding.Latin1).Contains("/Count " + reportPages.Count), "graph report exports multipage PDF");
-            var moduleWindow = new ModuleWindow(); Check(((System.Windows.Controls.Button)moduleWindow.FindName("SettingsRailButton")).Content is System.Windows.Controls.Image,"settings rail button uses the supplied icon"); var moduleFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var settingsSource=new UserPreferences {TelemetryEnabled=true};var settingsWindow=new SettingsWindow(settingsSource,new[]{(ModuleKind.Load,"طرح نقشه‌بیتی"),(ModuleKind.Resize,"تغییر اندازه"),(ModuleKind.Colors,"مدیریت رنگ")});
+            var settingsTabs=(System.Windows.Controls.TabControl)((System.Windows.Controls.DockPanel)settingsWindow.Content).Children.OfType<System.Windows.Controls.TabControl>().Single();
+            var settingsModulePage=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)((System.Windows.Controls.TabItem)settingsTabs.Items[1]).Content).Content;
+            Check(settingsTabs.Items.Count==3 && settingsTabs.Items.OfType<System.Windows.Controls.TabItem>().Select(tab=>tab.Header?.ToString()).SequenceEqual(new[]{"ظاهر","ماژول‌ها","امنیت و مجوز"}) && settingsModulePage.Children.OfType<System.Windows.Controls.Border>().Any(),"settings dialog groups appearance, module visibility, and security in scrollable tabs");
+            var settingsSecurityPage=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)((System.Windows.Controls.TabItem)settingsTabs.Items[2]).Content).Content;var reportCard=(System.Windows.Controls.Border)settingsSecurityPage.Children.OfType<System.Windows.Controls.Border>().Last();var reportContent=(System.Windows.Controls.StackPanel)((System.Windows.Controls.StackPanel)reportCard.Child).Children.OfType<System.Windows.Controls.StackPanel>().Single();
+            Check(reportContent.Children.OfType<System.Windows.Controls.CheckBox>().Single().IsChecked==true && settingsWindow.Result.TelemetryEnabled && !ReferenceEquals(settingsWindow.Result.HiddenModules,settingsSource.HiddenModules),"settings exposes the persisted full-report consent as an independent preference");settingsWindow.Close();
+            var moduleWindow = new ModuleWindow(); Check(((System.Windows.Controls.Button)moduleWindow.FindName("SettingsRailButton")).Content is System.Windows.Controls.Image,"settings rail button uses the supplied icon"); Check(moduleWindow.FindName("SnackbarPresenter") is Wpf.Ui.Controls.SnackbarPresenter,"module workspace registers a WPF-UI snackbar presenter"); var moduleFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
             var inspectorPanel=(System.Windows.Controls.ContentControl)moduleWindow.FindName("InspectorHost");var inspectorScroll=(System.Windows.Controls.ScrollViewer)moduleWindow.FindName("InspectorScrollHost");
-            Check(inspectorPanel.Visibility==System.Windows.Visibility.Visible && ReferenceEquals(inspectorPanel.Content,inspectorScroll) && inspectorScroll.Content is System.Windows.Controls.StackPanel,"module settings are docked in a visible scrollable inspector");
+            Check(inspectorPanel.Visibility==System.Windows.Visibility.Collapsed && ReferenceEquals(inspectorPanel.Content,inspectorScroll) && inspectorScroll.Content is System.Windows.Controls.StackPanel,"module settings remain in a hidden parking host until opened as a dialog");
             var workspaceLayout=(System.Windows.Controls.Grid)moduleWindow.FindName("WorkspaceMain");
-            var navigationRail=(System.Windows.Controls.Border)moduleWindow.FindName("NavigationRail");var railDock=(System.Windows.Controls.DockPanel)navigationRail.Child;
-            var railButtons=((System.Windows.Controls.StackPanel)railDock.Children.OfType<System.Windows.Controls.ScrollViewer>().Single().Content).Children;
-            var pinnedRailButtons=railDock.Children.OfType<System.Windows.Controls.StackPanel>().Single().Children;
-            Check(navigationRail.Visibility==System.Windows.Visibility.Visible && workspaceLayout.RowDefinitions.Count==2,"workspace has a narrow tool rail and a separate lower inspector region");
+            var workspaceColumns=(System.Windows.Controls.Grid)moduleWindow.FindName("WorkspaceColumns");
+            var navigationRail=(System.Windows.Controls.Border)moduleWindow.FindName("NavigationRail");
+            var railActionGroups=(System.Windows.Controls.StackPanel)moduleWindow.FindName("RailActionGroups");
+            var railButtons=railActionGroups.Children.OfType<System.Windows.Controls.Primitives.UniformGrid>().SelectMany(group=>group.Children.Cast<System.Windows.UIElement>()).ToArray();
+            var pinnedRailButtons=((System.Windows.Controls.Primitives.UniformGrid)moduleWindow.FindName("PinnedRailActions")).Children;
+            var railProjectActions=(System.Windows.Controls.Primitives.UniformGrid)moduleWindow.FindName("RailProjectActions");
+            Check(navigationRail.Visibility==System.Windows.Visibility.Visible && workspaceLayout.RowDefinitions.Count==0 && workspaceColumns.ColumnDefinitions[0].Width.Value==96 && moduleWindow.FindName("InspectorBorder") is System.Windows.Controls.Border parkedInspector && parkedInspector.Visibility==System.Windows.Visibility.Collapsed,"workspace has a two-column tool rail and no permanently docked inspector row");
+            Check(railProjectActions.Columns==2 && ((System.Windows.Controls.Primitives.UniformGrid)moduleWindow.FindName("PinnedRailActions")).Columns==2 && ((System.Windows.Controls.ScrollViewer)moduleWindow.FindName("NavigationScrollViewer")).VerticalScrollBarVisibility==System.Windows.Controls.ScrollBarVisibility.Hidden && moduleWindow.FindName("NavigationScrollUpButton") is System.Windows.Controls.Button && moduleWindow.FindName("NavigationScrollDownButton") is System.Windows.Controls.Button,"toolbar icons use a two-column layout with hidden scrollbar and step-scroll buttons");
             Check(moduleWindow.FindName("NodeToolbar") is null && new[]{"NewRailButton","OpenRailButton","SaveRailButton","SaveAsRailButton","FitAllRailButton","AddTextRailButton","AddFrameRailButton","ArrangeRailButton","PresetRailButton","CustomPresetsRailButton","ClearAllRailButton","ZoomInRailButton","ZoomOutRailButton","DeleteRailButton","CheckUpdatesButton","ThemeToggle","RunRailButton"}.All(name=>moduleWindow.FindName(name) is System.Windows.Controls.Button button && railButtons.Contains(button)) && moduleWindow.FindName("AlertAnimations") is System.Windows.Controls.Primitives.ToggleButton alertButton && railButtons.Contains(alertButton) && new[]{"SettingsRailButton","HelpRailButton","AboutRailButton"}.All(name=>moduleWindow.FindName(name) is System.Windows.Controls.Button button && pinnedRailButtons.Contains(button)),"project, stage, and app actions are icon buttons on the left rail, with no upper action toolbar");
+            Check(moduleWindow.GetType().BaseType==typeof(Wpf.Ui.Controls.FluentWindow) && moduleWindow.WindowStyle==System.Windows.WindowStyle.None && moduleWindow.FindName("TitleBar") is System.Windows.Controls.Border && new[]{"MinimizeWindowButton","MaximizeWindowButton","CloseWindowButton"}.All(name=>moduleWindow.FindName(name) is System.Windows.Controls.Button),"module workspace uses the app-themed custom Fluent title bar");
             var presetRailButton=(System.Windows.Controls.Button)moduleWindow.FindName("CustomPresetsRailButton");Check(System.Windows.Automation.AutomationProperties.GetName(presetRailButton)=="زنجیره‌های سفارشی" && presetRailButton.ToolTip is string presetTooltip && presetTooltip.Contains("ذخیره"),"local custom-chain management is discoverable and named for assistive technology");
-            var inspectorTabs=((System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector")).Children.OfType<System.Windows.Controls.TabControl>().Single();
-            Check(inspectorTabs.Items.OfType<System.Windows.Controls.TabItem>().Any(tab=>Equals(tab.Header,"نمای کلی")) && inspectorTabs.Items.OfType<System.Windows.Controls.TabItem>().Any(tab=>Equals(tab.Header,"منبع و بارگذاری")),"module settings are grouped into separate overview and settings tabs");
+            var moduleInspector=(System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector");
+            var moduleSummary=moduleInspector.Children.OfType<System.Windows.Controls.Border>().Single(border=>Equals(border.Tag,"module-summary"));
+            var moduleOptions=moduleInspector.Children.OfType<System.Windows.Controls.StackPanel>().Single(panel=>Equals(panel.Tag,"module-options"));
+            var sourceCard=moduleOptions.Children.OfType<System.Windows.Controls.Border>().Single(border=>Equals(border.Tag,"module-source-card"));
+            var sourceActions=(System.Windows.Controls.StackPanel)((System.Windows.Controls.StackPanel)sourceCard.Child).Children.OfType<System.Windows.Controls.StackPanel>().Single();
+            var chooseSourceButton=sourceActions.Children.OfType<System.Windows.Controls.Button>().Single();
+            Check(moduleSummary.Child is System.Windows.Controls.Grid && moduleInspector.Children.OfType<System.Windows.Controls.TabControl>().Count()==0 && Equals(chooseSourceButton.Content,"انتخاب فایل و صفحه"),"module editor opens directly on a clear source action instead of an empty overview tab");
             var statusMetadata=(System.Windows.Controls.TextBlock)moduleWindow.FindName("StatusMetadata");
             Check(statusMetadata.Text.Contains(AppVersion.Display) && statusMetadata.Text.Contains("10") && statusMetadata.Text.Contains("میرخلیلی"),"status bar shows application version, module count, and software owner");
-            var inspectorToggle=(System.Windows.Controls.Button)moduleWindow.FindName("InspectorToggleButton");
-            inspectorToggle.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-            Check(inspectorPanel.Visibility==System.Windows.Visibility.Collapsed && workspaceLayout.RowDefinitions[1].Height.Value==32,"inspector collapses to its compact header");
-            inspectorToggle.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-            Check(inspectorPanel.Visibility==System.Windows.Visibility.Visible && workspaceLayout.RowDefinitions[1].Height.Value==150,"inspector expands back to its docked height");
+            Check(moduleWindow.FindName("InspectorToggleButton") is null && inspectorPanel.Visibility==System.Windows.Visibility.Collapsed,"permanent inspector and collapse toggle are removed from the workspace");
             var moduleGraph = (ModuleGraph)typeof(ModuleWindow).GetField("graph",moduleFlags)!.GetValue(moduleWindow)!;
+            var sourceNode=moduleGraph.Nodes[0];var savedSourcePng=sourceNode.ImagePng;var savedSourceLabel=sourceNode.Label;int savedSourcePage=sourceNode.SourcePage;
+            sourceNode.ImagePng=ModuleExecutor.EmbedImage(inputImage);sourceNode.Label="preview-test.png";sourceNode.SourcePage=0;typeof(ModuleWindow).GetMethod("Inspect",moduleFlags)!.Invoke(moduleWindow,null);
+            moduleOptions=moduleInspector.Children.OfType<System.Windows.Controls.StackPanel>().Single(panel=>Equals(panel.Tag,"module-options"));
+            var loadedSourceCard=moduleOptions.Children.OfType<System.Windows.Controls.Border>().Single(border=>Equals(border.Tag,"module-source-card"));var loadedSourceBody=(System.Windows.Controls.StackPanel)loadedSourceCard.Child;
+            var sourcePreviewFrame=loadedSourceBody.Children.OfType<System.Windows.Controls.Border>().SingleOrDefault(border=>border.Child is System.Windows.Controls.Image);
+            Check(Equals(((System.Windows.Controls.StackPanel)loadedSourceBody.Children.OfType<System.Windows.Controls.StackPanel>().Single()).Children.OfType<System.Windows.Controls.Button>().Single().Content,"تغییر فایل و صفحه") && sourcePreviewFrame?.Child is System.Windows.Controls.Image sourcePreview && sourcePreview.Source is System.Windows.Media.Imaging.BitmapSource previewBitmap && previewBitmap.PixelWidth==inputImage.PixelWidth && previewBitmap.PixelHeight==inputImage.PixelHeight,"loaded source module shows a correctly sized preview and a clear replace action");
+            sourceNode.ImagePng=savedSourcePng;sourceNode.Label=savedSourceLabel;sourceNode.SourcePage=savedSourcePage;typeof(ModuleWindow).GetMethod("Inspect",moduleFlags)!.Invoke(moduleWindow,null);
+            var selectedModuleField=typeof(ModuleWindow).GetField("selected",moduleFlags)!;var selectedModuleBefore=selectedModuleField.GetValue(moduleWindow);
+            var temporaryMachine=moduleGraph.Add(ModuleKind.MachineDefinition,1200,650);selectedModuleField.SetValue(moduleWindow,temporaryMachine.Id);typeof(ModuleWindow).GetMethod("Inspect",moduleFlags)!.Invoke(moduleWindow,null);
+            var groupedModuleTabs=moduleInspector.Children.OfType<System.Windows.Controls.TabControl>().Single();
+            Check(groupedModuleTabs.Items.OfType<System.Windows.Controls.TabItem>().Select(tab=>tab.Header?.ToString()).SequenceEqual(new[]{"ابعاد ماشین","سازنده و فایل ماشین"}) && groupedModuleTabs.SelectedItem is System.Windows.Controls.TabItem activeMachinePage && Equals(activeMachinePage.Header,"سازنده و فایل ماشین"),"multi-section module options are grouped into clear tabs and open on the active settings section");
+            moduleGraph.Remove(temporaryMachine.Id);selectedModuleField.SetValue(moduleWindow,selectedModuleBefore);typeof(ModuleWindow).GetMethod("Inspect",moduleFlags)!.Invoke(moduleWindow,null);
             static double Brightness(Brush brush) { var c=((SolidColorBrush)brush).Color; return .2126*c.R+.7152*c.G+.0722*c.B; }
             ThemeManager.Apply(false,false); Check(Brightness((Brush)app.FindResource("PrimaryText")) > Brightness((Brush)app.FindResource("GraphNode")) + 100, "dark theme text contrasts with graph nodes");
             Check(((SolidColorBrush)app.FindResource("GraphBackground")).Color==Color.FromRgb(0x22,0x22,0x22) && ((SolidColorBrush)app.FindResource("Accent")).Color==Color.FromRgb(0xC9,0xA5,0x8B),"dark theme uses charcoal graph surfaces and a restrained warm highlight");
@@ -914,14 +1031,20 @@ internal static class Program
             ThemeManager.Apply("calm",false); Check(Brightness((Brush)app.FindResource("PrimaryText")) + 100 < Brightness((Brush)app.FindResource("GraphNode")), "calm theme text contrasts with nodes");
             ThemeManager.Apply("ocean",false); Check(Brightness((Brush)app.FindResource("PrimaryText")) > Brightness((Brush)app.FindResource("GraphNode")) + 100, "ocean theme text contrasts with nodes"); ThemeManager.Apply(true,false);
             var themedInput=new System.Windows.Controls.TextBox(); ((System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector")).Children.Add(themedInput); themedInput.ApplyTemplate(); Check(Brightness(themedInput.Foreground)+100 < Brightness(themedInput.Background), "light themed text input is readable");
-            var themedCombo=new System.Windows.Controls.ComboBox { ItemsSource=new[]{"one", "two"}, SelectedIndex=0 }; ((System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector")).Children.Add(themedCombo); themedCombo.ApplyTemplate(); Check(themedCombo.Template.FindName("PART_Popup",themedCombo) is System.Windows.Controls.Primitives.Popup, "themed combo retains dropdown popup");
+            var themedCombo=new System.Windows.Controls.ComboBox { ItemsSource=new[]{"one", "two"}, SelectedIndex=0 }; ((System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector")).Children.Add(themedCombo); themedCombo.ApplyTemplate(); Check(themedCombo.Template.FindName("Popup",themedCombo) is System.Windows.Controls.Primitives.Popup, "themed combo retains dropdown popup");
             ThemeManager.Apply(false,false); Check(Brightness(themedInput.Foreground) > Brightness(themedInput.Background)+100, "existing inputs update on dark theme change");
-            var moduleLibrary = (System.Windows.Controls.StackPanel)moduleWindow.FindName("ModuleLibrary");
-            Check(moduleLibrary.Children.Count == 32 && moduleGraph.Nodes.Count == 10 && moduleGraph.Edges.Count == 9, "module workspace initializes with a connected starter graph and library");
-            ((System.Windows.Controls.DockPanel)moduleLibrary.Children[15]).Children.OfType<System.Windows.Controls.Button>().Last().RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-            var addedResize = moduleGraph.Nodes.Last(); Check(moduleGraph.Nodes.Count == 11 && addedResize.Kind == ModuleKind.Resize, "adding a second independent module through the library");
-            var firstLibraryGroup=(System.Windows.Controls.DockPanel)moduleLibrary.Children[0];var aiLibraryGroup=(System.Windows.Controls.DockPanel)moduleLibrary.Children[10];
-            Check(System.Windows.Controls.DockPanel.GetDock(firstLibraryGroup.Children[0])==System.Windows.Controls.Dock.Left && firstLibraryGroup.Children[1] is System.Windows.Controls.Border && System.Windows.Controls.DockPanel.GetDock(aiLibraryGroup.Children[1])==System.Windows.Controls.Dock.Left && aiLibraryGroup.Children[1] is System.Windows.Controls.Button,"library help and AI settings use reserved left slots so right icons align");
+            var moduleLibrary = (System.Windows.Controls.Primitives.UniformGrid)moduleWindow.FindName("ModuleLibrary");
+            var moduleLibraryScroll=(System.Windows.Controls.ScrollViewer)moduleWindow.FindName("ModuleLibraryScroll");
+            var libraryCards=moduleLibrary.Children.OfType<System.Windows.Controls.Border>().ToArray();
+            Check(moduleLibrary.Columns==2 && moduleLibrary.Children.Count==33 && libraryCards.Length==33 && libraryCards.All(card=>Math.Abs(card.Width-card.Height)<.1) && libraryCards.Select(card=>card.Width).Distinct().Count()==1 && moduleGraph.Nodes.Count==10 && moduleGraph.Edges.Count==9 && moduleLibraryScroll.VerticalScrollBarVisibility==System.Windows.Controls.ScrollBarVisibility.Hidden && workspaceColumns.ColumnDefinitions[2].Width.Value==312,"module library uses equal square cards in two columns with a hidden scrollbar and a connected starter graph");
+            var resizeTile=libraryCards.Single(card=>((System.Windows.Controls.Grid)card.Child).Children.OfType<System.Windows.Controls.Button>().Any(button=>button.Tag is ModuleKind kind && kind==ModuleKind.Resize));var resizeSurface=(System.Windows.Controls.Grid)resizeTile.Child;
+            resizeSurface.Children.OfType<System.Windows.Controls.Button>().Single(button=>button.Tag is ModuleKind kind && kind==ModuleKind.Resize).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            var addedResize = moduleGraph.Nodes.Last(); Check(moduleGraph.Nodes.Count == 11 && addedResize.Kind == ModuleKind.Resize, "adding a second independent module through a library tile");
+            var firstLibraryTile=(System.Windows.Controls.Border)moduleLibrary.Children[0];var firstLibrarySurface=(System.Windows.Controls.Grid)firstLibraryTile.Child;
+            var aiLibraryTile=libraryCards.Single(card=>((System.Windows.Controls.Grid)card.Child).Children.OfType<System.Windows.Controls.Button>().Any(button=>System.Windows.Automation.AutomationProperties.GetName(button)=="تنظیم اتصال هوش مصنوعی"));var aiLibrarySurface=(System.Windows.Controls.Grid)aiLibraryTile.Child;
+            var moduleHelp=firstLibrarySurface.Children.OfType<System.Windows.Controls.Button>().Single(button=>System.Windows.Automation.AutomationProperties.GetName(button)=="راهنمای خروجی تصویر و جدول");
+            var aiConfigure=aiLibrarySurface.Children.OfType<System.Windows.Controls.Button>().Single(button=>System.Windows.Automation.AutomationProperties.GetName(button)=="تنظیم اتصال هوش مصنوعی");
+            Check(moduleHelp.Parent==firstLibrarySurface && aiConfigure.Parent==aiLibrarySurface && moduleHelp.HorizontalAlignment==System.Windows.HorizontalAlignment.Left && moduleHelp.VerticalAlignment==System.Windows.VerticalAlignment.Top && moduleHelp.Margin.Left>=5 && aiConfigure.HorizontalAlignment==System.Windows.HorizontalAlignment.Right && aiConfigure.VerticalAlignment==System.Windows.VerticalAlignment.Top && aiConfigure.Margin.Right>=5,"help and settings buttons sit inside the visible card frame at opposite upper corners");
             var nodeLayer = (System.Windows.Controls.Canvas)moduleWindow.FindName("NodeLayer");
             var startupVisual=new StartupSplashWindow();var splashGrid=(System.Windows.Controls.Grid)startupVisual.Content;var samLabel=splashGrid.Children.OfType<System.Windows.Controls.TextBlock>().Single(t=>t.Text=="SAM");Check(samLabel.Foreground is LinearGradientBrush sheen && sheen.RelativeTransform.HasAnimatedProperties,"startup SAM text uses an animated light sweep");startupVisual.Close();
             var nodeVisual=(System.Windows.Controls.Border)nodeLayer.Children[0];var visualNode=moduleGraph.Nodes[0];
@@ -972,7 +1095,27 @@ internal static class Program
             // Exercise the actual card action and connected upstream evaluation, not only the dialog constructor.
             moduleGraph.Nodes[0].ImagePng=ModuleExecutor.EmbedImage(b.Image);
             var liveCrop=moduleGraph.Add(ModuleKind.Crop,850,650); moduleGraph.Connect(moduleGraph.Nodes[0].Id,liveCrop.Id,"image");
-            typeof(ModuleWindow).GetMethod("RenderGraph",moduleFlags)!.Invoke(moduleWindow,null); moduleWindow.Show();
+            typeof(ModuleWindow).GetMethod("RenderGraph",moduleFlags)!.Invoke(moduleWindow,null); moduleWindow.Show(); moduleWindow.UpdateLayout();
+            var libraryScroll=(System.Windows.Controls.ScrollViewer)moduleWindow.FindName("ModuleLibraryScroll");
+            var displayedCards=moduleLibrary.Children.OfType<System.Windows.Controls.Border>().ToArray();
+            Check(displayedCards.All(card=>card.ActualWidth>64 && Math.Abs(card.ActualWidth-card.ActualHeight)<1) && displayedCards.Select(card=>Math.Round(card.ActualWidth)).Distinct().Count()==1,"all visible module cards retain one shared square size after responsive layout");
+            var libraryDown=(System.Windows.Controls.Button)moduleWindow.FindName("LibraryScrollDownButton");
+            var libraryUp=(System.Windows.Controls.Button)moduleWindow.FindName("LibraryScrollUpButton");
+            double libraryOffset=libraryScroll.VerticalOffset;
+            libraryDown.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));moduleWindow.UpdateLayout();
+            double advancedLibraryOffset=libraryScroll.VerticalOffset;
+            libraryUp.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));moduleWindow.UpdateLayout();
+            Check(libraryScroll.ScrollableHeight>0 && advancedLibraryOffset>libraryOffset && libraryScroll.VerticalOffset<advancedLibraryOffset && libraryUp.Visibility==System.Windows.Visibility.Hidden,"library arrows page through overflowing module tiles without showing a scrollbar");
+            var graphScroll=(System.Windows.Controls.ScrollViewer)moduleWindow.FindName("GraphScroll");var graphCanvas=(System.Windows.Controls.Canvas)moduleWindow.FindName("GraphCanvas");
+            var savedGraph=graphField.GetValue(moduleWindow);
+            graphField.SetValue(moduleWindow,new ModuleGraph());typeof(ModuleWindow).GetMethod("RenderGraph",moduleFlags)!.Invoke(moduleWindow,null);moduleWindow.UpdateLayout();
+            bool compactEmptyCanvas=graphScroll.ScrollableWidth<1 && graphScroll.ScrollableHeight<1;
+            var overflowGraph=new ModuleGraph();overflowGraph.Add(ModuleKind.BlankDesign,5000,4000);graphField.SetValue(moduleWindow,overflowGraph);
+            typeof(ModuleWindow).GetMethod("RenderGraph",moduleFlags)!.Invoke(moduleWindow,null);moduleWindow.UpdateLayout();
+            bool overflowScrollAppears=graphScroll.ScrollableWidth>1 && graphScroll.ScrollableHeight>1;double overflowCanvasWidth=graphCanvas.Width;
+            graphField.SetValue(moduleWindow,savedGraph);typeof(ModuleWindow).GetMethod("RenderGraph",moduleFlags)!.Invoke(moduleWindow,null);
+            graphScroll.ScrollToHorizontalOffset(0);graphScroll.ScrollToVerticalOffset(0);moduleWindow.UpdateLayout();
+            Check(compactEmptyCanvas && overflowScrollAppears && overflowCanvasWidth>5000,"workspace canvas grows only for off-screen modules, so scrollbars appear on overflow");
             bool cropOpened=false,cropLoaded=false; int cropTicks=0; var cropTimer=new System.Windows.Threading.DispatcherTimer { Interval=TimeSpan.FromMilliseconds(20) };
             cropTimer.Tick+=(_,_)=>{
                 var opened=app.Windows.OfType<GraphCropWindow>().FirstOrDefault(w=>w.IsVisible); if(opened is null) { if(++cropTicks>300) cropTimer.Stop(); return; }
@@ -990,13 +1133,20 @@ internal static class Program
                 var dialog=app.Windows.OfType<System.Windows.Window>().FirstOrDefault(w=>ReferenceEquals(w.Owner,moduleWindow) && w.IsVisible && w.Title=="طرح نقشه‌بیتی");
                 if(dialog is null){if(++inspectorDialogTicks>300)inspectorDialogTimer.Stop();return;}
                 inspectorDialogOpened=true;
-                inspectorDialogHasMoved=inspectorPanel.Content is null && dialog.Content is System.Windows.Controls.DockPanel dialogRoot && dialogRoot.Children.Contains(inspectorScroll);
+                if(dialog.Content is System.Windows.Controls.DockPanel dialogRoot)
+                {
+                    var editorTitle=dialogRoot.Children.OfType<System.Windows.Controls.Border>().SingleOrDefault(border=>Equals(border.Tag,"module-editor-titlebar"));
+                    var editorFooter=dialogRoot.Children.OfType<System.Windows.Controls.Border>().SingleOrDefault(border=>Equals(border.Tag,"module-editor-footer"));
+                    var editorActions=editorFooter?.Child is System.Windows.Controls.Grid footerGrid?footerGrid.Children.OfType<System.Windows.Controls.StackPanel>().SingleOrDefault():null;
+                    var editorButtons=editorActions?.Children.OfType<System.Windows.Controls.Button>().ToArray()??Array.Empty<System.Windows.Controls.Button>();
+                    inspectorDialogHasMoved=inspectorPanel.Content is null && dialogRoot.Children.Contains(inspectorScroll) && dialog.WindowStyle==System.Windows.WindowStyle.None && editorTitle is not null && editorButtons.Length==3 && editorButtons.All(button=>button.MinHeight==40);
+                }
                 inspectorDialogTimer.Stop();dialog.DialogResult=false;
             };
             inspectorDialogTimer.Start();
             ((Task)typeof(ModuleWindow).GetMethod("EditModuleAsync",moduleFlags)!.Invoke(moduleWindow,new object?[]{moduleGraph.Nodes[0]})!).GetAwaiter().GetResult();
             inspectorDialogTimer.Stop();
-            Check(inspectorDialogOpened && inspectorDialogHasMoved && ReferenceEquals(inspectorPanel.Content,inspectorScroll) && inspectorScroll.Content is System.Windows.Controls.StackPanel,"module inspector moves into the settings dialog and is restored afterward");
+            Check(inspectorDialogOpened && inspectorDialogHasMoved && inspectorPanel.Visibility==System.Windows.Visibility.Collapsed && ReferenceEquals(inspectorPanel.Content,inspectorScroll) && inspectorScroll.Content is System.Windows.Controls.StackPanel,"module settings move into a modal editor and return to the hidden parking host afterward");
             // Actual unconnected design card -> dimensions dialog -> editor -> graph result.
             var liveSolo=moduleGraph.Add(ModuleKind.DesignEditor,1100,650);typeof(ModuleWindow).GetMethod("RenderGraph",moduleFlags)!.Invoke(moduleWindow,null);
             bool sawSetup=false,sawDesign=false;int soloTicks=0;var soloFrame=new System.Windows.Threading.DispatcherFrame();var soloTimer=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromMilliseconds(20)};
@@ -1010,9 +1160,9 @@ internal static class Program
             try{soloTimer.Start();var soloCard=(System.Windows.Controls.Border)nodeLayer.Children[nodeLayer.Children.Count-1];soloCard.ContextMenu.Items.OfType<System.Windows.Controls.MenuItem>().Single(x=>Equals(x.Header,"تنظیمات ماژول")).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));if(soloFrame.Continue)System.Windows.Threading.Dispatcher.PushFrame(soloFrame);}finally{soloTimer.Stop();System.Threading.SynchronizationContext.SetSynchronizationContext(soloOldContext);}
             Check(sawSetup && sawDesign && liveSolo.DesignStandalone && liveSolo.DesignWidth==12 && liveSolo.DesignHeight==8 && liveSolo.DesignWeftDensity==20 && ModuleExecutor.Run(moduleGraph,liveSolo.Id)[liveSolo.Id].Image!.PixelWidth==12,"unconnected design card creates a white project canvas and stores requested density");
             typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "044.0.0.0-a3", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "045.0.1.1-a5", "QAVNS version from version.txt");
             Check(ReleaseUpdater.CompareVersions("044.0.0.0-a2", "044.0.0.0-a1") > 0 && ReleaseUpdater.CompareVersions("044.0.0.0", "044.0.0.0-a2") > 0, "release updater orders prerelease and final versions");
-            Check(ReleaseUpdater.CompareVersions("045.0.0.0-a1", "044.99.9.9") > 0 && ReleaseUpdater.CompareVersions("044.0.0.0-a2", "044.0.0.0-a2") == 0, "release updater compares version components and identical releases");
+            Check(ReleaseUpdater.CompareVersions("045.0.1.1-a1", "044.99.9.9") > 0 && ReleaseUpdater.CompareVersions("044.0.0.0-a2", "044.0.0.0-a2") == 0, "release updater compares version components and identical releases");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
             var paletteSheet = PaletteImage.Render(paletteRows,false); Check(paletteSheet.PixelWidth > 1000 && paletteSheet.PixelHeight > 2000, "palette sheet fits all 256 entries across columns");
             string paletteFile = Path.Combine(dir,"palette.png"); PaletteImage.Save(paletteSheet,paletteFile,Array.Empty<string>()); Check(ImageLoader.Load(paletteFile,0).Image.PixelWidth == paletteSheet.PixelWidth, "palette PNG opens at correct dimensions"); Expect<IOException>(() => PaletteImage.Save(paletteSheet,paletteFile,new[]{paletteFile}));
@@ -1088,6 +1238,7 @@ internal static class Program
             Check(detailWindow.Content is System.Windows.Controls.DockPanel, "Helix 3D detail window builds bounded geometry");
             var guide = new GuideWindow(false); Check(guide.Content is System.Windows.Controls.Grid && guide.Title.Contains("راهنمای"), "illustrated in-app guide loads with navigation");
             var window = new MainWindow();
+            Check(window.FindName("SnackbarPresenter") is Wpf.Ui.Controls.SnackbarPresenter, "main window registers a WPF-UI snackbar presenter");
             Check(window.FontFamily.Source.Contains("Vazirmatn"), "embedded font selected in main window");
             var pngWindow = new MainWindow(); var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
             var priorContext = System.Threading.SynchronizationContext.Current;
@@ -1129,6 +1280,10 @@ internal static class Program
             Check(((System.Windows.Controls.StackPanel)window.FindName("SimulationWeftRows")).Children.Count == 3, "simulation editor has exactly the applied weft count");
             var rowControls = ((System.Windows.Controls.StackPanel)window.FindName("SimulationWeftRows")).Children.OfType<System.Windows.Controls.StackPanel>().First();
             Check(rowControls.Children.OfType<ColorSwatch>().Any() && rowControls.Children.OfType<System.Windows.Controls.TextBlock>().Last().Text.Contains("mm") && ((System.Windows.Controls.TextBlock)window.FindName("SimulationWarpGeometry")).Text.Contains("mm"), "simulation displays swatches and computed diameters and gaps");
+            string machineWeftStartBeforePreset=((System.Windows.Controls.TextBox)window.FindName("WeftStartInput")).Text;
+            ((System.Windows.Controls.Button)window.FindName("SimulationReferencePreset")).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            var readSimulationSettings=typeof(MainWindow).GetMethod("ReadSimulationSettings",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance)!;var uiReferencePreset=(SimulationSettings)readSimulationSettings.Invoke(window,null)!;
+            Check(uiReferencePreset.WarpColor==FabricSimulation.ReferenceWarpColor && uiReferencePreset.Weave==1 && uiReferencePreset.Mode==1 && uiReferencePreset.Wefts!.Length==3 && uiReferencePreset.Wefts.All(y=>y.Color==FabricSimulation.ReferenceWeftColor) && ((System.Windows.Controls.TextBox)window.FindName("WeftStartInput")).Text==machineWeftStartBeforePreset, "main simulation preset updates applied wefts without modifying machine setup");
             ((System.Windows.Controls.TextBox)window.FindName("WeftStartInput")).Text = "۱";
             var readDraft = typeof(MainWindow).GetMethod("ReadWeftDraft", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
             Check(((WeftSettings)readDraft.Invoke(window, null)!).WeftStart == "0", "first displayed weft maps to actual first physical hook");
@@ -1139,7 +1294,7 @@ internal static class Program
             Check(cardEntry.PatternGridPreview is System.Windows.Media.DrawingImage && cardEntry.PatternPreview!.PixelWidth == 200, "large weave card uses bounded major grid lines without altering bitmap");
             var nav = (System.Windows.Controls.Grid)window.FindName("Navigation");
             var settings = (System.Windows.FrameworkElement)window.FindName("SettingsBorder");
-            Check(window.FindName("CompositeButton") is System.Windows.Controls.Button && window.FindName("Bank3DButton") is System.Windows.Controls.Button && window.FindName("Editor3DButton") is System.Windows.Controls.Button && window.FindName("SimulationMode") is System.Windows.Controls.ComboBox, "3D is available in design and simulation");
+            Check(window.FindName("CompositeButton") is System.Windows.Controls.Button && window.FindName("Bank3DButton") is System.Windows.Controls.Button && window.FindName("Editor3DButton") is System.Windows.Controls.Button && window.FindName("SimulationMode") is System.Windows.Controls.ComboBox && window.FindName("SimulationReferencePreset") is System.Windows.Controls.Button, "3D and red/ivory reference preset are available in design and simulation");
             Check(System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("WeftStepButton")) == 7 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("SimulationStepButton")) == 8 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("MachineStepButton")) == 9 && window.FindName("HelpButton") is System.Windows.Controls.Button, "weft, simulation, machine and in-app help are ordered");
             Check(nav.FlowDirection == System.Windows.FlowDirection.RightToLeft && System.Windows.Controls.Grid.GetColumn(settings) == 2, "right-to-left workflow and right settings panel");
             var list = (System.Windows.Controls.ListView)window.FindName("ColorPaletteList");

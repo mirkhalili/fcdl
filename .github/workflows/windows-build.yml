@@ -147,7 +147,8 @@ jobs:
           name: Jacquard Studio ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          make_latest: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
           fail_on_unmatched_files: true
           files: |
             artifacts/release/JacquardStudio-Setup.exe

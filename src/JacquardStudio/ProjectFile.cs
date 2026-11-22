@@ -27,8 +27,9 @@ public static class ProjectFile
     private sealed class Manifest
     {
         public Manifest() { }
-        public int Version { get; set; } = 13;
+        public int Version { get; set; } = 14;
         public int? VectorPageIndex { get; set; }
+        public bool VectorIsSvg { get; set; }
         public MachineInfo? Machine { get; set; }
         public WeftSettings? DraftWeft { get; set; }
         public SimulationSettings? Simulation { get; set; }
@@ -103,7 +104,9 @@ public static class ProjectFile
         if (state.PatternNames.Length != session.Patterns.Length) throw new InvalidDataException("Invalid pattern names.");
         var m = new Manifest
         {
-            SourceWidth = session.Source.PixelWidth, SourceHeight = session.Source.PixelHeight, VectorPageIndex = session.Vector?.PageIndex,
+            SourceWidth = session.Source.PixelWidth, SourceHeight = session.Source.PixelHeight,
+            VectorPageIndex = session.Vector is { SvgMarkup: null } pdfVector ? pdfVector.PageIndex : null,
+            VectorIsSvg = session.Vector?.SvgMarkup is not null,
             ResizeWidth = session.Resized?.PixelWidth ?? 0, ResizeHeight = session.Resized?.PixelHeight ?? 0,
             HasOverrides = session.PixelOverrides is not null,
             Designer = Bounded(state.Metadata?.Designer, 100), Usage = Bounded(state.Metadata?.Usage, 100), Description = Bounded(state.Metadata?.Description, 300),
@@ -138,8 +141,18 @@ public static class ProjectFile
                 WriteEntry(zip, "source.bgra", GetBytes(session.Source));
                 if (session.Vector is { } vector)
                 {
-                    if (vector.PdfBytes.Length > ImageLoader.MaxFileBytes || vector.PageIndex < 0 || vector.PageIndex >= ImageLoader.MaxFrames) throw new InvalidDataException("Invalid vector source.");
-                    WriteEntry(zip, "source.pdf", vector.PdfBytes);
+                    if (vector.SvgMarkup is { } svg)
+                    {
+                        var svgBytes = System.Text.Encoding.UTF8.GetBytes(svg);
+                        if (svgBytes.Length > ImageLoader.MaxFileBytes) throw new InvalidDataException("SVG source is too large.");
+                        _ = VectorDesignDocument.FromSvg(svg);
+                        WriteEntry(zip, "source.svg", svgBytes);
+                    }
+                    else
+                    {
+                        if (vector.PdfBytes.Length > ImageLoader.MaxFileBytes || vector.PageIndex < 0 || vector.PageIndex >= ImageLoader.MaxFrames) throw new InvalidDataException("Invalid vector source.");
+                        WriteEntry(zip, "source.pdf", vector.PdfBytes);
+                    }
                 }
                 if (state.Machine?.LeftPattern is { } left) WriteEntry(zip, "machine/left.bin", left.Values);
                 if (state.Machine?.RightPattern is { } right) WriteEntry(zip, "machine/right.bin", right.Values);
@@ -165,13 +178,23 @@ public static class ProjectFile
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
         if (zip.Entries.Count > 264) throw new InvalidDataException("Too many project entries.");
         var m = JsonSerializer.Deserialize<Manifest>(ReadEntry(zip, "manifest.json", MaxManifestBytes)) ?? throw new InvalidDataException("Missing project manifest.");
-        if (m.Version is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10 or 11 or 12 or 13)) throw new NotSupportedException("Unsupported SAM project version.");
+        if (m.Version is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10 or 11 or 12 or 13 or 14)) throw new NotSupportedException("Unsupported SAM project version.");
         if (m.Version == 1 && m.HasOverrides) throw new InvalidDataException("Overrides require SAM version 2.");
         if (m.Version < 3 && m.Machine is not null) throw new InvalidDataException("Machine setup requires SAM version 3.");
         CheckDimensions(m.SourceWidth, m.SourceHeight, (int)ImageLoader.MaxPixels);
         var source = MakeBitmap(m.SourceWidth, m.SourceHeight, ReadEntry(zip, "source.bgra", checked(m.SourceWidth * m.SourceHeight * 4), checked(m.SourceWidth * m.SourceHeight * 4)));
         VectorDocument? vectorSource = null;
-        if (m.Version >= 9 && m.VectorPageIndex is int vectorPage)
+        if (m.Version >= 14 && m.VectorIsSvg)
+        {
+            if (m.VectorPageIndex is not null) throw new InvalidDataException("An SVG source cannot have a PDF page index.");
+            byte[] svgBytes = ReadEntry(zip, "source.svg", (int)ImageLoader.MaxFileBytes);
+            string svg;
+            try { svg = new System.Text.UTF8Encoding(false, true).GetString(svgBytes); }
+            catch (System.Text.DecoderFallbackException ex) { throw new InvalidDataException("Invalid UTF-8 SVG source.", ex); }
+            _ = VectorDesignDocument.FromSvg(svg);
+            vectorSource = new VectorDocument(svg);
+        }
+        else if (m.Version >= 9 && m.VectorPageIndex is int vectorPage)
         {
             if (vectorPage < 0 || vectorPage >= ImageLoader.MaxFrames) throw new InvalidDataException("Invalid PDF page index.");
             byte[] vectorBytes = ReadEntry(zip, "source.pdf", (int)ImageLoader.MaxFileBytes);

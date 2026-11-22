@@ -1,6 +1,7 @@
-<Window FontFamily="{StaticResource VazirFont}" x:Class="JacquardStudio.MainWindow"
+<ui:FluentWindow FontFamily="{StaticResource VazirFont}" x:Class="JacquardStudio.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:local="clr-namespace:JacquardStudio"
         Title="Jacquard Studio" Width="1320" Height="820" MinWidth="920" MinHeight="650"
         WindowStartupLocation="CenterScreen" Background="{DynamicResource AppBackground}" FontSize="14" Icon="Assets/app.ico"
@@ -31,6 +32,7 @@
                 <Button x:Name="InfoButton" Content="اطلاعات طرح" ToolTip="طراح، کاربرد و توضیحات" AutomationProperties.Name="Design information" Click="Info_Click" Height="42" Padding="10,4" Margin="3"/>
                 <Button x:Name="ReportButton" Content="&#xE749;" FontFamily="Segoe MDL2 Assets" ToolTip="گزارش PDF و چاپ" AutomationProperties.Name="PDF report and printing" Click="Report_Click" Width="48" Height="42" Padding="4" Margin="3"/>
                 <Button x:Name="BankButton" Content="▦" ToolTip="بانک و طراحی بافت" AutomationProperties.Name="Weave bank" Click="Bank_Click" Width="48" Height="42" Padding="4" Margin="3" FontSize="24"/>
+                <Button x:Name="VectorDesignButton" ToolTip="استودیو طراحی برداری و رسم منحنی" AutomationProperties.Name="Vector design studio" Click="VectorDesign_Click" Width="48" Height="42" Padding="4" Margin="3"><Viewbox Width="25" Height="25"><Canvas Width="24" Height="24"><Path Data="M4,19 C4,5 20,5 20,19 M4,19 L20,19 M4,19 L4,16 M20,19 L20,16" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.7" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
                 <Button x:Name="CheckUpdatesButton" Content="&#xE777;" FontFamily="Segoe MDL2 Assets" ToolTip="بررسی به‌روزرسانی" AutomationProperties.Name="Check for updates" Click="CheckUpdates_Click" Width="48" Height="42" Padding="4" Margin="3"/>
                 <Button x:Name="HelpButton" Content="?" ToolTip="راهنمای برنامه (F1)" AutomationProperties.Name="Help" Click="Help_Click" Width="48" Height="42" Padding="4" Margin="3" FontSize="20"/>
                 <Button x:Name="AboutButton" Content="&#xE946;" FontFamily="Segoe MDL2 Assets" ToolTip="درباره" AutomationProperties.Name="About" Click="About_Click" Width="48" Height="42" Padding="4" Margin="3"/>
@@ -140,6 +142,7 @@
                                 <TextBlock x:Name="SimulationWeftsLabel" Text="نخ و رنگ هر پود اعمال‌شده" FontWeight="SemiBold" Margin="0,8,0,4"/><StackPanel x:Name="SimulationWeftRows"/>
                                 <TextBlock x:Name="SimulationModeLabel" Text="حالت نمایش / Appearance"/><ComboBox x:Name="SimulationMode" SelectionChanged="SimulationChanged" Margin="0,4,0,8"><ComboBoxItem Content="معمولی / Normal"/><ComboBoxItem Content="پرز نخ / Yarn fibers"/><ComboBoxItem Content="سه‌بعدی / 3D"/></ComboBox>
                                 <TextBlock Text="نوع بافت برای نمایش / Preview weave"/><ComboBox x:Name="SimulationWeave" SelectionChanged="SimulationChanged" Margin="0,4,0,8"><ComboBoxItem Content="نقشه بافت پروژه / Project weave"/><ComboBoxItem Content="ساده / Plain"/><ComboBoxItem Content="جناغی / Twill"/></ComboBox>
+                                <Button x:Name="SimulationReferencePreset" Content="نمای نمونه: چهارخانه قرمز و سفید / Red &amp; ivory plain weave" Click="SimulationReferencePreset_Click" Margin="0,2,0,8"/>
                                 <TextBlock Text="شدت سایه / Shadow"/><Slider x:Name="SimulationShadow" Minimum="0" Maximum="100" Value="60" TickFrequency="10" IsSnapToTickEnabled="True" ValueChanged="SimulationShadowChanged" Margin="0,4,0,8"/>
                                 <Button x:Name="SimulationRenderButton" Content="ساخت پیش‌نمایش" Click="SimulationRender_Click" Margin="0,8,0,0"/>
                                 <Button x:Name="SimulationSaveButton" Content="ذخیره تصویر شبیه‌سازی" Click="SimulationSave_Click" Margin="0,8,0,0"/>
@@ -229,5 +232,8 @@
             </Grid>
         </Grid>
         <Border Grid.Row="3" Background="{DynamicResource HeaderBackground}" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"><Grid Margin="24,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="StatusText" Text="آماده برای باز کردن تصویر" VerticalAlignment="Center" Foreground="{DynamicResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="StatsText" Grid.Column="1" VerticalAlignment="Center" Foreground="{DynamicResource Muted}" FontSize="11" Margin="8,0"/><TextBlock x:Name="DeveloperText" Grid.Column="2" Text="برنامه‌نویس: میرخلیلی" VerticalAlignment="Center" Foreground="{DynamicResource Muted}" FontSize="11" Margin="16,0"/><TextBlock x:Name="VersionText" Grid.Column="3" FlowDirection="LeftToRight" VerticalAlignment="Center" Foreground="{DynamicResource Muted}" FontSize="11"/></Grid></Border>
+        <ui:SnackbarPresenter x:Name="SnackbarPresenter" Grid.Row="2" Width="600" MaxWidth="820"
+                              HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="12,0,12,20"
+                              Panel.ZIndex="100"/>
     </Grid>
-</Window>
+</ui:FluentWindow>

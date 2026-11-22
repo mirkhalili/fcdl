@@ -19,11 +19,11 @@ public partial class App : Application
             if(prefs.HasPassword)
             {
                 splash.Hide();
-                while(true) {var prompt=new PasswordPrompt("ورود به برنامه","رمز ورود برنامه را وارد کنید.") {WindowStartupLocation=WindowStartupLocation.CenterScreen}; if(prompt.ShowDialog()!=true) {Shutdown();return;} if(prefs.Verify(prompt.Password))break; MessageBox.Show("رمز ورود اشتباه است.","ورود",MessageBoxButton.OK,MessageBoxImage.Warning);}
+                while(true) {var prompt=new PasswordPrompt("ورود به برنامه","رمز ورود برنامه را وارد کنید.") {WindowStartupLocation=WindowStartupLocation.CenterScreen}; if(prompt.ShowDialog()!=true) {Shutdown();return;} if(prefs.Verify(prompt.Password))break; StudioDialogs.Show("رمز ورود اشتباه است.","ورود",MessageBoxButton.OK,MessageBoxImage.Warning);}
             }
             splash.Hide(); var activation=new ActivationWindow(prefs); if(activation.ShowDialog()!=true) {Shutdown();return;}
-            splash.Show(); var window=new ModuleWindow(); MainWindow=window; window.ContentRendered+=async (_,_)=>{splash.Close();await ReleaseUpdater.CheckForUpdatesAsync(window);}; window.Show(); ShutdownMode=ShutdownMode.OnLastWindowClose;
+            splash.Show(); var window=new ModuleWindow(); MainWindow=window; window.ContentRendered+=async (_,_)=>{splash.Close();Task reporting=prefs.TelemetryEnabled ? SiteReporting.SendOnStartupAsync() : Task.CompletedTask;await ReleaseUpdater.CheckForUpdatesAsync(window);await reporting;}; window.Show(); ShutdownMode=ShutdownMode.OnLastWindowClose;
         }
-        catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException or FormatException) {splash?.Close();MessageBox.Show("خواندن تنظیمات برنامه ممکن نیست. فایل تنظیمات را بررسی کنید.\n"+ex.Message,"خطای تنظیمات",MessageBoxButton.OK,MessageBoxImage.Error); Shutdown();}
+        catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException or FormatException) {splash?.Close();StudioDialogs.Show("خواندن تنظیمات برنامه ممکن نیست. فایل تنظیمات را بررسی کنید.\n"+ex.Message,"خطای تنظیمات",MessageBoxButton.OK,MessageBoxImage.Error); Shutdown();}
     }
 }

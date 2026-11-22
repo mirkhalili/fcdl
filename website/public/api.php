@@ -13,8 +13,11 @@ if(!is_string($id) || !preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab]
 function field(array $input,string $key,int $max): string { $v=$input[$key] ?? ''; if(!is_string($v) || strlen($v)>$max || preg_match('/[\x00-\x1f\x7f]/',$v) || !preg_match('//u',$v))reply(400,['error'=>'field']);return trim($v); }
 $version=field($data,'appVersion',50);$os=field($data,'osVersion',150);$cpu=field($data,'cpuModel',160);$machine=field($data,'machineName',100);
 $name=field($data,'customerName',120);$phone=field($data,'phone',60);$city=field($data,'city',100);$manual=field($data,'manualToken',4096);
-$protocol=$data['licenseProtocol'] ?? 1;if(!is_int($protocol) || $protocol<1 || $protocol>2)reply(400,['error'=>'protocol']);
+$protocol=$data['licenseProtocol'] ?? 1;
 $checkOnly=$data['checkOnly'] ?? false;if(!is_bool($checkOnly))reply(400,['error'=>'check_only']);
+$reportOnly=$data['reportOnly'] ?? false;if(!is_bool($reportOnly) || ($checkOnly && $reportOnly))reply(400,['error'=>'report_only']);
+// Protocol 3 identifies report-only traffic; older protocol 1/2 sites reject it before any writes.
+if(!is_int($protocol) || $protocol<1 || $protocol>3 || ($reportOnly && $protocol!==3) || (!$reportOnly && $protocol>2))reply(400,['error'=>'protocol']);
 $ram=$data['ramBytes'] ?? 0;if(!is_int($ram) || $ram<0 || $ram>1125899906842624)reply(400,['error'=>'ram']);
 function issueToken(array $config,string $device,string $id,?string $expires,string $activationCode): ?string {
  $path=$config['license_private_key'] ?? '';if(!is_string($path) || !is_file($path) || !is_readable($path))return null;
@@ -27,33 +30,37 @@ function issueToken(array $config,string $device,string $id,?string $expires,str
 }
 $hash=hash('sha256',$secret);$db->beginTransaction();
 try {
- // Lookup-only checks never create a pending device or collect contact/system details.
- if($checkOnly){
+ // Minimal checks and full reports are never registrations; full reports require an existing installation too.
+ if($checkOnly || $reportOnly){
   $s=$db->prepare('SELECT status,expires_at,activation_code FROM devices WHERE device_hash=? FOR UPDATE');$s->execute([$device]);$deviceRow=$s->fetch(PDO::FETCH_ASSOC);
-  if(!$deviceRow){$db->commit();reply(200,['status'=>'not_licensed','token'=>null,'activationCode'=>null]);}
+  if(!$deviceRow){$db->commit();reply(200,['status'=>$reportOnly?'not_registered':'not_licensed','token'=>null,'activationCode'=>null]);}
  } else {
   // Always lock device first, keeping concurrent requests/admin edits ordered consistently.
   $s=$db->prepare("INSERT INTO devices(device_hash,status,customer_name,phone,city,created_at) VALUES(?,'pending',?,?,?,UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE device_hash=VALUES(device_hash)");$s->execute([$device,$name,$phone,$city]);
   $s=$db->prepare('SELECT status,expires_at,activation_code FROM devices WHERE device_hash=? FOR UPDATE');$s->execute([$device]);$deviceRow=$s->fetch(PDO::FETCH_ASSOC);
  }
  $status=$deviceRow['status'];$expires=$deviceRow['expires_at'];if($status==='approved' && $expires!==null && (new DateTimeImmutable($expires,new DateTimeZone('UTC')))->getTimestamp()<=time())$status='expired';
- if($checkOnly && in_array($status,['blocked','expired'],true)){$db->commit();reply(200,['status'=>$status,'token'=>null,'activationCode'=>null]);}
+ if(($checkOnly || $reportOnly) && in_array($status,['blocked','expired'],true)){$db->commit();reply(200,['status'=>$status,'token'=>null,'activationCode'=>null]);}
  if($checkOnly && ($status!=='approved' || empty($deviceRow['activation_code']))){$db->commit();reply(200,['status'=>'not_licensed','token'=>null,'activationCode'=>null]);}
- if($checkOnly && $protocol<2){$db->commit();reply(200,['status'=>'upgrade_required','token'=>null,'activationCode'=>null]);}
+ if(($checkOnly || $reportOnly) && $protocol<2){$db->commit();reply(200,['status'=>'upgrade_required','token'=>null,'activationCode'=>null]);}
  $s=$db->prepare('SELECT secret_hash,device_hash FROM installations WHERE id=? FOR UPDATE');$s->execute([$id]);$row=$s->fetch(PDO::FETCH_ASSOC);
+ if(!$row && $reportOnly){$db->commit();reply(200,['status'=>'not_registered','token'=>null,'activationCode'=>null]);}
  if(!$row) { $s=$db->prepare('INSERT INTO installations(id,secret_hash,device_hash,status,created_at,last_seen,last_ip,app_version,os_version,cpu_model,ram_bytes,machine_name) VALUES(?,?,?,?,UTC_TIMESTAMP(),UTC_TIMESTAMP(),?,?,?,?,?,?)');$s->execute([$id,$hash,$device,$deviceRow['status'],ip(),$version,$os,$cpu,$ram,$machine]); }
  else { if(!hash_equals($row['secret_hash'],$hash) || !hash_equals($row['device_hash'],$device)){$db->rollBack();reply(403,['error'=>'identity']);}
   if($checkOnly){$s=$db->prepare('UPDATE installations SET status=?,last_seen=UTC_TIMESTAMP(),last_ip=?,app_version=? WHERE id=?');$s->execute([$deviceRow['status'],ip(),$version,$id]);}
   else {$s=$db->prepare('UPDATE installations SET status=?,last_seen=UTC_TIMESTAMP(),last_ip=?,app_version=?,os_version=?,cpu_model=?,ram_bytes=?,machine_name=? WHERE id=?');$s->execute([$deviceRow['status'],ip(),$version,$os,$cpu,$ram,$machine,$id]);}
  }
  if(!$checkOnly){
-  $s=$db->prepare("UPDATE devices SET customer_name=IF(customer_name='',?,customer_name),phone=IF(phone='',?,phone),city=IF(city='',?,city) WHERE device_hash=? AND status='pending'");$s->execute([$name,$phone,$city,$device]);
-  // A manual code is recorded for the administrator, but never authorizes a pending device by itself.
-  if($deviceRow['status']==='pending' && $manual!=='' && empty($deviceRow['activation_code'])){
-   $s=$db->prepare('UPDATE devices SET activation_code=? WHERE device_hash=?');$s->execute([$manual,$device]);$deviceRow['activation_code']=$manual;
+  if(!$reportOnly){
+   $s=$db->prepare("UPDATE devices SET customer_name=IF(customer_name='',?,customer_name),phone=IF(phone='',?,phone),city=IF(city='',?,city) WHERE device_hash=? AND status='pending'");$s->execute([$name,$phone,$city,$device]);
+   // A manual code is recorded for the administrator, but never authorizes a pending device by itself.
+   if($deviceRow['status']==='pending' && $manual!=='' && empty($deviceRow['activation_code'])){
+    $s=$db->prepare('UPDATE devices SET activation_code=? WHERE device_hash=?');$s->execute([$manual,$device]);$deviceRow['activation_code']=$manual;
+   }
   }
   $s=$db->prepare('INSERT INTO execution_events(installation_id,observed_at,ip,os_version,app_version,cpu_model,ram_bytes,machine_name) VALUES(?,UTC_TIMESTAMP(),?,?,?,?,?,?)');$s->execute([$id,ip(),$os,$version,$cpu,$ram,$machine]);
  }
+ if($reportOnly){$db->commit();reply(200,['status'=>'reported','token'=>null,'activationCode'=>null]);}
  $token=null;$code=null;if($status==='approved'){
   if($protocol<2)$status='upgrade_required';
   elseif(empty($deviceRow['activation_code']))$status=$checkOnly?'not_licensed':'pending';

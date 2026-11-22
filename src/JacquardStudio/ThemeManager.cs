@@ -1,6 +1,8 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
+using Wpf.Ui.Appearance;
+using Wpf.Ui.Controls;
 
 namespace JacquardStudio;
 public static class ThemeManager
@@ -20,6 +22,8 @@ public static class ThemeManager
         if(theme is not ("dark" or "light" or "calm" or "ocean")) theme="dark";
         Current=theme; bool light=theme is "light" or "calm"; IsLight=light;
         var app = Application.Current ?? throw new InvalidOperationException("Application resources are unavailable.");
+        var libraryTheme = light ? Wpf.Ui.Appearance.ApplicationTheme.Light : Wpf.Ui.Appearance.ApplicationTheme.Dark;
+        ApplicationThemeManager.Apply(libraryTheme, WindowBackdropType.None, updateAccent: false);
         var colors = light
             ? new[] { "#F2F5F8", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#C9D4DD", "#536778", "#147F6E", "#172B3B", "#E3EAF0", "#BAC9D4", "#E8EFF3", "#EDF2F5" }
             : new[] { "#1A1A1A", "#202020", "#1D1D1D", "#252525", "#3C3A38", "#ABA59F", "#C9A58B", "#E9E5E0", "#30302F", "#464341", "#292827", "#1F1F1F" };
@@ -27,6 +31,8 @@ public static class ThemeManager
         else if(theme=="ocean") colors=new[]{"#101D2C","#17293B","#0B1928","#1D3042","#385064","#A8BECC","#73C6CB","#E7F2F4","#294459","#456277","#233C4C","#142636"};
         string[] keys = { "AppBackground", "HeaderBackground", "CanvasBackground", "Surface", "Border", "Muted", "Accent", "PrimaryText", "ButtonBackground", "ButtonBorder", "GalleryBackground", "ListBackground" };
         for (int i = 0; i < keys.Length; i++) app.Resources[keys[i]] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors[i]));
+        app.Resources["WindowBackground"] = app.Resources["AppBackground"];
+        app.Resources["WindowForeground"] = app.Resources["PrimaryText"];
         string[] graphKeys = { "GraphBackground", "GraphGrid", "GraphHeader", "GraphSurface", "GraphNode", "GraphNodeHeader", "GraphPreview", "GraphSelection", "GraphSelectedItem" };
         string[] graphColors = light
             ? new[] { "#DFE2E4", "#C5C9CD", "#F0F1F2", "#E9EBED", "#F8F9FA", "#E2E6E9", "#CDD2D5", "#A95B16", "#BDDAED" }
@@ -42,6 +48,7 @@ public static class ThemeManager
         app.Resources["AccentForeground"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(accentForeground));
         app.Resources["SelectionFill"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(selectionFill));
         app.Resources["DangerBackground"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dangerBackground));
+        ApplicationAccentColorManager.Apply((Color)ColorConverter.ConvertFromString(colors[6]), libraryTheme);
         Changed?.Invoke(null, EventArgs.Empty);
         if (!persist) return;
         try { Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!); File.WriteAllText(SettingsPath, theme); }
