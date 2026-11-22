@@ -73,11 +73,11 @@ jobs:
           $setup = Get-ChildItem artifacts/installer/*Setup.exe | Select-Object -First 1
           if (-not $setup) { throw 'Installer EXE is missing.' }
           $setupInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($setup.FullName)
-          if ($setupInfo.CompanyName -ne 'Mirkhalili') { throw "Installer publisher metadata is missing: $($setupInfo.CompanyName)" }
-          if ($setupInfo.ProductName -ne 'Jacquard Studio') { throw "Installer product metadata is incorrect: $($setupInfo.ProductName)" }
-          if ($setupInfo.FileVersion -ne $version -or $setupInfo.ProductVersion -ne $version) { throw "Installer text version metadata is incorrect: file=$($setupInfo.FileVersion), product=$($setupInfo.ProductVersion)" }
-          if ($setupInfo.OriginalFilename -ne 'JacquardStudio-Setup.exe') { throw "Installer original filename metadata is incorrect: $($setupInfo.OriginalFilename)" }
-          if ($setupInfo.FileDescription -notmatch 'Designed by Mirkhalili' -or $setupInfo.FileDescription -notmatch [regex]::Escape($buildTimestamp)) { throw "Installer description/design/build-date metadata is incomplete: $($setupInfo.FileDescription)" }
+          if ($setupInfo.CompanyName.Trim() -ne 'Mirkhalili') { throw "Installer publisher metadata is missing: $($setupInfo.CompanyName)" }
+          if ($setupInfo.ProductName.Trim() -ne 'Jacquard Studio') { throw "Installer product metadata is incorrect: $($setupInfo.ProductName)" }
+          if ($setupInfo.FileVersion.Trim() -ne $version -or $setupInfo.ProductVersion.Trim() -ne $version) { throw "Installer text version metadata is incorrect: file=$($setupInfo.FileVersion), product=$($setupInfo.ProductVersion)" }
+          if ($setupInfo.OriginalFilename.Trim() -ne 'JacquardStudio-Setup.exe') { throw "Installer original filename metadata is incorrect: $($setupInfo.OriginalFilename)" }
+          if ($setupInfo.FileDescription.Trim() -notmatch 'Designed by Mirkhalili' -or $setupInfo.FileDescription.Trim() -notmatch [regex]::Escape($buildTimestamp)) { throw "Installer description/design/build-date metadata is incomplete: $($setupInfo.FileDescription)" }
           $binaryParts = @($binaryVersion.Split('.') | ForEach-Object { [int]$_ })
           while ($binaryParts.Count -lt 4) { $binaryParts += 0 }
           if ($setupInfo.FileMajorPart -ne $binaryParts[0] -or $setupInfo.FileMinorPart -ne $binaryParts[1] -or $setupInfo.FileBuildPart -ne $binaryParts[2] -or $setupInfo.FilePrivatePart -ne $binaryParts[3]) { throw "Installer numeric file version metadata is incorrect: $($setupInfo.FileVersion)" }
@@ -111,8 +111,8 @@ jobs:
           if ($newResult.ExitCode -ne 0) { throw "New installer failed: $($newResult.ExitCode)" }
           $after = Get-ItemProperty $key
           if ($after.DisplayVersion -ne (Get-Content version.txt -Raw).Trim()) { throw "Upgrade version incorrect: $($after.DisplayVersion)" }
-          if ($after.Publisher -ne 'Mirkhalili') { throw "Installed publisher metadata is missing: $($after.Publisher)" }
-          if ($after.Comments -notmatch 'Designed by Mirkhalili') { throw "Installed designer metadata is missing: $($after.Comments)" }
+          if ($after.Publisher.Trim() -ne 'Mirkhalili') { throw "Installed publisher metadata is missing: $($after.Publisher)" }
+          if ($after.Comments.Trim() -notmatch 'Designed by Mirkhalili') { throw "Installed designer metadata is missing: $($after.Comments)" }
           if ($after.InstallLocation.TrimEnd('\') -ne $dir.TrimEnd('\')) { throw 'Upgrade did not retain install directory' }
           $productEntries = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -like 'Jacquard Studio*' })
           if ($productEntries.Count -ne 1) { throw "Expected one installed product, found $($productEntries.Count)" }
