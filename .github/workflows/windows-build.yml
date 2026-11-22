@@ -54,14 +54,22 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
+          trap { Write-Output "::error title=Installer validation::$($_.Exception.Message)"; exit 1 }
+          $ErrorActionPreference = 'Stop'
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "Inno Setup 6 is not installed on this runner" }
           $version = (Get-Content version.txt -Raw).Trim()
           $binaryVersion = $version -replace '[-+].*$', ''
           if ($binaryVersion -notmatch '^\d+(?:\.\d+){1,3}$') { throw "Invalid numeric installer version: $binaryVersion" }
           $buildTimestamp = [DateTimeOffset]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [System.Globalization.CultureInfo]::InvariantCulture)
-          & $iscc "/DAppVersion=$version" "/DBinaryVersion=$binaryVersion" "/DBuildTimestamp=$buildTimestamp" packaging/JacquardStudio.iss
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $iscc "/DAppVersion=$version" "/DBinaryVersion=$binaryVersion" "/DBuildTimestamp=$buildTimestamp" packaging/JacquardStudio.iss *> installer-build-log.txt
+          $compilerExitCode = $LASTEXITCODE
+          Get-Content installer-build-log.txt
+          if ($compilerExitCode -ne 0) {
+            $details = ((Get-Content installer-build-log.txt | Select-Object -Last 40) -join '%0A').Replace('%', '%25').Replace('%250A', '%0A')
+            Write-Output "::error title=Installer compiler details::$details"
+            exit $compilerExitCode
+          }
           $setup = Get-ChildItem artifacts/installer/*Setup.exe | Select-Object -First 1
           if (-not $setup) { throw 'Installer EXE is missing.' }
           $setupInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($setup.FullName)
