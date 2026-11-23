@@ -1189,7 +1189,7 @@ internal static class Program
             progressWindowType.GetMethod("ShowCancelled")!.Invoke(progressWindow, null);
             Check(((System.Windows.Controls.TextBlock)progressWindowType.GetField("stageText", progressFlags)!.GetValue(progressWindow)!).Text == "دریافت لغو شد" && cancelButton.Content as string == "بستن", "updater displays a dismissible cancelled result");
             progressWindow.Close(); moduleWindow.Close();
-            Check(AppVersion.Display == "045.0.1.1-a6", "QAVNS version from version.txt");
+            Check(AppVersion.Display == "045.0.1.1-a7", "QAVNS version from version.txt");
             Check(ReleaseUpdater.CompareVersions("044.0.0.0-a2", "044.0.0.0-a1") > 0 && ReleaseUpdater.CompareVersions("044.0.0.0", "044.0.0.0-a2") > 0, "release updater orders prerelease and final versions");
             Check(ReleaseUpdater.CompareVersions("045.0.1.1-a1", "044.99.9.9") > 0 && ReleaseUpdater.CompareVersions("044.0.0.0-a2", "044.0.0.0-a2") == 0, "release updater compares version components and identical releases");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
