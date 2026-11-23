@@ -13,7 +13,7 @@ public static class ThemeManager
     private static string SettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JacquardStudio", "theme.txt");
     public static bool ReadLight()
     {
-        try { return File.Exists(SettingsPath) && File.ReadAllText(SettingsPath).Trim() == "light"; }
+        try { return !File.Exists(SettingsPath) || File.ReadAllText(SettingsPath).Trim() == "light"; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return false; }
     }
     public static void Apply(bool light, bool persist) => Apply(light ? "light" : "dark",persist);
@@ -35,14 +35,14 @@ public static class ThemeManager
         app.Resources["WindowForeground"] = app.Resources["PrimaryText"];
         string[] graphKeys = { "GraphBackground", "GraphGrid", "GraphHeader", "GraphSurface", "GraphNode", "GraphNodeHeader", "GraphPreview", "GraphSelection", "GraphSelectedItem" };
         string[] graphColors = light
-            ? new[] { "#DFE2E4", "#C5C9CD", "#F0F1F2", "#E9EBED", "#F8F9FA", "#E2E6E9", "#CDD2D5", "#A95B16", "#BDDAED" }
+            ? new[] { "#F1F3F5", "#D9DEE3", "#F8F9FA", "#FFFFFF", "#FFFFFF", "#F0F2F4", "#E2E7EA", "#202428", "#E5E9EC" }
             : new[] { "#222222", "#31302F", "#1F1F1F", "#252525", "#343332", "#2B2A29", "#202020", "#C9A58B", "#3C3936" };
         if(theme=="calm") graphColors=new[]{"#EDE8DF","#DCD5C9","#F7F2EA","#F5F0E8","#FBF8F2","#E5E4D9","#EEEAE2","#557361","#D4DDD1"};
         else if(theme=="ocean") graphColors=new[]{"#142637","#253C4C","#1B3143","#1D3446","#294257","#20384A","#142635","#72C5C3","#365C6C"};
         for (int i = 0; i < graphKeys.Length; i++) app.Resources[graphKeys[i]] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(graphColors[i]));
-        string actionBackground = theme switch { "calm" => "#EAE5DC", "ocean" => "#73C6CB", "light" => "#E3EAF0", _ => "#C9A58B" };
-        string accentForeground = theme switch { "calm" => "#26342E", "ocean" => "#10252C", "light" => "#172B3B", _ => "#211D19" };
-        string selectionFill = theme switch { "calm" => "#33557361", "ocean" => "#3373C6CB", "light" => "#33147F6E", _ => "#33C9A58B" };
+        string actionBackground = theme switch { "calm" => "#EAE5DC", "ocean" => "#73C6CB", "light" => "#202428", _ => "#C9A58B" };
+        string accentForeground = theme switch { "calm" => "#26342E", "ocean" => "#10252C", "light" => "#FFFFFF", _ => "#211D19" };
+        string selectionFill = theme switch { "calm" => "#33557361", "ocean" => "#3373C6CB", "light" => "#33202428", _ => "#33C9A58B" };
         string dangerBackground = theme switch { "calm" => "#EBDDD8", "ocean" => "#543943", "light" => "#F4DFE1", _ => "#563638" };
         app.Resources["ActionBackground"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(actionBackground));
         app.Resources["AccentForeground"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(accentForeground));

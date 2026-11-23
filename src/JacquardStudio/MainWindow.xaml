@@ -7,8 +7,49 @@
         WindowStartupLocation="CenterScreen" Background="{DynamicResource AppBackground}" FontSize="14" Icon="Assets/app.ico"
         WindowStyle="None" ResizeMode="CanResize" FlowDirection="RightToLeft" PreviewKeyDown="Window_KeyDown" AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver" Closing="Window_Closing">
     <WindowChrome.WindowChrome><WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/></WindowChrome.WindowChrome>
+    <Window.Resources>
+        <Style x:Key="WorkflowStageButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="MinHeight" Value="40"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="StageSurface" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="StageSurface" Property="BorderBrush" Value="{DynamicResource Border}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="StageSurface" Property="Opacity" Value="0.8"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="StageSurface" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="StageSurface" Property="Opacity" Value="0.48"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid>
-        <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="70"/><RowDefinition Height="*"/><RowDefinition Height="38"/></Grid.RowDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="58"/><RowDefinition Height="*"/><RowDefinition Height="38"/></Grid.RowDefinitions>
         <Border Grid.Row="0" Background="{DynamicResource HeaderBackground}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" FlowDirection="LeftToRight" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown" MouseRightButtonUp="TitleBar_MouseRightButtonUp">
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
@@ -16,7 +57,15 @@
                     <Button x:Name="MaximizeWindowButton" Content="□" ToolTip="بزرگ‌نمایی / بازگردانی" AutomationProperties.Name="Maximize or restore" Click="MaximizeWindow_Click" Width="44" Height="32" Padding="0"/>
                     <Button x:Name="CloseWindowButton" Content="✕" ToolTip="بستن" AutomationProperties.Name="Close" Click="CloseWindow_Click" Width="44" Height="32" Background="{DynamicResource DangerBackground}" Padding="0"/>
                 </StackPanel>
-                <TextBlock x:Name="WindowTitleText" Grid.Column="0" Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="18,0,0,0" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" FlowDirection="LeftToRight"/>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                    <Image Source="Assets/sam-emblem.png" Width="20" Height="20" Stretch="Uniform" Margin="0,0,8,0"/>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock x:Name="WindowTitleText" Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}"
+                                   FontWeight="SemiBold" FontSize="12" TextTrimming="CharacterEllipsis" FlowDirection="LeftToRight"/>
+                        <TextBlock Text="JACQUARD STUDIO / WEAVE" FlowDirection="LeftToRight" FontSize="8"
+                                   Foreground="{DynamicResource Muted}" Margin="0,-1,0,0"/>
+                    </StackPanel>
+                </StackPanel>
             </Grid>
         </Border>
         <Border Grid.Row="1" Background="{DynamicResource HeaderBackground}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
@@ -38,23 +87,110 @@
                 <Button x:Name="AboutButton" Content="&#xE946;" FontFamily="Segoe MDL2 Assets" ToolTip="درباره" AutomationProperties.Name="About" Click="About_Click" Width="48" Height="42" Padding="4" Margin="3"/>
             </StackPanel>
         </Border>
-        <Grid x:Name="WorkflowRoot" Grid.Row="2" Margin="22">
-            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-            <Grid x:Name="Navigation" Margin="0,0,0,16" FlowDirection="RightToLeft">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <Button x:Name="OpenButton" Grid.Column="0" ToolTip="بازکردن پروژه یا فایل" AutomationProperties.Name="بازکردن پروژه یا فایل" Click="OpenNavigation_Click" Margin="0,0,6,0" Padding="5,8"><Viewbox Width="24" Height="24"><Canvas Width="24" Height="24"><Path Data="M3,6 L9,6 11,8 21,8 19,19 3,19 Z M3,6 L3,18 M4,10 L21,10" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
-                <Button x:Name="SizeStepButton" Grid.Column="1" ToolTip="تنظیم اندازه" AutomationProperties.Name="تنظیم اندازه" Click="SizeStep_Click" Margin="0,0,6,0" Padding="5,8" IsEnabled="False"><Viewbox Width="24" Height="24"><Canvas Width="24" Height="24"><Path Data="M4,10 L4,4 10,4 M14,4 L20,4 20,10 M20,14 L20,20 14,20 M10,20 L4,20 4,14 M8,16 L16,8 M12,8 L16,8 16,12" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
-                <Button x:Name="ColorStepButton" Grid.Column="2" ToolTip="مدیریت رنگ" AutomationProperties.Name="مدیریت رنگ" Click="ColorStep_Click" Margin="0,0,6,0" Padding="5,8" IsEnabled="False"><Viewbox Width="24" Height="24"><Canvas Width="24" Height="24"><Path Data="M12,3 C7,3 3,7 3,12 C3,17 7,21 12,21 C14,21 15,20 14,18 C13,16 14,15 17,15 C20,15 21,13 21,11 C21,7 17,3 12,3 Z M7,9 L7.1,9 M11,6.5 L11.1,6.5 M16,8 L16.1,8" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
-                <Button x:Name="PatternStepButton" Grid.Column="3" ToolTip="بافت‌ریزی" AutomationProperties.Name="بافت‌ریزی" Click="PatternStep_Click" Margin="0,0,6,0" Padding="5,8" IsEnabled="False"><Viewbox Width="24" Height="24"><Canvas Width="24" Height="24"><Path Data="M4,4 L20,4 20,20 4,20 Z M9,4 L9,20 M15,4 L15,20 M4,9 L20,9 M4,15 L20,15 M4,4 L9,9 M15,9 L20,4 M9,15 L15,9 M4,15 L9,20 M15,20 L20,15" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
-                <Button x:Name="SelvedgeStepButton" Grid.Column="4" ToolTip="تعریف کناره" AutomationProperties.Name="تعریف کناره" Click="SelvedgeStep_Click" Margin="0,0,6,0" Padding="5,8" IsEnabled="False"><Viewbox Width="24" Height="24"><Canvas Width="24" Height="24"><Path Data="M3,5 L21,5 21,19 3,19 Z M7,5 L7,19 M17,5 L17,19 M3,10 L7,10 M3,14 L7,14 M17,10 L21,10 M17,14 L21,14 M10,8 L14,8 M10,12 L14,12 M10,16 L14,16" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
-                <Button x:Name="WeftStepButton" Grid.Column="7" ToolTip="تعریف پودگذاری" AutomationProperties.Name="تعریف پودگذاری" Click="WeftStep_Click" Margin="0,0,6,0" Padding="5,8" IsEnabled="False"><Viewbox Width="24" Height="24"><Canvas Width="24" Height="24"><Path Data="M3,6 L21,6 M3,12 L21,12 M3,18 L21,18 M6,4 L6,8 M11,10 L11,14 M17,16 L17,20 M6,4 L8,4 8,8 6,8 Z M11,10 L13,10 13,14 11,14 Z M17,16 L19,16 19,20 17,20 Z" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
-                <Button x:Name="FloatStepButton" Grid.Column="5" ToolTip="فلوت‌گیری" AutomationProperties.Name="فلوت‌گیری" Click="FloatStep_Click" Margin="0,0,6,0" Padding="5,8" IsEnabled="False"><Viewbox Width="24" Height="24"><Canvas Width="24" Height="24"><Path Data="M4,5 L20,5 M4,10 L20,10 M4,15 L20,15 M4,20 L20,20 M6,3 L6,8 M10,8 L10,13 M14,13 L14,18 M18,3 L18,18 M18,18 L15.5,15.5 M18,18 L20.5,15.5" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
-                <Button x:Name="AnalysisStepButton" Grid.Column="6" ToolTip="تحلیل" AutomationProperties.Name="تحلیل" Click="AnalysisStep_Click" Margin="0,0,6,0" Padding="5,8" IsEnabled="False"><Viewbox Width="24" Height="24"><Canvas Width="24" Height="24"><Path Data="M4,20 L4,4 M4,20 L21,20 M7,16 L10,12 13,14 17,7 20,9 M7,16 L7.1,16 M10,12 L10.1,12 M13,14 L13.1,14 M17,7 L17.1,7" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
-                <Button x:Name="SimulationStepButton" Grid.Column="8" ToolTip="شبیه‌سازی پارچه" AutomationProperties.Name="شبیه‌سازی پارچه" Click="SimulationStep_Click" Margin="0,0,6,0" Padding="5,8" IsEnabled="False"><Viewbox Width="24" Height="24"><Canvas Width="24" Height="24"><Path Data="M3,5 L21,5 21,19 3,19 Z M3,9 L21,9 M3,15 L21,15 M7,5 L7,19 M13,5 L13,19 M18,5 L18,19 M4,7 L6,7 M8,12 L12,12 M14,17 L17,17" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6"/></Canvas></Viewbox></Button>
-                <Button x:Name="MachineStepButton" Grid.Column="9" ToolTip="خروجی ماشین" AutomationProperties.Name="خروجی ماشین" Click="MachineStep_Click" Margin="0,0,6,0" Padding="5,8"><Viewbox Width="24" Height="24"><Canvas Width="24" Height="24"><Path Data="M4,7 L20,7 20,20 4,20 Z M7,7 L7,4 17,4 17,7 M7,11 L17,11 M7,15 L17,15 M8,20 L8,22 M16,20 L16,22 M10,11 L10,15 M14,11 L14,15" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
+        <Grid x:Name="WorkflowRoot" Grid.Row="2" Margin="16,14" FlowDirection="LeftToRight">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="14"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid x:Name="Navigation" Grid.Column="0" Width="194" FlowDirection="RightToLeft">
+                <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" CornerRadius="10"/>
+                <Grid Margin="10,10">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Margin="4,3,4,9">
+                        <TextBlock Text="JACQUARD / DESIGN" FlowDirection="LeftToRight" FontSize="9" FontWeight="Bold"
+                                   Foreground="{DynamicResource Accent}"/>
+                        <TextBlock x:Name="WorkflowTitle" Text="مراحل طراحی" FontSize="16" FontWeight="SemiBold" Margin="0,2,0,0"/>
+                        <TextBlock x:Name="WorkflowHint" Text="از فایل ورودی تا نقشهٔ بافت" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Muted}" FontSize="10" Margin="0,3,0,0"/>
+                        <Border Height="1" Background="{DynamicResource Border}" Margin="0,9,0,0"/>
+                    </StackPanel>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                  CanContentScroll="False">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Button x:Name="OpenButton" Grid.Row="0" Style="{StaticResource WorkflowStageButton}"
+                                    ToolTip="بازکردن پروژه یا فایل" AutomationProperties.Name="بازکردن پروژه یا فایل" Click="OpenNavigation_Click">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Viewbox Width="21" Height="21" VerticalAlignment="Center"><Canvas Width="24" Height="24"><Path Data="M3,6 L9,6 11,8 21,8 19,19 3,19 Z M3,6 L3,18 M4,10 L21,10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+                                    <TextBlock x:Name="OpenStageLabel" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Grid.Column="1" Text="باز کردن طرح" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" Margin="8,0,2,0"/>
+                                </Grid>
+                            </Button>
+                            <Button x:Name="SizeStepButton" Grid.Row="1" Style="{StaticResource WorkflowStageButton}"
+                                    ToolTip="تنظیم اندازه" AutomationProperties.Name="تنظیم اندازه" Click="SizeStep_Click" IsEnabled="False">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Viewbox Width="21" Height="21" VerticalAlignment="Center"><Canvas Width="24" Height="24"><Path Data="M4,10 L4,4 10,4 M14,4 L20,4 20,10 M20,14 L20,20 14,20 M10,20 L4,20 4,14 M8,16 L16,8 M12,8 L16,8 16,12" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+                                    <TextBlock x:Name="SizeStageLabel" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Grid.Column="1" Text="تغییر اندازه" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" Margin="8,0,2,0"/>
+                                </Grid>
+                            </Button>
+                            <Button x:Name="ColorStepButton" Grid.Row="2" Style="{StaticResource WorkflowStageButton}"
+                                    ToolTip="مدیریت رنگ" AutomationProperties.Name="مدیریت رنگ" Click="ColorStep_Click" IsEnabled="False">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Viewbox Width="21" Height="21" VerticalAlignment="Center"><Canvas Width="24" Height="24"><Path Data="M12,3 C7,3 3,7 3,12 C3,17 7,21 12,21 C14,21 15,20 14,18 C13,16 14,15 17,15 C20,15 21,13 21,11 C21,7 17,3 12,3 Z M7,9 L7.1,9 M11,6.5 L11.1,6.5 M16,8 L16.1,8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+                                    <TextBlock x:Name="ColorStageLabel" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Grid.Column="1" Text="مدیریت رنگ" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" Margin="8,0,2,0"/>
+                                </Grid>
+                            </Button>
+                            <Button x:Name="PatternStepButton" Grid.Row="3" Style="{StaticResource WorkflowStageButton}"
+                                    ToolTip="بافت‌ریزی" AutomationProperties.Name="بافت‌ریزی" Click="PatternStep_Click" IsEnabled="False">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Viewbox Width="21" Height="21" VerticalAlignment="Center"><Canvas Width="24" Height="24"><Path Data="M4,4 L20,4 20,20 4,20 Z M9,4 L9,20 M15,4 L15,20 M4,9 L20,9 M4,15 L20,15 M4,4 L9,9 M15,9 L20,4 M9,15 L15,9 M4,15 L9,20 M15,20 L20,15" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+                                    <TextBlock x:Name="PatternStageLabel" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Grid.Column="1" Text="بافت‌ریزی" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" Margin="8,0,2,0"/>
+                                </Grid>
+                            </Button>
+                            <Button x:Name="SelvedgeStepButton" Grid.Row="4" Style="{StaticResource WorkflowStageButton}"
+                                    ToolTip="تعریف کناره" AutomationProperties.Name="تعریف کناره" Click="SelvedgeStep_Click" IsEnabled="False">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Viewbox Width="21" Height="21" VerticalAlignment="Center"><Canvas Width="24" Height="24"><Path Data="M3,5 L21,5 21,19 3,19 Z M7,5 L7,19 M17,5 L17,19 M3,10 L7,10 M3,14 L7,14 M17,10 L21,10 M17,14 L21,14 M10,8 L14,8 M10,12 L14,12 M10,16 L14,16" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+                                    <TextBlock x:Name="SelvedgeStageLabel" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Grid.Column="1" Text="تعریف کناره" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" Margin="8,0,2,0"/>
+                                </Grid>
+                            </Button>
+                            <Button x:Name="WeftStepButton" Grid.Row="5" Style="{StaticResource WorkflowStageButton}"
+                                    ToolTip="تعریف پودگذاری" AutomationProperties.Name="تعریف پودگذاری" Click="WeftStep_Click" IsEnabled="False">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Viewbox Width="21" Height="21" VerticalAlignment="Center"><Canvas Width="24" Height="24"><Path Data="M3,6 L21,6 M3,12 L21,12 M3,18 L21,18 M6,4 L6,8 M11,10 L11,14 M17,16 L17,20 M6,4 L8,4 8,8 6,8 Z M11,10 L13,10 13,14 11,14 Z M17,16 L19,16 19,20 17,20 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+                                    <TextBlock x:Name="WeftStageLabel" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Grid.Column="1" Text="پودگذاری" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" Margin="8,0,2,0"/>
+                                </Grid>
+                            </Button>
+                            <Button x:Name="FloatStepButton" Grid.Row="6" Style="{StaticResource WorkflowStageButton}"
+                                    ToolTip="فلوت‌گیری" AutomationProperties.Name="فلوت‌گیری" Click="FloatStep_Click" IsEnabled="False">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Viewbox Width="21" Height="21" VerticalAlignment="Center"><Canvas Width="24" Height="24"><Path Data="M4,5 L20,5 M4,10 L20,10 M4,15 L20,15 M4,20 L20,20 M6,3 L6,8 M10,8 L10,13 M14,13 L14,18 M18,3 L18,18 M18,18 L15.5,15.5 M18,18 L20.5,15.5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+                                    <TextBlock x:Name="FloatStageLabel" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Grid.Column="1" Text="بررسی فلوت" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" Margin="8,0,2,0"/>
+                                </Grid>
+                            </Button>
+                            <Button x:Name="AnalysisStepButton" Grid.Row="7" Style="{StaticResource WorkflowStageButton}"
+                                    ToolTip="تحلیل" AutomationProperties.Name="تحلیل" Click="AnalysisStep_Click" IsEnabled="False">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Viewbox Width="21" Height="21" VerticalAlignment="Center"><Canvas Width="24" Height="24"><Path Data="M4,20 L4,4 M4,20 L21,20 M7,16 L10,12 13,14 17,7 20,9 M7,16 L7.1,16 M10,12 L10.1,12 M13,14 L13.1,14 M17,7 L17.1,7" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+                                    <TextBlock x:Name="AnalysisStageLabel" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Grid.Column="1" Text="تحلیل" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" Margin="8,0,2,0"/>
+                                </Grid>
+                            </Button>
+                            <Button x:Name="SimulationStepButton" Grid.Row="8" Style="{StaticResource WorkflowStageButton}"
+                                    ToolTip="شبیه‌سازی پارچه" AutomationProperties.Name="شبیه‌سازی پارچه" Click="SimulationStep_Click" IsEnabled="False">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Viewbox Width="21" Height="21" VerticalAlignment="Center"><Canvas Width="24" Height="24"><Path Data="M3,5 L21,5 21,19 3,19 Z M3,9 L21,9 M3,15 L21,15 M7,5 L7,19 M13,5 L13,19 M18,5 L18,19 M4,7 L6,7 M8,12 L12,12 M14,17 L17,17" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6"/></Canvas></Viewbox>
+                                    <TextBlock x:Name="SimulationStageLabel" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Grid.Column="1" Text="پیش‌نمایش پارچه" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" Margin="8,0,2,0"/>
+                                </Grid>
+                            </Button>
+                            <Button x:Name="MachineStepButton" Grid.Row="9" Style="{StaticResource WorkflowStageButton}"
+                                    ToolTip="خروجی ماشین" AutomationProperties.Name="خروجی ماشین" Click="MachineStep_Click">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Viewbox Width="21" Height="21" VerticalAlignment="Center"><Canvas Width="24" Height="24"><Path Data="M4,7 L20,7 20,20 4,20 Z M7,7 L7,4 17,4 17,7 M7,11 L17,11 M7,15 L17,15 M8,20 L8,22 M16,20 L16,22 M10,11 L10,15 M14,11 L14,15" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+                                    <TextBlock x:Name="MachineStageLabel" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Grid.Column="1" Text="نقشهٔ ماشین" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" Margin="8,0,2,0"/>
+                                </Grid>
+                            </Button>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
             </Grid>
-            <!-- Physical right: settings; left: preview. -->
-            <Grid Grid.Row="1" FlowDirection="LeftToRight">
+            <!-- The Jacquard canvas stays central; settings remain docked on its right. -->
+            <Grid Grid.Column="2" FlowDirection="LeftToRight">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" MinWidth="260"/><ColumnDefinition Width="10"/><ColumnDefinition Width="355" MinWidth="270"/></Grid.ColumnDefinitions>
                 <GridSplitter Grid.Column="1" Width="10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="{DynamicResource Border}" ShowsPreview="True" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" ToolTip="Resize panels"/>
                 <Border Grid.Column="2" x:Name="SettingsBorder" FlowDirection="RightToLeft" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="12" Padding="18">
@@ -200,7 +336,21 @@
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock x:Name="CanvasTitle" Text="پیش‌نمایش طرح" FontSize="21" FontWeight="SemiBold"/><TextBlock x:Name="CanvasSubtitle" Text="خروجی هر مرحله در این قسمت نمایش داده می‌شود" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,4,0,0"/></StackPanel><StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" FlowDirection="LeftToRight"><Button Content="−" Click="ZoomOut_Click" Width="40" Padding="6"/><TextBlock x:Name="ZoomText" Text="100%" Width="58" TextAlignment="Center" VerticalAlignment="Center"/><Button Content="+" Click="ZoomIn_Click" Width="40" Padding="6"/><Button Content="100%" Click="ZoomReset_Click" Padding="10,6" Margin="6,0,0,0"/><CheckBox x:Name="GridToggle" Content="شبکه" ToolTip="نمایش خطوط شبکه؛ برای دیدن خطوط زوم کنید" VerticalAlignment="Center" Margin="10,0,0,0" Checked="GridToggle_Changed" Unchecked="GridToggle_Changed"/><TextBlock x:Name="GridStepText" VerticalAlignment="Center" Margin="5,0,0,0" FontSize="10" Foreground="{DynamicResource Muted}"/></StackPanel></Grid>
                     <Border x:Name="AnalysisStripPanel" Grid.Row="1" Visibility="Collapsed" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="7" Padding="8" Margin="0,0,0,8"><TextBlock x:Name="AnalysisTopRanges" TextWrapping="Wrap" FontSize="11"/></Border>
-                    <Border Grid.Row="2" Background="{DynamicResource CanvasBackground}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="12" ClipToBounds="True"><Grid><ScrollViewer x:Name="ImageScroll" PreviewMouseWheel="ImageScroll_MouseWheel" PreviewMouseDown="ImageScroll_MouseDown" PreviewMouseMove="ImageScroll_MouseMove" PreviewMouseUp="ImageScroll_MouseUp" LostMouseCapture="ImageScroll_LostMouseCapture" ScrollChanged="ImageScroll_ScrollChanged" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" FlowDirection="LeftToRight" Visibility="Collapsed"><StackPanel x:Name="PreviewContent" HorizontalAlignment="Left" VerticalAlignment="Top" FlowDirection="LeftToRight"><Image x:Name="AnalysisStripImage" Visibility="Collapsed" Width="{Binding ActualWidth, ElementName=PreviewImage}" Height="22" Stretch="Fill" HorizontalAlignment="Left" RenderOptions.BitmapScalingMode="NearestNeighbor" MouseMove="AnalysisStrip_MouseMove" MouseLeave="AnalysisStrip_MouseLeave"/><Grid HorizontalAlignment="Left" VerticalAlignment="Top"><Image x:Name="PreviewImage" ToolTipService.InitialShowDelay="0" MouseMove="PreviewImage_MouseMove" MouseLeave="PreviewImage_MouseLeave" MouseLeftButtonDown="PreviewImage_Click" MouseLeftButtonUp="PreviewImage_Up" LostMouseCapture="PreviewImage_LostCapture" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="None" RenderOptions.BitmapScalingMode="NearestNeighbor"/><local:PixelGridOverlay x:Name="GridOverlay" Visibility="Collapsed" IsHitTestVisible="False"/><Border x:Name="ColorSelectionRect" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" BorderBrush="{DynamicResource Accent}" BorderThickness="2" Background="{DynamicResource SelectionFill}" IsHitTestVisible="False"/></Grid></StackPanel></ScrollViewer><StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Width="350"><Border Width="72" Height="72" Background="{DynamicResource GraphNode}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="22"><TextBlock Text="▦" Foreground="{DynamicResource Accent}" FontSize="40" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="EmptyTitle" Text="طرح خود را وارد کنید" FontSize="20" FontWeight="SemiBold" TextAlignment="Center" Margin="0,22,0,8"/><TextBlock x:Name="EmptyHint" Text="یک تصویر BMP یا TIFF انتخاب کنید." TextWrapping="Wrap" TextAlignment="Center" Foreground="{DynamicResource Muted}"/><Button x:Name="EmptyButton" Content="انتخاب تصویر" Click="Open_Click" HorizontalAlignment="Center" Margin="0,20,0,0"/></StackPanel><Border x:Name="HoverCard" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="12" Padding="10" CornerRadius="7" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" IsHitTestVisible="False"><StackPanel><Border x:Name="HoverSwatch" Height="14" MinWidth="140" Margin="0,0,0,7" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="2" Visibility="Collapsed"/><TextBlock x:Name="HoverDetails" Foreground="{DynamicResource PrimaryText}" FontSize="12" TextWrapping="Wrap"/></StackPanel></Border></Grid></Border>
+                    <Border Grid.Row="2" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="12" ClipToBounds="True">
+                        <Border.Background>
+                            <DrawingBrush TileMode="Tile" Viewport="0,0,22,22" ViewportUnits="Absolute"
+                                          Viewbox="0,0,22,22" ViewboxUnits="Absolute">
+                                <DrawingBrush.Drawing>
+                                    <DrawingGroup>
+                                        <GeometryDrawing Brush="{DynamicResource CanvasBackground}" Geometry="M0,0 H22 V22 H0 Z"/>
+                                        <GeometryDrawing Brush="{DynamicResource GraphGrid}">
+                                            <GeometryDrawing.Geometry><EllipseGeometry Center="1,1" RadiusX="0.65" RadiusY="0.65"/></GeometryDrawing.Geometry>
+                                        </GeometryDrawing>
+                                    </DrawingGroup>
+                                </DrawingBrush.Drawing>
+                            </DrawingBrush>
+                        </Border.Background>
+                        <Grid><ScrollViewer x:Name="ImageScroll" PreviewMouseWheel="ImageScroll_MouseWheel" PreviewMouseDown="ImageScroll_MouseDown" PreviewMouseMove="ImageScroll_MouseMove" PreviewMouseUp="ImageScroll_MouseUp" LostMouseCapture="ImageScroll_LostMouseCapture" ScrollChanged="ImageScroll_ScrollChanged" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" FlowDirection="LeftToRight" Visibility="Collapsed"><StackPanel x:Name="PreviewContent" HorizontalAlignment="Left" VerticalAlignment="Top" FlowDirection="LeftToRight"><Image x:Name="AnalysisStripImage" Visibility="Collapsed" Width="{Binding ActualWidth, ElementName=PreviewImage}" Height="22" Stretch="Fill" HorizontalAlignment="Left" RenderOptions.BitmapScalingMode="NearestNeighbor" MouseMove="AnalysisStrip_MouseMove" MouseLeave="AnalysisStrip_MouseLeave"/><Grid HorizontalAlignment="Left" VerticalAlignment="Top"><Image x:Name="PreviewImage" ToolTipService.InitialShowDelay="0" MouseMove="PreviewImage_MouseMove" MouseLeave="PreviewImage_MouseLeave" MouseLeftButtonDown="PreviewImage_Click" MouseLeftButtonUp="PreviewImage_Up" LostMouseCapture="PreviewImage_LostCapture" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="None" RenderOptions.BitmapScalingMode="NearestNeighbor"/><local:PixelGridOverlay x:Name="GridOverlay" Visibility="Collapsed" IsHitTestVisible="False"/><Border x:Name="ColorSelectionRect" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" BorderBrush="{DynamicResource Accent}" BorderThickness="2" Background="{DynamicResource SelectionFill}" IsHitTestVisible="False"/></Grid></StackPanel></ScrollViewer><StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Width="350"><Border Width="72" Height="72" Background="{DynamicResource GraphNode}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="22"><TextBlock Text="▦" Foreground="{DynamicResource Accent}" FontSize="40" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="EmptyTitle" Text="طرح خود را وارد کنید" FontSize="20" FontWeight="SemiBold" TextAlignment="Center" Margin="0,22,0,8"/><TextBlock x:Name="EmptyHint" Text="یک تصویر BMP یا TIFF انتخاب کنید." TextWrapping="Wrap" TextAlignment="Center" Foreground="{DynamicResource Muted}"/><Button x:Name="EmptyButton" Content="انتخاب تصویر" Click="Open_Click" HorizontalAlignment="Center" Margin="0,20,0,0"/></StackPanel><Border x:Name="HoverCard" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="12" Padding="10" CornerRadius="7" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" IsHitTestVisible="False"><StackPanel><Border x:Name="HoverSwatch" Height="14" MinWidth="140" Margin="0,0,0,7" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="2" Visibility="Collapsed"/><TextBlock x:Name="HoverDetails" Foreground="{DynamicResource PrimaryText}" FontSize="12" TextWrapping="Wrap"/></StackPanel></Border></Grid></Border>
                     <TextBlock Grid.Row="3" x:Name="PreviewDetails" Foreground="{DynamicResource Muted}" FontSize="12" Margin="2,10,2,0" FlowDirection="LeftToRight"/>
                 </Grid>
             </Grid>
