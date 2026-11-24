@@ -593,6 +593,11 @@ public sealed class VectorDesignDocument
     private BitmapSource RenderCore(int targetWidth, int targetHeight)
     {
         var visual = new DrawingVisual();
+        // Vector artwork enters the pixel-based workflow as hard-edged pixels.
+        // Keep geometry, text, and any embedded bitmap scaling from introducing antialiasing.
+        RenderOptions.SetEdgeMode(visual, EdgeMode.Aliased);
+        RenderOptions.SetBitmapScalingMode(visual, BitmapScalingMode.NearestNeighbor);
+        TextOptions.SetTextRenderingMode(visual, TextRenderingMode.Aliased);
         using (var dc = visual.RenderOpen())
         {
             dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, targetWidth, targetHeight));

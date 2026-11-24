@@ -184,6 +184,22 @@ internal static class Program
             Check(roundTripSvg.Layers.Count == 2 && roundTripSvg.Layers[0].Objects.Count == editableSvg.Layers[0].Objects.Count && !roundTripSvg.Layers[1].Visible, "SVG editable object and layer roundtrip");
             var svgRaster = editableSvg.Render(64, 48);
             Check(svgRaster.PixelWidth == 64 && svgRaster.PixelHeight == 48, "SVG vector renderer supports explicit output dimensions");
+            const string crispSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"8\" height=\"8\"><rect x=\"2\" y=\"1\" width=\"3\" height=\"5\" fill=\"#000000\" stroke=\"none\"/></svg>";
+            var crispPixels = new byte[8 * 8 * 4]; VectorDesignDocument.FromSvg(crispSvg).Render().CopyPixels(crispPixels, 8 * 4, 0);
+            Check(Enumerable.Range(0, 8 * 8).All(i => crispPixels[i * 4 + 3] == 255 && (crispPixels[i * 4] is 0 or 255) && (crispPixels[i * 4 + 1] is 0 or 255) && (crispPixels[i * 4 + 2] is 0 or 255)), "vector-to-pixel transfer disables antialiasing and emits crisp hard-edge pixels");
+            var freehandSamples = Enumerable.Range(0, 241).Select(i => new System.Windows.Point(i, 64 + 14 * Math.Sin(i * Math.PI * 4 / 240) + 1.25 * Math.Sin(i * .81))).ToArray();
+            var fittedPath = BezierCurveFitter.Fit(freehandSamples, 1.5);
+            var tightFit = BezierCurveFitter.Fit(freehandSamples, .75);
+            var looseFit = BezierCurveFitter.Fit(freehandSamples, 4);
+            bool editableCubics = fittedPath.Nodes.Count >= 2 && fittedPath.Nodes[0].X == freehandSamples[0].X && fittedPath.Nodes[^1].X == freehandSamples[^1].X;
+            for (int i = 0; i < fittedPath.Nodes.Count - 1; i++) editableCubics &= fittedPath.Nodes[i].CurveToNext && fittedPath.Nodes[i].HasOut && fittedPath.Nodes[i + 1].HasIn;
+            double maximumFitError = freehandSamples.Max(sample => DistanceToFittedPath(fittedPath, sample));
+            Check(fittedPath.Nodes.Count < freehandSamples.Length / 3 && tightFit.Nodes.Count >= looseFit.Nodes.Count && editableCubics && maximumFitError <= 2.1, "Schneider/Paper.js curve fitting reduces a wavy freehand line to editable Bézier anchors within tolerance");
+            var fittedDocument = new VectorDesignDocument(256, 128);
+            fittedDocument.CurrentLayer.Objects.Add(new VectorDesignObject { Name = "هموارشده", Fill = "none", Stroke = "#000000", StrokeWidth = 2, Paths = new List<VectorDesignPath> { fittedPath } });
+            fittedDocument.Validate();
+            var fittedRoundTrip = VectorDesignDocument.FromSvg(fittedDocument.ToSvg()).Layers[0].Objects.Single().Paths.Single();
+            Check(fittedRoundTrip.Nodes.Count == fittedPath.Nodes.Count && fittedRoundTrip.Nodes.Take(fittedRoundTrip.Nodes.Count - 1).All(node => node.CurveToNext && node.HasOut), "smart-smooth result remains editable after SVG save/reopen");
             string svgPath = Path.Combine(dir, "editable.svg"); File.WriteAllText(svgPath, svgMarkup, System.Text.Encoding.UTF8);
             var svgInput = ImageLoader.Load(svgPath, 0);
             Check(svgInput.Format == "SVG" && svgInput.PageCount == 1 && svgInput.Vector?.IsSvg == true, "SVG is a vector-preserving image source");
@@ -277,7 +293,7 @@ internal static class Program
             Check(System.Text.Encoding.UTF8.GetString(EncryptedProject.Decrypt(encryptedData,"user pass 123"))=="private sample", "encrypted project password roundtrip");
             Check(System.Text.Encoding.UTF8.GetString(EncryptedProject.Decrypt(encryptedData,"Mir@1354@sam"))=="private sample", "explicitly requested shared recovery password roundtrip");
             Expect<InvalidDataException>(()=>EncryptedProject.Decrypt(encryptedData,"incorrect")); var tampered=(byte[])encryptedData.Clone(); tampered[^1]^=1; Expect<InvalidDataException>(()=>EncryptedProject.Decrypt(tampered,"user pass 123")); Expect<InvalidDataException>(()=>EncryptedProject.Decrypt(tampered,"Mir@1354@sam")); var headerTampered=(byte[])encryptedData.Clone();headerTampered[25]^=1;Expect<InvalidDataException>(()=>EncryptedProject.Decrypt(headerTampered,"user pass 123"));
-            var localPrefs=new UserPreferences(); localPrefs.SetPassword("local pass 123"); Check(localPrefs.Verify("local pass 123") && !localPrefs.Verify("wrong"), "local startup password uses a salted verifier");
+            var localPrefs=new UserPreferences(); Check(localPrefs.Theme=="light", "new preferences use the reference-inspired neutral light theme by default"); localPrefs.SetPassword("local pass 123"); Check(localPrefs.Verify("local pass 123") && !localPrefs.Verify("wrong"), "local startup password uses a salted verifier");
             var checkedBinary=GraphChecks.Threshold(b.Image,128,false); Check(DesignAnalysis.ReadBinary(checkedBinary).SequenceEqual(pixels), "threshold conversion preserves binary input");
             var flippedBinary=GraphChecks.Threshold(b.Image,128,true); Check(DesignAnalysis.ReadBinary(flippedBinary).SequenceEqual(pixels.Select(x=>(byte)(255-x))), "threshold conversion supports inversion");
             var imageDiff=GraphChecks.Compare(checkedBinary,flippedBinary); Check(imageDiff.changed==pixels.Length, "comparison counts changed pixels");
@@ -982,9 +998,12 @@ internal static class Program
             var settingsTabs=(System.Windows.Controls.TabControl)((System.Windows.Controls.DockPanel)settingsWindow.Content).Children.OfType<System.Windows.Controls.TabControl>().Single();
             var settingsModulePage=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)((System.Windows.Controls.TabItem)settingsTabs.Items[1]).Content).Content;
             Check(settingsTabs.Items.Count==3 && settingsTabs.Items.OfType<System.Windows.Controls.TabItem>().Select(tab=>tab.Header?.ToString()).SequenceEqual(new[]{"ظاهر","ماژول‌ها","امنیت و مجوز"}) && settingsModulePage.Children.OfType<System.Windows.Controls.Border>().Any(),"settings dialog groups appearance, module visibility, and security in scrollable tabs");
+            var settingsAppearancePage=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)((System.Windows.Controls.TabItem)settingsTabs.Items[0]).Content).Content;
+            var settingsThemeSelector=settingsAppearancePage.Children.OfType<System.Windows.Controls.Border>().SelectMany(card=>((System.Windows.Controls.StackPanel)card.Child).Children.OfType<System.Windows.Controls.ComboBox>()).Single();
+            Check(settingsThemeSelector.Name=="ThemeSelection" && settingsThemeSelector.ItemsSource is string[] themeNames && themeNames.Contains("ژاکارد — آبی کبالت"),"appearance preferences offer the reference-inspired Jacquard cobalt theme");
             var settingsSecurityPage=(System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)((System.Windows.Controls.TabItem)settingsTabs.Items[2]).Content).Content;var reportCard=(System.Windows.Controls.Border)settingsSecurityPage.Children.OfType<System.Windows.Controls.Border>().Last();var reportContent=(System.Windows.Controls.StackPanel)((System.Windows.Controls.StackPanel)reportCard.Child).Children.OfType<System.Windows.Controls.StackPanel>().Single();
             Check(reportContent.Children.OfType<System.Windows.Controls.CheckBox>().Single().IsChecked==true && settingsWindow.Result.TelemetryEnabled && !ReferenceEquals(settingsWindow.Result.HiddenModules,settingsSource.HiddenModules),"settings exposes the persisted full-report consent as an independent preference");settingsWindow.Close();
-            var moduleWindow = new ModuleWindow(); Check(((System.Windows.Controls.Button)moduleWindow.FindName("SettingsRailButton")).Content is System.Windows.Controls.Image,"settings rail button uses the supplied icon"); Check(moduleWindow.FindName("SnackbarPresenter") is Wpf.Ui.Controls.SnackbarPresenter,"module workspace registers a WPF-UI snackbar presenter"); var moduleFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var moduleWindow = new ModuleWindow(); Check(((System.Windows.Controls.Button)moduleWindow.FindName("SettingsRailButton")).Content is System.Windows.FrameworkElement,"settings rail button renders theme-adaptive artwork"); Check(moduleWindow.FindName("SnackbarPresenter") is Wpf.Ui.Controls.SnackbarPresenter,"module workspace registers a WPF-UI snackbar presenter"); var moduleFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
             var inspectorPanel=(System.Windows.Controls.ContentControl)moduleWindow.FindName("InspectorHost");var inspectorScroll=(System.Windows.Controls.ScrollViewer)moduleWindow.FindName("InspectorScrollHost");
             Check(inspectorPanel.Visibility==System.Windows.Visibility.Collapsed && ReferenceEquals(inspectorPanel.Content,inspectorScroll) && inspectorScroll.Content is System.Windows.Controls.StackPanel,"module settings remain in a hidden parking host until opened as a dialog");
             var workspaceLayout=(System.Windows.Controls.Grid)moduleWindow.FindName("WorkspaceMain");
@@ -994,7 +1013,7 @@ internal static class Program
             var railButtons=railActionGroups.Children.OfType<System.Windows.Controls.Primitives.UniformGrid>().SelectMany(group=>group.Children.Cast<System.Windows.UIElement>()).ToArray();
             var pinnedRailButtons=((System.Windows.Controls.Primitives.UniformGrid)moduleWindow.FindName("PinnedRailActions")).Children;
             var railProjectActions=(System.Windows.Controls.Primitives.UniformGrid)moduleWindow.FindName("RailProjectActions");
-            Check(navigationRail.Visibility==System.Windows.Visibility.Visible && workspaceLayout.RowDefinitions.Count==0 && workspaceColumns.ColumnDefinitions[0].Width.Value==96 && moduleWindow.FindName("InspectorBorder") is System.Windows.Controls.Border parkedInspector && parkedInspector.Visibility==System.Windows.Visibility.Collapsed,"workspace has a two-column tool rail and no permanently docked inspector row");
+            Check(navigationRail.Visibility==System.Windows.Visibility.Visible && workspaceLayout.RowDefinitions.Count==0 && workspaceColumns.ColumnDefinitions[0].Width.Value==200 && moduleWindow.FindName("InspectorBorder") is System.Windows.Controls.Border parkedInspector && parkedInspector.Visibility==System.Windows.Visibility.Collapsed,"workspace uses a labeled tool sidebar and no permanently docked inspector row");
             Check(railProjectActions.Columns==2 && ((System.Windows.Controls.Primitives.UniformGrid)moduleWindow.FindName("PinnedRailActions")).Columns==2 && ((System.Windows.Controls.ScrollViewer)moduleWindow.FindName("NavigationScrollViewer")).VerticalScrollBarVisibility==System.Windows.Controls.ScrollBarVisibility.Hidden && moduleWindow.FindName("NavigationScrollUpButton") is System.Windows.Controls.Button && moduleWindow.FindName("NavigationScrollDownButton") is System.Windows.Controls.Button,"toolbar icons use a two-column layout with hidden scrollbar and step-scroll buttons");
             Check(moduleWindow.FindName("NodeToolbar") is null && new[]{"NewRailButton","OpenRailButton","SaveRailButton","SaveAsRailButton","FitAllRailButton","AddTextRailButton","AddFrameRailButton","ArrangeRailButton","PresetRailButton","CustomPresetsRailButton","ClearAllRailButton","ZoomInRailButton","ZoomOutRailButton","DeleteRailButton","CheckUpdatesButton","ThemeToggle","RunRailButton"}.All(name=>moduleWindow.FindName(name) is System.Windows.Controls.Button button && railButtons.Contains(button)) && moduleWindow.FindName("AlertAnimations") is System.Windows.Controls.Primitives.ToggleButton alertButton && railButtons.Contains(alertButton) && new[]{"SettingsRailButton","HelpRailButton","AboutRailButton"}.All(name=>moduleWindow.FindName(name) is System.Windows.Controls.Button button && pinnedRailButtons.Contains(button)),"project, stage, and app actions are icon buttons on the left rail, with no upper action toolbar");
             Check(moduleWindow.GetType().BaseType==typeof(Wpf.Ui.Controls.FluentWindow) && moduleWindow.WindowStyle==System.Windows.WindowStyle.None && moduleWindow.FindName("TitleBar") is System.Windows.Controls.Border && new[]{"MinimizeWindowButton","MaximizeWindowButton","CloseWindowButton"}.All(name=>moduleWindow.FindName(name) is System.Windows.Controls.Button),"module workspace uses the app-themed custom Fluent title bar");
@@ -1027,9 +1046,15 @@ internal static class Program
             Check(((SolidColorBrush)app.FindResource("GraphBackground")).Color==Color.FromRgb(0x22,0x22,0x22) && ((SolidColorBrush)app.FindResource("Accent")).Color==Color.FromRgb(0xC9,0xA5,0x8B),"dark theme uses charcoal graph surfaces and a restrained warm highlight");
             Check(((SolidColorBrush)app.FindResource("SelectionFill")).Color==Color.FromArgb(0x33,0xC9,0xA5,0x8B),"dark selection overlay follows the warm accent");
             ThemeManager.Apply(true,false); Check(Brightness((Brush)app.FindResource("PrimaryText")) + 100 < Brightness((Brush)app.FindResource("GraphNode")), "light theme text contrasts with graph nodes");
-            Check(((SolidColorBrush)app.FindResource("SelectionFill")).Color==Color.FromArgb(0x33,0x14,0x7F,0x6E),"light selection overlay changes with the active accent");
+            Check(((SolidColorBrush)app.FindResource("SelectionFill")).Color==Color.FromArgb(0x33,0x20,0x24,0x28) && ((SolidColorBrush)app.FindResource("ActionBackground")).Color==Color.FromRgb(0x20,0x24,0x28),"light selection and primary actions use the reference’s crisp dark contrast");
             ThemeManager.Apply("calm",false); Check(Brightness((Brush)app.FindResource("PrimaryText")) + 100 < Brightness((Brush)app.FindResource("GraphNode")), "calm theme text contrasts with nodes");
-            ThemeManager.Apply("ocean",false); Check(Brightness((Brush)app.FindResource("PrimaryText")) > Brightness((Brush)app.FindResource("GraphNode")) + 100, "ocean theme text contrasts with nodes"); ThemeManager.Apply(true,false);
+            ThemeManager.Apply("ocean",false); Check(Brightness((Brush)app.FindResource("PrimaryText")) > Brightness((Brush)app.FindResource("GraphNode")) + 100, "ocean theme text contrasts with nodes");
+            ThemeManager.Apply("jacquard",false);
+            var jacquardAccent=Color.FromRgb(0x31,0x5F,0xE7);
+            Check(ThemeManager.Current=="jacquard" && ThemeManager.IsLight && ((SolidColorBrush)app.FindResource("Accent")).Color==jacquardAccent && ((SolidColorBrush)app.FindResource("ActionBackground")).Color==jacquardAccent && ((SolidColorBrush)app.FindResource("GraphGrid")).Color==Color.FromRgb(0xD6,0xE1,0xF1) && Brightness((Brush)app.FindResource("PrimaryText"))+100<Brightness((Brush)app.FindResource("GraphNode")),"Jacquard palette combines white surfaces, cobalt actions, a dotted graph canvas, and readable contrast");
+            var jacquardIcon=ModuleIcons.Create(ModuleKind.Load,32) as System.Windows.Controls.Grid;
+            Check(jacquardIcon is not null && jacquardIcon.Children.OfType<System.Windows.Shapes.Path>().Any(path=>path.Stroke is SolidColorBrush stroke && stroke.Color==jacquardAccent) && ModuleIcons.BackgroundColor(ModuleKind.Load) is null && ModuleIcons.CreateResourceVisual("Settings",22) is System.Windows.Controls.Grid && ((System.Windows.Controls.Button)moduleWindow.FindName("SettingsRailButton")).Content is System.Windows.Controls.Grid,"Jacquard switches module and settings artwork to cobalt vector icons on neutral tiles");
+            ThemeManager.Apply(true,false);
             var themedInput=new System.Windows.Controls.TextBox(); ((System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector")).Children.Add(themedInput); themedInput.ApplyTemplate(); Check(Brightness(themedInput.Foreground)+100 < Brightness(themedInput.Background), "light themed text input is readable");
             var themedCombo=new System.Windows.Controls.ComboBox { ItemsSource=new[]{"one", "two"}, SelectedIndex=0 }; ((System.Windows.Controls.StackPanel)moduleWindow.FindName("Inspector")).Children.Add(themedCombo); themedCombo.ApplyTemplate(); Check(themedCombo.Template.FindName("Popup",themedCombo) is System.Windows.Controls.Primitives.Popup, "themed combo retains dropdown popup");
             ThemeManager.Apply(false,false); Check(Brightness(themedInput.Foreground) > Brightness(themedInput.Background)+100, "existing inputs update on dark theme change");
@@ -1159,8 +1184,21 @@ internal static class Program
             var soloOldContext=System.Threading.SynchronizationContext.Current;System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(System.Windows.Threading.Dispatcher.CurrentDispatcher));
             try{soloTimer.Start();var soloCard=(System.Windows.Controls.Border)nodeLayer.Children[nodeLayer.Children.Count-1];soloCard.ContextMenu.Items.OfType<System.Windows.Controls.MenuItem>().Single(x=>Equals(x.Header,"تنظیمات ماژول")).RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));if(soloFrame.Continue)System.Windows.Threading.Dispatcher.PushFrame(soloFrame);}finally{soloTimer.Stop();System.Threading.SynchronizationContext.SetSynchronizationContext(soloOldContext);}
             Check(sawSetup && sawDesign && liveSolo.DesignStandalone && liveSolo.DesignWidth==12 && liveSolo.DesignHeight==8 && liveSolo.DesignWeftDensity==20 && ModuleExecutor.Run(moduleGraph,liveSolo.Id)[liveSolo.Id].Image!.PixelWidth==12,"unconnected design card creates a white project canvas and stores requested density");
-            typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false); moduleWindow.Close();
-            Check(AppVersion.Display == "045.0.1.1-a5", "QAVNS version from version.txt");
+            typeof(ModuleWindow).GetField("dirty",moduleFlags)!.SetValue(moduleWindow,false);
+            var drawingSurfaceType = typeof(VectorEditorWindow).Assembly.GetType("JacquardStudio.DrawingSurface", true)!;
+            var drawingSurface = (System.Windows.FrameworkElement)Activator.CreateInstance(drawingSurfaceType, true)!;
+            Check(RenderOptions.GetEdgeMode(drawingSurface) == EdgeMode.Aliased && RenderOptions.GetBitmapScalingMode(drawingSurface) == BitmapScalingMode.NearestNeighbor && TextOptions.GetTextRenderingMode(drawingSurface) == TextRenderingMode.Aliased, "live vector canvas uses aliased edges and text with nearest-neighbor bitmap scaling");
+            var progressWindowType = typeof(ReleaseUpdater).Assembly.GetType("JacquardStudio.UpdateProgressWindow", true)!;
+            var progressWindow = (System.Windows.Window)Activator.CreateInstance(progressWindowType, new object[] { moduleWindow })!;
+            var progressFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var cancelButton = (System.Windows.Controls.Button)progressWindowType.GetField("cancelButton", progressFlags)!.GetValue(progressWindow)!;
+            var progressToken = (CancellationToken)progressWindowType.GetProperty("CancellationToken")!.GetValue(progressWindow)!;
+            cancelButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Check(progressToken.IsCancellationRequested && !cancelButton.IsEnabled && ((System.Windows.Controls.TextBlock)progressWindowType.GetField("stageText", progressFlags)!.GetValue(progressWindow)!).Text == "در حال لغو درخواست…", "updater progress window cancels its request and shows cleanup status");
+            progressWindowType.GetMethod("ShowCancelled")!.Invoke(progressWindow, null);
+            Check(((System.Windows.Controls.TextBlock)progressWindowType.GetField("stageText", progressFlags)!.GetValue(progressWindow)!).Text == "دریافت لغو شد" && cancelButton.Content as string == "بستن", "updater displays a dismissible cancelled result");
+            progressWindow.Close(); moduleWindow.Close();
+            Check(AppVersion.Display == "045.0.1.1-a8", "QAVNS version from version.txt");
             Check(ReleaseUpdater.CompareVersions("044.0.0.0-a2", "044.0.0.0-a1") > 0 && ReleaseUpdater.CompareVersions("044.0.0.0", "044.0.0.0-a2") > 0, "release updater orders prerelease and final versions");
             Check(ReleaseUpdater.CompareVersions("045.0.1.1-a1", "044.99.9.9") > 0 && ReleaseUpdater.CompareVersions("044.0.0.0-a2", "044.0.0.0-a2") == 0, "release updater compares version components and identical releases");
             var paletteRows = indexedSession.Palette!.Colors.Select((c,i) => new PaletteEntry { Index=i, ColorCode=$"#{c:X6}", PixelCount=indexedSession.Palette.Counts[i], Percent=100d*indexedSession.Palette.Counts[i]/256, Brush=new SolidColorBrush(Color.FromRgb((byte)(c>>16),(byte)(c>>8),(byte)c)) }).ToArray();
@@ -1295,8 +1333,9 @@ internal static class Program
             var nav = (System.Windows.Controls.Grid)window.FindName("Navigation");
             var settings = (System.Windows.FrameworkElement)window.FindName("SettingsBorder");
             Check(window.FindName("CompositeButton") is System.Windows.Controls.Button && window.FindName("Bank3DButton") is System.Windows.Controls.Button && window.FindName("Editor3DButton") is System.Windows.Controls.Button && window.FindName("SimulationMode") is System.Windows.Controls.ComboBox && window.FindName("SimulationReferencePreset") is System.Windows.Controls.Button, "3D and red/ivory reference preset are available in design and simulation");
-            Check(System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("WeftStepButton")) == 7 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("SimulationStepButton")) == 8 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)window.FindName("MachineStepButton")) == 9 && window.FindName("HelpButton") is System.Windows.Controls.Button, "weft, simulation, machine and in-app help are ordered");
-            Check(nav.FlowDirection == System.Windows.FlowDirection.RightToLeft && System.Windows.Controls.Grid.GetColumn(settings) == 2, "right-to-left workflow and right settings panel");
+            Check(System.Windows.Controls.Grid.GetRow((System.Windows.FrameworkElement)window.FindName("WeftStepButton")) == 5 && System.Windows.Controls.Grid.GetRow((System.Windows.FrameworkElement)window.FindName("SimulationStepButton")) == 8 && System.Windows.Controls.Grid.GetRow((System.Windows.FrameworkElement)window.FindName("MachineStepButton")) == 9 && window.FindName("HelpButton") is System.Windows.Controls.Button, "workflow stages are ordered vertically and in-app help remains available");
+            var workflowRoot = (System.Windows.Controls.Grid)window.FindName("WorkflowRoot");
+            Check(nav.FlowDirection == System.Windows.FlowDirection.RightToLeft && System.Windows.Controls.Grid.GetColumn(nav) == 0 && workflowRoot.FlowDirection == System.Windows.FlowDirection.LeftToRight && System.Windows.Controls.Grid.GetColumn(settings) == 2 && window.FindName("OpenStageLabel") is System.Windows.Controls.TextBlock, "left workflow sidebar, central canvas, and right settings panel use the intended reading directions");
             var list = (System.Windows.Controls.ListView)window.FindName("ColorPaletteList");
             Check(list.View is System.Windows.Controls.GridView grid && grid.Columns.Count == 6, "color statistics table includes number, lock and highlight columns");
             Check(list.SelectionMode == System.Windows.Controls.SelectionMode.Multiple, "colors can be selected directly without modifier keys");
@@ -1314,11 +1353,13 @@ internal static class Program
             Check(window.FindName("InfoButton") is System.Windows.Controls.Button && window.FindName("AnalysisPanel") is System.Windows.Controls.ScrollViewer && window.FindName("FloatPanel") is System.Windows.Controls.ScrollViewer, "design info, analysis and float controls");
             Check(window.FindName("SelvedgePanel") is System.Windows.Controls.ScrollViewer && window.FindName("WeftPanel") is System.Windows.Controls.ScrollViewer && window.FindName("MachinePreviewButton") is System.Windows.Controls.Button, "integrated machine selvedge and box settings");
             var title = (System.Windows.Controls.TextBlock)window.FindName("WindowTitleText");
-            Check(System.Windows.Controls.Grid.GetColumn(title) == 0 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)System.Windows.Media.VisualTreeHelper.GetParent((System.Windows.DependencyObject)window.FindName("CloseWindowButton"))) == 1, "title and caption button positions swapped");
+            var titleHost = (System.Windows.FrameworkElement)System.Windows.Media.VisualTreeHelper.GetParent(title);
+            Check(System.Windows.Controls.Grid.GetColumn(titleHost) == 0 && System.Windows.Controls.Grid.GetColumn((System.Windows.FrameworkElement)System.Windows.Media.VisualTreeHelper.GetParent((System.Windows.DependencyObject)window.FindName("CloseWindowButton"))) == 1, "brand title and caption button positions remain balanced");
             var captionButtons = (System.Windows.Controls.StackPanel)System.Windows.Media.VisualTreeHelper.GetParent((System.Windows.DependencyObject)window.FindName("CloseWindowButton"));
             Check(ReferenceEquals(captionButtons.Children[0], window.FindName("MinimizeWindowButton")) && ReferenceEquals(captionButtons.Children[2], window.FindName("CloseWindowButton")), "minimize left and close right in left-to-right caption");
             ThemeManager.Apply(true, false);
-            Check(((System.Windows.Media.SolidColorBrush)app.Resources["AppBackground"]).Color == (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#F2F5F8"), "light theme resources");
+            var openStageButton = (System.Windows.Controls.Button)window.FindName("OpenButton");
+            Check(((System.Windows.Media.SolidColorBrush)app.Resources["AppBackground"]).Color == (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#F2F5F8") && ((System.Windows.Media.SolidColorBrush)openStageButton.Background).Color == System.Windows.Media.Color.FromRgb(0x20,0x24,0x28) && ((System.Windows.Media.SolidColorBrush)openStageButton.Foreground).Color == System.Windows.Media.Colors.White, "light studio theme uses the neutral surface and high-contrast active workflow step");
             ThemeManager.Apply(false, false);
             var cards = (System.Windows.Controls.ItemsControl)window.FindName("PatternCards");
             Check(cards.ItemsPanel.LoadContent() is System.Windows.Controls.WrapPanel, "pattern gallery wraps rows");
@@ -1343,6 +1384,28 @@ internal static class Program
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }
         finally { Directory.Delete(dir, true); }
     }
+    private static double DistanceToFittedPath(VectorDesignPath path, System.Windows.Point sample)
+    {
+        double minimumSquared = double.PositiveInfinity;
+        for (int i = 0; i < path.Nodes.Count - 1; i++)
+        {
+            var from = path.Nodes[i]; var to = path.Nodes[i + 1];
+            var p0 = new System.Windows.Point(from.X, from.Y);
+            var p1 = from.HasOut ? new System.Windows.Point(from.OutX, from.OutY) : p0;
+            var p3 = new System.Windows.Point(to.X, to.Y);
+            var p2 = to.HasIn ? new System.Windows.Point(to.InX, to.InY) : p3;
+            for (int step = 0; step <= 64; step++)
+            {
+                double t = step / 64d, u = 1 - t;
+                var point = new System.Windows.Point(
+                    u * u * u * p0.X + 3 * u * u * t * p1.X + 3 * u * t * t * p2.X + t * t * t * p3.X,
+                    u * u * u * p0.Y + 3 * u * u * t * p1.Y + 3 * u * t * t * p2.Y + t * t * t * p3.Y);
+                minimumSquared = Math.Min(minimumSquared, (point - sample).LengthSquared);
+            }
+        }
+        return Math.Sqrt(minimumSquared);
+    }
+
     private static void Check(bool condition, string description) { if (!condition) throw new Exception("Failed: " + description); }
     private static void Expect<T>(Action action) where T : Exception
     {

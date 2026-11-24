@@ -63,7 +63,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private sealed record HistoryState(WorkflowSession Session, Stage Stage, string?[] Names, string?[] Paths);
     private readonly List<HistoryState> undoHistory = new(), redoHistory = new();
 
-    public MainWindow() { InitializeComponent(); SimulationWarpYarn.ItemsSource = FabricSimulation.YarnNames; SimulationWarpUnit.ItemsSource = YarnGeometry.Units; SimulationWarpColorHost.Children.Add(warpSwatch); warpSwatch.ColorChanged += (_, _) => SimulationSettingsChanged(); LoadSimulationSettings(new SimulationSettings()); selvedgeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) }; selvedgeTimer.Tick += async (_, _) => { selvedgeTimer.Stop(); if (!busy && !bankOpen) { if (stage == Stage.Selvedge) await PreviewSelvedgesAsync(false); else if (stage is Stage.Weft or Stage.Machine) await ComposeMachineAsync(false); } }; WeaveCanvas.Changed += (_, _) => { WeaveCanvas.SizeForScrolling(); RefreshControls(); }; WeaveCanvas.SizeForScrolling(); lightTheme = ThemeManager.IsLight; ThemeManager.Apply(ThemeManager.Current, false); VersionText.Text = AppVersion.Display; LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); UpdateLabels(); RefreshControls(); UpdateWindowTitle(); }
+    public MainWindow() { InitializeComponent(); SimulationWarpYarn.ItemsSource = FabricSimulation.YarnNames; SimulationWarpUnit.ItemsSource = YarnGeometry.Units; SimulationWarpColorHost.Children.Add(warpSwatch); warpSwatch.ColorChanged += (_, _) => SimulationSettingsChanged(); LoadSimulationSettings(new SimulationSettings()); selvedgeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) }; selvedgeTimer.Tick += async (_, _) => { selvedgeTimer.Stop(); if (!busy && !bankOpen) { if (stage == Stage.Selvedge) await PreviewSelvedgesAsync(false); else if (stage is Stage.Weft or Stage.Machine) await ComposeMachineAsync(false); } }; WeaveCanvas.Changed += (_, _) => { WeaveCanvas.SizeForScrolling(); RefreshControls(); }; WeaveCanvas.SizeForScrolling(); lightTheme = ThemeManager.IsLight; ThemeManager.Apply(ThemeManager.Current, false); VersionText.Text = AppVersion.Display; LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); UpdateLabels(); RefreshControls(); UpdateWindowTitle(); ThemeManager.Changed += OnThemeChanged; Closed += (_, _) => ThemeManager.Changed -= OnThemeChanged; }
     /// <summary>Use the existing stage UI on an isolated snapshot; no graph state changes before Apply.</summary>
     public void ConfigureModuleEditor(ModuleKind kind, WorkflowSession prepared, IReadOnlyList<BankItem>? projectWeaves=null)
     {
@@ -213,12 +213,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         PreviousPage.IsEnabled = !busy && current is not null && current.PageIndex > 0;
         NextPage.IsEnabled = !busy && current is not null && current.PageIndex + 1 < current.PageCount;
         PageValue.Text = current is null ? "—" : $"{current.PageIndex + 1} / {current.PageCount}";
-        foreach (var pair in new[] { (SizeStepButton, Stage.Size), (ColorStepButton, Stage.Colors), (PatternStepButton, Stage.Patterns), (SelvedgeStepButton, Stage.Selvedge), (WeftStepButton, Stage.Weft), (FloatStepButton, Stage.Floats), (AnalysisStepButton, Stage.Analysis), (SimulationStepButton, Stage.Simulation), (MachineStepButton, Stage.Machine) })
+        Color activeColor = lightTheme ? Color.FromRgb(0x20,0x24,0x28) : Color.FromRgb(0x31,0x57,0x4F);
+        var activeBrush = new SolidColorBrush(activeColor);
+        void StyleStage(Button button, bool active)
         {
-            bool active = (session is not null || stage == Stage.Machine) && pair.Item2 == stage;
-            pair.Item1.Background = active ? new SolidColorBrush((Color)ColorConverter.ConvertFromString(lightTheme ? "#D2EFE7" : "#31574F")) : (Brush)FindResource("ButtonBackground");
-            pair.Item1.BorderBrush = active ? (Brush)FindResource("Accent") : (Brush)FindResource("ButtonBorder");
+            button.Background = active ? activeBrush : Brushes.Transparent;
+            button.Foreground = active ? Brushes.White : (Brush)FindResource("PrimaryText");
+            button.BorderBrush = active ? activeBrush : Brushes.Transparent;
         }
+        StyleStage(OpenButton, session is null);
+        foreach (var pair in new[] { (SizeStepButton, Stage.Size), (ColorStepButton, Stage.Colors), (PatternStepButton, Stage.Patterns), (SelvedgeStepButton, Stage.Selvedge), (WeftStepButton, Stage.Weft), (FloatStepButton, Stage.Floats), (AnalysisStepButton, Stage.Analysis), (SimulationStepButton, Stage.Simulation), (MachineStepButton, Stage.Machine) })
+            StyleStage(pair.Item1, (session is not null || stage == Stage.Machine) && pair.Item2 == stage);
     }
     public async void OpenLegacyProject(string filename) => await LoadProjectAsync(filename);
     private async Task LoadProjectAsync(string filename)
@@ -1438,12 +1443,31 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
     }
     private void About_Click(object sender, RoutedEventArgs e) => new AboutWindow(english) { Owner = this }.ShowDialog();
+    private void OnThemeChanged(object? sender, EventArgs e) { lightTheme = ThemeManager.IsLight; RefreshControls(); }
     private void Language_Click(object sender, RoutedEventArgs e) { english = !english; MarkProjectDirty(); UpdateLabels(); ShowStage(); }
     private void Theme_Click(object sender, RoutedEventArgs e) { lightTheme = !ThemeManager.IsLight; ThemeManager.Apply(lightTheme, true); RefreshControls(); }
     private void UpdateLabels()
     {
         FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
         SettingsBorder.FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
+        Navigation.FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
+        WorkflowTitle.Text = T("مراحل طراحی", "Design stages");
+        WorkflowHint.Text = T("از فایل ورودی تا نقشهٔ بافت", "From source image to weave map");
+        OpenStageLabel.Text = T("باز کردن طرح", "Open design");
+        SizeStageLabel.Text = T("تغییر اندازه", "Resize");
+        ColorStageLabel.Text = T("مدیریت رنگ", "Color management");
+        PatternStageLabel.Text = T("بافت‌ریزی", "Weave assignment");
+        SelvedgeStageLabel.Text = T("تعریف کناره", "Selvedges");
+        WeftStageLabel.Text = T("پودگذاری", "Weft layout");
+        FloatStageLabel.Text = T("بررسی فلوت", "Float inspection");
+        AnalysisStageLabel.Text = T("تحلیل", "Analysis");
+        SimulationStageLabel.Text = T("پیش‌نمایش پارچه", "Fabric preview");
+        MachineStageLabel.Text = T("نقشهٔ ماشین", "Loom map");
+        foreach (var label in new[] { OpenStageLabel, SizeStageLabel, ColorStageLabel, PatternStageLabel, SelvedgeStageLabel, WeftStageLabel, FloatStageLabel, AnalysisStageLabel, SimulationStageLabel, MachineStageLabel })
+        {
+            label.TextAlignment = english ? TextAlignment.Left : TextAlignment.Right;
+            label.FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
+        }
         LanguageButton.Content = english ? "FA" : "EN"; LanguageButton.ToolTip = T("تغییر زبان", "Change language"); AboutButton.ToolTip = T("درباره", "About"); HelpButton.ToolTip = T("راهنمای برنامه (F1)", "Help (F1)"); SaveProjectButton.ToolTip = T("ذخیره پروژه", "Save project"); SaveProjectAsButton.ToolTip = T("ذخیره با نام دیگر", "Save project as"); ThemeButton.ToolTip = T("تغییر تم", "Change theme"); BankButton.ToolTip = T("بانک و طراحی بافت", "Weave bank and editor"); VectorDesignButton.ToolTip = T("استودیو طراحی برداری و رسم منحنی", "Vector design studio and Bezier drawing"); UndoButton.ToolTip = T("بازگشت (Ctrl+Z)", "Undo (Ctrl+Z)"); RedoButton.ToolTip = T("بازانجام (Ctrl+Y)", "Redo (Ctrl+Y)"); ReportButton.ToolTip = T("گزارش PDF و چاپ", "PDF report and print"); InfoButton.Content = T("اطلاعات طرح", "Design info"); InfoButton.ToolTip = T("طراح، کاربرد و توضیحات", "Designer, use and description");
         SimulationStepButton.ToolTip = T("شبیه‌سازی پارچه", "Fabric simulation");
         SimulationWeftsLabel.Text = T("نخ و رنگ هر پود اعمال‌شده", "Yarn and color for each applied weft");

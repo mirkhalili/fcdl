@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/_lib/release.php';
+require_once __DIR__.'/_lib/jalali.php';
 
 $configPath=getenv('JACQUARD_CONFIG') ?: dirname(__DIR__,2).'/jacquard-private/config.php';
 header('X-Content-Type-Options: nosniff');
@@ -16,11 +17,7 @@ $local=($config['allow_local_http'] ?? false)===true && in_array($_SERVER['REMOT
 if(!$isHttps && !$local){http_response_code(403);header('Content-Type: text/plain; charset=utf-8');exit('HTTPS required.');}
 $release=jacquard_current_release($config,$configPath);
 $escape=static fn(?string $value): string => htmlspecialchars($value ?? '',ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
-$date='—';
-if($release!==null && $release['published_at']!=='') {
- try {$date=(new DateTimeImmutable($release['published_at']))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i').' UTC';}
- catch(Throwable) {$date=$release['published_at'];}
-}
+$date=$release===null ? '—' : jacquard_format_jalali_date($release['published_at'],true);
 header('Content-Type: text/html; charset=utf-8');
 ?><!doctype html>
 <html lang="fa" dir="rtl">
@@ -43,7 +40,7 @@ header('Content-Type: text/html; charset=utf-8');
   <dl class="release-metadata">
    <div><dt>نام فایل</dt><dd><code dir="ltr"><?= $escape($release['filename']) ?></code></dd></div>
    <div><dt>نسخه</dt><dd><bdi><?= $escape($release['version']) ?></bdi></dd></div>
-   <div><dt>آخرین به‌روزرسانی</dt><dd><bdi><?= $escape($date) ?></bdi></dd></div>
+   <div><dt>آخرین به‌روزرسانی (شمسی، UTC)</dt><dd><bdi><?= $escape($date) ?></bdi></dd></div>
    <div><dt>MD5</dt><dd><code dir="ltr"><?= $escape($release['md5']) ?></code></dd></div>
    <div><dt>SHA-256</dt><dd><code dir="ltr"><?= $escape($release['sha256']) ?></code></dd></div>
    <div><dt>حجم فایل</dt><dd><bdi><?= $escape(number_format($release['size']/1024/1024,1)) ?> MiB</bdi></dd></div>

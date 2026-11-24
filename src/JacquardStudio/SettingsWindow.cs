@@ -82,11 +82,12 @@ public sealed class SettingsWindow : Window
             tabs.Items.Add(new TabItem { Header = title, Content = scroll, Padding = new Thickness(12, 6, 12, 6) });
         }
 
-        var appearancePage = Page("ظاهر برنامه", "تم دلخواه را انتخاب کنید؛ انتخاب شما در اجراهای بعدی نیز حفظ می‌شود.");
-        var names = new[] { "تیره", "روشن", "آرام — سبز مریم‌گلی", "اقیانوس" };
-        var keys = new[] { "dark", "light", "calm", "ocean" };
+        var appearancePage = Page("ظاهر برنامه", "تم دلخواه را انتخاب کنید؛ ظاهر پنجره‌ها، بوم گراف و آیکون‌ها نیز هماهنگ می‌شود و انتخاب شما حفظ خواهد شد.");
+        var names = ThemeManager.AvailableThemes.Select(item=>item.Name).ToArray();
+        var keys = ThemeManager.AvailableThemes.Select(item=>item.Id).ToArray();
         var theme = new ComboBox
         {
+            Name = "ThemeSelection",
             ItemsSource = names,
             SelectedIndex = Math.Max(0, Array.IndexOf(keys, initial.Theme)),
             MinWidth = 250,

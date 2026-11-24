@@ -88,8 +88,8 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
         InitializeComponent();
         GraphScroll.SizeChanged+=(_,_)=>ResizeGraphCanvasToContent();
         ModuleLibraryScroll.SizeChanged+=(_,_)=>{UpdateModuleTileSizes();UpdateLibraryScrollButtons();};
-        if(ModuleIcons.CreateResourceImage("Settings",22) is { } settingsIcon) { SettingsRailButton.Content=settingsIcon; System.Windows.Automation.AutomationProperties.SetName(SettingsRailButton,"تنظیمات"); }
         AlertAnimations.Click+=(_,_)=>RenderSelection(); preferences=UserPreferences.Load(); ThemeManager.Apply(preferences.Theme,false);
+        RefreshSettingsIcon();
         BuildLibrary(); CreateDefaultGraph(); dirty = false; RenderGraph(); Inspect(); UpdateTitle();
         Loaded+=(_,_)=>Dispatcher.BeginInvoke(new Action(()=>{ResizeGraphCanvasToContent();UpdateNavigationScrollButtons();UpdateLibraryScrollButtons();}),System.Windows.Threading.DispatcherPriority.Loaded);
         ThemeManager.Changed += OnThemeChanged; Closed += (_,_) => ThemeManager.Changed -= OnThemeChanged;
@@ -139,6 +139,14 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
     private void NavigationScrollDown_Click(object sender,RoutedEventArgs e) => NavigationScrollViewer.ScrollToVerticalOffset(Math.Min(NavigationScrollViewer.ScrollableHeight,NavigationScrollViewer.VerticalOffset+96));
     private void LibraryScrollUp_Click(object sender,RoutedEventArgs e) => ModuleLibraryScroll.ScrollToVerticalOffset(Math.Max(0,ModuleLibraryScroll.VerticalOffset-280));
     private void LibraryScrollDown_Click(object sender,RoutedEventArgs e) => ModuleLibraryScroll.ScrollToVerticalOffset(Math.Min(ModuleLibraryScroll.ScrollableHeight,ModuleLibraryScroll.VerticalOffset+280));
+    private void RefreshSettingsIcon()
+    {
+        if(ModuleIcons.CreateResourceVisual("Settings",22) is { } settingsIcon)
+        {
+            SettingsRailButton.Content=settingsIcon;
+            System.Windows.Automation.AutomationProperties.SetName(SettingsRailButton,"تنظیمات");
+        }
+    }
     private void Theme_Click(object sender, RoutedEventArgs e) { if (!busy) { preferences.Theme=ThemeManager.IsLight ? "dark" : "light"; ThemeManager.Apply(preferences.Theme,true); try { preferences.Save(); } catch(IOException) { Status.Text="ذخیره تم ممکن نشد."; } } }
     private void Settings_Click(object sender,RoutedEventArgs e) { if(busy)return; var window=new SettingsWindow(preferences,Types.Select(t=>(t.kind,t.name))) {Owner=this}; if(window.ShowDialog()==true) {preferences=window.Result;ThemeManager.Apply(preferences.Theme,true);BuildLibrary();} }
     private void Guide_Click(object sender,RoutedEventArgs e) { if(!busy) new GraphGuideWindow {Owner=this}.ShowDialog(); }
@@ -187,7 +195,7 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
         panel.Children.Add(new TextBlock {Text="کلید و تصویر به نشانی انتخاب‌شده ارسال می‌شوند. تنها از سرویس مورد اعتماد استفاده کنید. کلید در فایل پروژه ذخیره نمی‌شود.",TextWrapping=TextWrapping.Wrap});
         var ok=new Button {Content="اعمال تنظیمات و بستن",Margin=new Thickness(0,12,0,0)};panel.Children.Add(ok);ok.Click+=(_,_)=>{if(!Uri.TryCreate(endpoint.Text,UriKind.Absolute,out var uri) || uri.Scheme!=Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Fragment) || string.IsNullOrWhiteSpace(model.Text) || model.Text.Length>100) {StudioDialogs.Show(dialog,"نشانی HTTPS یا نام مدل معتبر نیست.");return;} aiEndpoint=uri.ToString();aiModel=model.Text.Trim();aiKey=string.IsNullOrWhiteSpace(key.Password)?null:key.Password;dialog.DialogResult=true;};dialog.Content=panel;dialog.ShowDialog();
     }
-    private void OnThemeChanged(object? sender, EventArgs e) { BuildLibrary(); RenderGraph(); }
+    private void OnThemeChanged(object? sender, EventArgs e) { RefreshSettingsIcon(); BuildLibrary(); RenderGraph(); }
     private void BuildLibrary()
     {
         ModuleLibrary.Children.Clear();

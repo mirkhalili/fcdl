@@ -64,6 +64,9 @@ public static class ModuleIcons
     /// <summary>Returns the artwork's corner/background color so its workspace node blends into the icon tile.</summary>
     public static Color? BackgroundColor(ModuleKind kind)
     {
+        // Jacquard uses theme-native line artwork on a clean surface rather than
+        // the supplied dark raster tiles, so the node itself follows the palette.
+        if(ThemeManager.Current=="jacquard") return null;
         lock(BackgroundCacheLock) if(BackgroundCache.TryGetValue(kind,out var cached)) return cached;
         Color? color=null; var name=ResourceName(kind);
         if(name is not null)
@@ -103,7 +106,14 @@ public static class ModuleIcons
         catch(Exception ex) when(ex is IOException or NotSupportedException or InvalidOperationException or ArgumentException or System.Runtime.InteropServices.COMException) { return null; }
     }
 
-    public static FrameworkElement Create(ModuleKind kind,double size) => Create(kind,size,CreateResourceImage);
+    /// <summary>Loads supplied artwork in the established themes and uses cobalt line art in the Jacquard theme.</summary>
+    public static FrameworkElement? CreateResourceVisual(string name,double size) => ThemeManager.Current=="jacquard"
+        ? CreateJacquardIcon(ResourcePath(name),size)
+        : CreateResourceImage(name,size);
+
+    public static FrameworkElement Create(ModuleKind kind,double size) => ThemeManager.Current=="jacquard"
+        ? CreateJacquardIcon(PathFor(kind),size)
+        : Create(kind,size,CreateResourceImage);
 
     // The loader overload also makes the missing-resource fallback testable.
     public static FrameworkElement Create(ModuleKind kind,double size,Func<string,double,Image?> loader)
@@ -116,4 +126,27 @@ public static class ModuleIcons
         var under=new Path {Data=Geometry.Parse(PathFor(kind)),StrokeThickness=3.6,StrokeLineJoin=PenLineJoin.Round,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,Stretch=Stretch.Uniform,Width=size*.66,Height=size*.66};under.SetResourceReference(Shape.StrokeProperty,"GraphNode");grid.Children.Add(under);
         var symbol=new Path {Data=Geometry.Parse(PathFor(kind)),StrokeThickness=1.55,StrokeLineJoin=PenLineJoin.Round,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,Stretch=Stretch.Uniform,Width=size*.66,Height=size*.66};symbol.SetResourceReference(Shape.StrokeProperty,"Accent");grid.Children.Add(symbol);return grid;
     }
+
+    private static FrameworkElement CreateJacquardIcon(string geometry,double size)
+    {
+        var grid=new Grid {Width=size,Height=size,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,IsHitTestVisible=false};
+        var tile=new Border {Width=size*.94,Height=size*.94,CornerRadius=new CornerRadius(size*.22),BorderThickness=new Thickness(1),HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,IsHitTestVisible=false};
+        tile.SetResourceReference(Border.BackgroundProperty,"GraphNode");
+        tile.SetResourceReference(Border.BorderBrushProperty,"Border");
+        grid.Children.Add(tile);
+        var textile=new Path {Data=Geometry.Parse("M4,7 H20 M4,12 H20 M4,17 H20 M7,4 V20 M12,4 V20 M17,4 V20"),StrokeThickness=.8,Stretch=Stretch.Uniform,Width=size*.68,Height=size*.68,Opacity=.28,IsHitTestVisible=false};
+        textile.SetResourceReference(Shape.StrokeProperty,"GraphGrid");
+        grid.Children.Add(textile);
+        var symbol=new Path {Data=Geometry.Parse(geometry),StrokeThickness=1.75,StrokeLineJoin=PenLineJoin.Round,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,Stretch=Stretch.Uniform,Width=size*.67,Height=size*.67,IsHitTestVisible=false};
+        symbol.SetResourceReference(Shape.StrokeProperty,"Accent");
+        grid.Children.Add(symbol);
+        return grid;
+    }
+
+    private static string ResourcePath(string name) => name switch
+    {
+        "Settings" => "M4,6 H20 M4,12 H20 M4,18 H20 M9,4 V8 M15,10 V14 M8,16 V20",
+        "YarnDefinition" => "M7,4 H17 M8,4 L7,8 V16 L8,20 H16 L17,16 V8 L16,4 M7,8 H17 M7,16 H17 M9,11 H15 M9,13 H15",
+        _ => "M4,4 H20 V20 H4 Z M8,8 H16 M8,12 H16 M8,16 H16",
+    };
 }
