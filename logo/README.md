@@ -1,7 +1,9 @@
-# نشان سام و آیکون‌های ماژول‌ها
+# Jacquard Studio Vazir design assets
 
-- `SAM-traced.svg` و `SAM-traced.eps`: نسخه برداری خودکارِ تقریبی از نشان منتخب، شامل مسیرهای رنگی؛ از تصویر پیکسلی ساخته شده و بازتولید دقیق نورپردازی و جزئیات آن نیست. EPS شامل مسیرهای برداری است، نه فایل تصویری جای‌گذاری‌شده؛ زمینه بیرون نشان رسم نمی‌شود. برای چاپ حرفه‌ای، رنگ و منحنی‌ها باید در نرم‌افزار برداری بررسی و اصلاح شوند.
-- `modules/*.svg`: نشان‌های برداری مستقل برای هر ماژول با ترکیب آبی و طلایی. نقوش با کد برداری برنامه در `ModuleIcons.cs` هم‌خانواده‌اند.
-- فایل اصلی شفاف `src/JacquardStudio/Assets/sam-emblem.png` و آیکون چنداندازه `src/JacquardStudio/Assets/app.ico` است.
+The current Windows application uses the visual system in `Jacquard_Studio_Vazir_Complete.zip` as its only workspace design:
 
-آیکون‌های ماژول با الهام از تصاویر مرجع آبی و طلایی، به شکل نمادهای ساده بافت و ابزار بازطراحی شده‌اند. شکل‌های برداری متناظر به صورت WPF در `ModuleIcons.cs` رسم می‌شوند؛ برنامه در زمان اجرا فایل SVG را مستقیماً بارگذاری نمی‌کند.
+- `src/JacquardStudio/Assets/Studio/jacquard-mark.svg` and `.png` are the blue Jacquard Studio mark used by the updated shell and startup surfaces.
+- `src/JacquardStudio/Assets/Studio/module-icons.json` and `tools-icons.json` are generated from the supplied Vazir prototype's 33 module and 38 tool SVG glyphs. The application renders these paths as WPF geometry and uses them in the graph, library, inspector, and toolbar.
+- `src/JacquardStudio/Assets/app.ico` is the executable icon for the same cobalt identity.
+
+The older gold/blue SAM marks, raster module artwork, and their SVG redraws are not part of the updated application. The original user-supplied prototype archive remains at the repository root as the visual and licensing reference.

@@ -38,58 +38,53 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
     private string? acceptedDrag;
     private readonly WeaveBank bank = new();
     private readonly WorkflowPresetStore workflowPresetStore = new();
-    private static readonly (ModuleKind kind, string name, string icon, string color, string subtitle)[] Types = {
-        (ModuleKind.ExportData,"خروجی تصویر و جدول","\uE74E","#8DBAF0","IMAGE & TABLE EXPORT"),
-        (ModuleKind.BinaryLoad,"بارگذاری فایل ماشین","\uE8B7","#47D4B3","BINARY MAP"),
-        (ModuleKind.BinaryConvert,"تبدیل سیاه‌وسفید","\uE790","#E2A766","BINARY CONVERSION"),
-        (ModuleKind.SeamCheck,"بررسی درز راپورت","\uE9D9","#72C8C5","SEAM CHECK"),
-        (ModuleKind.Compare,"مقایسه دو طرح","\uE8A5","#61A9F7","COMPARISON"),
-        (ModuleKind.QualityCheck,"کنترل کیفیت نقشه","\uE73E","#AFA5D1","QUALITY CHECK"),
-        (ModuleKind.Load,"طرح نقشه‌بیتی","\uE8B7","#47D4B3","IMAGE SOURCE"),
-        (ModuleKind.VectorLoad,"بارگذاری طرح برداری","\uE8B7","#80B8DC","VECTOR SOURCE"),
-        (ModuleKind.VectorDesign,"استودیو طراحی برداری","\uE8B7","#68C6B5","VECTOR DESIGN"),
-        (ModuleKind.MachineDefinition,"تعریف ماشین","\uE90F","#AFA5D1","MACHINE PROFILE"),
-        (ModuleKind.DesignIdentity,"شناسنامه طرح","\uE8A5","#A3C6A6","DESIGN IDENTITY"),
-        (ModuleKind.AiEdit,"هوش مصنوعی","\uE945","#D1A4BC","AI IMAGE EDIT"),
-        (ModuleKind.DesignEditor,"طراحی و ویرایش طرح","\uE70F","#C89570","DESIGN EDITOR"),
-        (ModuleKind.Crop,"برش طرح","\uE7A8","#E89B73","CROP"),
-        (ModuleKind.Repeat,"راپورت‌بندی","\uE8A5","#61A9F7","REPEAT"),
-        (ModuleKind.Report,"گزارش","\uE9D2","#72C8C5","REPORT"),
-        (ModuleKind.Resize,"تغییر اندازه","\uE8A3","#61A9F7","RESIZE"),
-        (ModuleKind.Colors,"مدیریت رنگ","\uE790","#E2A766","PALETTE"),
-        (ModuleKind.Weaves,"بانک بافت پروژه","\uE8A5","#BA91F4","WEAVE LIBRARY"),
-        (ModuleKind.CreateWeave,"ساخت بافت","\uE70F","#C89570","WEAVE DESIGNER"),
-        (ModuleKind.ApplyWeaves,"بافت‌ریزی رنگ‌ها","\uE9D2","#BB94EE","WEAVE MAPPING"),
-        (ModuleKind.AutoWeaves,"بافت‌ریزی خودکار","\uE9D2","#BB94EE","AUTO WEAVE"),
-        (ModuleKind.Selvedge,"کناره","\uE8A1","#7CAAE3","SELVEDGES"),
-        (ModuleKind.Floats,"فلوت‌گیری","\uE7C3","#E89B73","FLOAT CHECK"),
-        (ModuleKind.Tension,"تحلیل کشش","\uE9D9","#72C8C5","TENSION"),
-        (ModuleKind.Weft,"پودگذاری","\uE8FD","#E2AD69","BOX MOTION"),
-        (ModuleKind.Simulation,"شبیه‌سازی پارچه","\uE7F4","#8DBAF0","SIMULATION"),
-        (ModuleKind.Machine,"خروجی ماشین","\uE950","#F19F7A","MACHINE OUTPUT"),
-        (ModuleKind.PeriodicFloats,"فلوت در راپورت مستقیم","\uE7C3","#E89B73","PERIODIC FLOAT CHECK"),
-        (ModuleKind.MatchPalette,"تطبیق پالت مرجع","\uE790","#E2A766","PALETTE MATCH"),
-        (ModuleKind.RectangleMask,"ماسک مستطیلی","\uE7A8","#7CAAE3","RECTANGLE MASK"),
-        (ModuleKind.ApplyMask,"اعمال ماسک","\uE74E","#72C8C5","APPLY MASK"),
-        (ModuleKind.BlankDesign,"بوم طرح خالی","\uE70F","#C89570","BLANK CANVAS")
+    private static readonly (ModuleKind kind, string name, string subtitle)[] Types = {
+        (ModuleKind.ExportData,"خروجی تصویر و جدول","IMAGE & TABLE EXPORT"),
+        (ModuleKind.BinaryLoad,"بارگذاری فایل ماشین","BINARY MAP"),
+        (ModuleKind.BinaryConvert,"تبدیل سیاه‌وسفید","BINARY CONVERSION"),
+        (ModuleKind.SeamCheck,"بررسی درز راپورت","SEAM CHECK"),
+        (ModuleKind.Compare,"مقایسه دو طرح","COMPARISON"),
+        (ModuleKind.QualityCheck,"کنترل کیفیت نقشه","QUALITY CHECK"),
+        (ModuleKind.Load,"طرح نقشه‌بیتی","IMAGE SOURCE"),
+        (ModuleKind.VectorLoad,"بارگذاری طرح برداری","VECTOR SOURCE"),
+        (ModuleKind.VectorDesign,"استودیو طراحی برداری","VECTOR DESIGN"),
+        (ModuleKind.MachineDefinition,"تعریف ماشین","MACHINE PROFILE"),
+        (ModuleKind.DesignIdentity,"شناسنامه طرح","DESIGN IDENTITY"),
+        (ModuleKind.AiEdit,"هوش مصنوعی","AI IMAGE EDIT"),
+        (ModuleKind.DesignEditor,"طراحی و ویرایش طرح","DESIGN EDITOR"),
+        (ModuleKind.Crop,"برش طرح","CROP"),
+        (ModuleKind.Repeat,"راپورت‌بندی","REPEAT"),
+        (ModuleKind.Report,"گزارش","REPORT"),
+        (ModuleKind.Resize,"تغییر اندازه","RESIZE"),
+        (ModuleKind.Colors,"مدیریت رنگ","PALETTE"),
+        (ModuleKind.Weaves,"بانک بافت پروژه","WEAVE LIBRARY"),
+        (ModuleKind.CreateWeave,"ساخت بافت","WEAVE DESIGNER"),
+        (ModuleKind.ApplyWeaves,"بافت‌ریزی رنگ‌ها","WEAVE MAPPING"),
+        (ModuleKind.AutoWeaves,"بافت‌ریزی خودکار","AUTO WEAVE"),
+        (ModuleKind.Selvedge,"کناره","SELVEDGES"),
+        (ModuleKind.Floats,"فلوت‌گیری","FLOAT CHECK"),
+        (ModuleKind.Tension,"تحلیل کشش","TENSION"),
+        (ModuleKind.Weft,"پودگذاری","BOX MOTION"),
+        (ModuleKind.Simulation,"شبیه‌سازی پارچه","SIMULATION"),
+        (ModuleKind.Machine,"خروجی ماشین","MACHINE OUTPUT"),
+        (ModuleKind.PeriodicFloats,"فلوت در راپورت مستقیم","PERIODIC FLOAT CHECK"),
+        (ModuleKind.MatchPalette,"تطبیق پالت مرجع","PALETTE MATCH"),
+        (ModuleKind.RectangleMask,"ماسک مستطیلی","RECTANGLE MASK"),
+        (ModuleKind.ApplyMask,"اعمال ماسک","APPLY MASK"),
+        (ModuleKind.BlankDesign,"بوم طرح خالی","BLANK CANVAS")
     };
-    private static (ModuleKind kind, string name, string icon, string color, string subtitle) Spec(ModuleKind kind) => Types.Single(t => t.kind == kind);
+    private static (ModuleKind kind, string name, string subtitle) Spec(ModuleKind kind) => Types.Single(t => t.kind == kind);
     private static Brush Brush(string hex) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
     private static Brush ResourceBrush(string key) => (Brush)Application.Current.FindResource(key);
-    private static Brush NodeBackground(ModuleKind kind) => ModuleIcons.BackgroundColor(kind) is { } color ? new SolidColorBrush(color) : ResourceBrush("GraphNode");
-    private static Brush NodeForeground(ModuleKind kind)
-    {
-        Color color=ModuleIcons.BackgroundColor(kind) ?? ((SolidColorBrush)ResourceBrush("GraphNode")).Color;
-        return .2126*color.R+.7152*color.G+.0722*color.B < 145 ? Brushes.White : ResourceBrush("PrimaryText");
-    }
-    private static Brush CategoryBrush(string hex) => ThemeManager.IsLight ? Brush(hex switch { "#47D4B3"=>"#176B5E", "#61A9F7"=>"#255F99", "#E2A766"=>"#8A4C0D", "#BA91F4" or "#BB94EE"=>"#69459A", "#C89570"=>"#824D29", "#7CAAE3"=>"#345D8A", "#E89B73"=>"#914728", "#72C8C5"=>"#286F6D", "#E2AD69"=>"#80500E", "#8DBAF0"=>"#355F94", _=>"#8B442E" }) : Brush(hex);
+    private static Brush NodeBackground(ModuleKind kind) => ResourceBrush("GraphNode");
+    private static Brush NodeForeground(ModuleKind kind) => ResourceBrush("PrimaryText");
     public ModuleWindow()
     {
         InitializeComponent();
         GraphScroll.SizeChanged+=(_,_)=>ResizeGraphCanvasToContent();
         ModuleLibraryScroll.SizeChanged+=(_,_)=>{UpdateModuleTileSizes();UpdateLibraryScrollButtons();};
         AlertAnimations.Click+=(_,_)=>RenderSelection(); preferences=UserPreferences.Load(); ThemeManager.Apply(preferences.Theme,false);
-        RefreshSettingsIcon();
+        RefreshWorkspaceToolIcons();
         BuildLibrary(); CreateDefaultGraph(); dirty = false; RenderGraph(); Inspect(); UpdateTitle();
         Loaded+=(_,_)=>Dispatcher.BeginInvoke(new Action(()=>{ResizeGraphCanvasToContent();UpdateNavigationScrollButtons();UpdateLibraryScrollButtons();}),System.Windows.Threading.DispatcherPriority.Loaded);
         ThemeManager.Changed += OnThemeChanged; Closed += (_,_) => ThemeManager.Changed -= OnThemeChanged;
@@ -139,15 +134,23 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
     private void NavigationScrollDown_Click(object sender,RoutedEventArgs e) => NavigationScrollViewer.ScrollToVerticalOffset(Math.Min(NavigationScrollViewer.ScrollableHeight,NavigationScrollViewer.VerticalOffset+96));
     private void LibraryScrollUp_Click(object sender,RoutedEventArgs e) => ModuleLibraryScroll.ScrollToVerticalOffset(Math.Max(0,ModuleLibraryScroll.VerticalOffset-280));
     private void LibraryScrollDown_Click(object sender,RoutedEventArgs e) => ModuleLibraryScroll.ScrollToVerticalOffset(Math.Min(ModuleLibraryScroll.ScrollableHeight,ModuleLibraryScroll.VerticalOffset+280));
-    private void RefreshSettingsIcon()
+    private void RefreshWorkspaceToolIcons()
     {
-        if(ModuleIcons.CreateResourceVisual("Settings",22) is { } settingsIcon)
+        void Set(Button button,string glyph,bool inverse=false)
         {
-            SettingsRailButton.Content=settingsIcon;
-            System.Windows.Automation.AutomationProperties.SetName(SettingsRailButton,"تنظیمات");
+            var icon=StudioIconCatalog.CreateTool(glyph,20,ResourceBrush(inverse ? "AccentForeground" : "IconGlyph"));
+            button.Content=icon;
+            button.Foreground=ResourceBrush(inverse ? "AccentForeground" : "IconGlyph");
         }
+        Set(NewRailButton,"new");Set(OpenRailButton,"open");Set(SaveRailButton,"save");Set(SaveAsRailButton,"save-as");
+        Set(CheckUpdatesButton,"refresh");Set(RunRailButton,"run",true);Set(FitAllRailButton,"fit");Set(AddTextRailButton,"text");
+        Set(AddFrameRailButton,"rect");Set(ArrangeRailButton,"grid");Set(PresetRailButton,"connect");
+        Set(CustomPresetsRailButton,"favorites");Set(ClearAllRailButton,"delete");Set(ZoomOutRailButton,"zoom-out");
+        Set(ZoomInRailButton,"zoom-in");Set(DeleteRailButton,"delete");Set(LibraryRailButton,"layers");
+        Set(SettingsRailButton,"settings");Set(HelpRailButton,"help");Set(AboutRailButton,"help");
+        AlertAnimations.Content=StudioIconCatalog.CreateTool("warnings",19,ResourceBrush("IconGlyph"));
     }
-    private void Theme_Click(object sender, RoutedEventArgs e) { if (!busy) { preferences.Theme=ThemeManager.IsLight ? "dark" : "light"; ThemeManager.Apply(preferences.Theme,true); try { preferences.Save(); } catch(IOException) { Status.Text="ذخیره تم ممکن نشد."; } } }
+    private void RefreshSettingsIcon() => RefreshWorkspaceToolIcons();
     private void Settings_Click(object sender,RoutedEventArgs e) { if(busy)return; var window=new SettingsWindow(preferences,Types.Select(t=>(t.kind,t.name))) {Owner=this}; if(window.ShowDialog()==true) {preferences=window.Result;ThemeManager.Apply(preferences.Theme,true);BuildLibrary();} }
     private void Guide_Click(object sender,RoutedEventArgs e) { if(!busy) new GraphGuideWindow {Owner=this}.ShowDialog(); }
     private async void CheckUpdates_Click(object sender,RoutedEventArgs e)
@@ -157,7 +160,7 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
         finally { if(IsLoaded)CheckUpdatesButton.IsEnabled=true; }
     }
     private void About_Click(object sender,RoutedEventArgs e) => new AboutWindow(false) {Owner=this}.ShowDialog();
-    private void LibraryToggle_Click(object sender,RoutedEventArgs e) { bool open=LibraryPanel.Visibility==Visibility.Visible; LibraryPanel.Visibility=open ? Visibility.Collapsed : Visibility.Visible; LibraryColumn.Width=new GridLength(open ? 0 : 312); ResizeGraphCanvasToContent(); }
+    private void LibraryToggle_Click(object sender,RoutedEventArgs e) { bool open=LibraryPanel.Visibility==Visibility.Visible; LibraryPanel.Visibility=open ? Visibility.Collapsed : Visibility.Visible; LibraryColumn.Width=new GridLength(open ? 0 : 300); ResizeGraphCanvasToContent(); }
     private void FitAll_Click(object sender,RoutedEventArgs e)
     {
         if(graph.Nodes.Count==0)return; double left=graph.Nodes.Min(n=>n.X), top=graph.Nodes.Min(n=>n.Y), right=graph.Nodes.Max(n=>n.X+NodeDiameter), bottom=graph.Nodes.Max(n=>n.Y+NodeDiameter);
@@ -196,12 +199,15 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
         var ok=new Button {Content="اعمال تنظیمات و بستن",Margin=new Thickness(0,12,0,0)};panel.Children.Add(ok);ok.Click+=(_,_)=>{if(!Uri.TryCreate(endpoint.Text,UriKind.Absolute,out var uri) || uri.Scheme!=Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Fragment) || string.IsNullOrWhiteSpace(model.Text) || model.Text.Length>100) {StudioDialogs.Show(dialog,"نشانی HTTPS یا نام مدل معتبر نیست.");return;} aiEndpoint=uri.ToString();aiModel=model.Text.Trim();aiKey=string.IsNullOrWhiteSpace(key.Password)?null:key.Password;dialog.DialogResult=true;};dialog.Content=panel;dialog.ShowDialog();
     }
     private void OnThemeChanged(object? sender, EventArgs e) { RefreshSettingsIcon(); BuildLibrary(); RenderGraph(); }
+    private void ModuleSearchBox_TextChanged(object sender,TextChangedEventArgs e) => BuildLibrary();
     private void BuildLibrary()
     {
         ModuleLibrary.Children.Clear();
-        foreach(var type in Types)
+        string query=ModuleSearchBox?.Text?.Trim() ?? "";
+        var visibleTypes=Types.Where(type=>!preferences.HiddenModules.Contains(type.kind.ToString()) &&
+            (query.Length==0 || type.name.Contains(query,StringComparison.CurrentCultureIgnoreCase) || type.subtitle.Contains(query,StringComparison.OrdinalIgnoreCase))).ToArray();
+        foreach(var type in visibleTypes)
         {
-            if(preferences.HiddenModules.Contains(type.kind.ToString()))continue;
             ModuleKind kind=type.kind;
             bool wasDragged=false;
             var tile=new Border {Width=128,Height=128,Margin=new Thickness(4),Background=ResourceBrush("GraphNode"),
@@ -233,7 +239,7 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
             };
             surface.Children.Add(addButton);
 
-            var help=new Button {Content="?",Style=(Style)FindResource("ModuleCornerButton"),Width=26,Height=26,Margin=new Thickness(5),
+            var help=new Button {Content=StudioIconCatalog.CreateTool("help",15,ResourceBrush("IconGlyph")),Style=(Style)FindResource("ModuleCornerButton"),Width=26,Height=26,Margin=new Thickness(5),
                 HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Top,
                 ToolTip="راهنمای "+type.name};
             System.Windows.Automation.AutomationProperties.SetName(help,"راهنمای "+type.name);
@@ -241,7 +247,7 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
             Panel.SetZIndex(help,2);surface.Children.Add(help);
             if(kind==ModuleKind.AiEdit)
             {
-                var configure=new Button {Content="\uE713",FontFamily=new FontFamily("Segoe MDL2 Assets"),
+                var configure=new Button {Content=StudioIconCatalog.CreateTool("settings",15,ResourceBrush("IconGlyph")),
                     Style=(Style)FindResource("ModuleCornerButton"),Width=26,Height=26,Margin=new Thickness(5),
                     HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,ToolTip="تنظیم اتصال هوش مصنوعی"};
                 System.Windows.Automation.AutomationProperties.SetName(configure,"تنظیم اتصال هوش مصنوعی");
@@ -250,6 +256,15 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
             }
             tile.Child=surface;
             ModuleLibrary.Children.Add(tile);
+        }
+        if(visibleTypes.Length==0)
+        {
+            ModuleLibrary.Children.Add(new TextBlock
+            {
+                Text=query.Length==0 ? "همهٔ ماژول‌ها در تنظیمات پنهان شده‌اند." : "ماژولی با این جست‌وجو پیدا نشد.",
+                TextWrapping=TextWrapping.Wrap,TextAlignment=TextAlignment.Center,Foreground=ResourceBrush("Muted"),
+                Margin=new Thickness(12,22,12,12),FontSize=11
+            });
         }
         Dispatcher.BeginInvoke(new Action(()=>{UpdateModuleTileSizes();UpdateLibraryScrollButtons();}),System.Windows.Threading.DispatcherPriority.Loaded);
     }
@@ -394,10 +409,11 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
         RenderSelection(); DrawWires();
     }
     private static bool FindButton(DependencyObject? item) { while (item is not null) { if (item is Button || item is TextBox) return true; item = VisualTreeHelper.GetParent(item); } return false; }
-    private static string SocketColor(ModuleData type) => (type,ThemeManager.IsLight) switch
+    private static string SocketColor(ModuleData type) => type switch
     {
-        (ModuleData.Mask,true)=>"#6A5078", (ModuleData.Mask,false)=>"#D7A9E6", (ModuleData.Image,true)=>"#8A6414", (ModuleData.Palette,true)=>"#8E6132", (ModuleData.Weaves,true)=>"#7651A5", (ModuleData.Fabric,true)=>"#426D8C", (ModuleData.Preview,true)=>"#467A54",
-        (ModuleData.Image,false)=>"#D7B25B", (ModuleData.Palette,false)=>"#D4A477", (ModuleData.Weaves,false)=>"#BC9BE4", (ModuleData.Fabric,false)=>"#83B0CD", (ModuleData.Any,true)=>"#555555", (ModuleData.Report,true)=>"#555555", (ModuleData.Any,false)=>"#DDDDDD", (ModuleData.Report,false)=>"#DDDDDD", _=>"#91C9A0"
+        ModuleData.Mask=>"#6A5078", ModuleData.Image=>"#8A6414", ModuleData.Palette=>"#8E6132",
+        ModuleData.Weaves=>"#7651A5", ModuleData.Fabric=>"#426D8C", ModuleData.Preview=>"#467A54",
+        ModuleData.Any or ModuleData.Report=>"#555555", _=>"#91C9A0"
     };
     private ModuleNode? NodeAt(Point point,Guid exclude) => graph.Nodes.LastOrDefault(n=>n.Id!=exclude && point.X>=n.X && point.X<=n.X+NodeDiameter && point.Y>=n.Y && point.Y<=n.Y+NodeDiameter);
     private bool ConnectNodes(ModuleNode source,ModuleNode target,string? requestedPort)
@@ -748,6 +764,7 @@ public partial class ModuleWindow : Wpf.Ui.Controls.FluentWindow
     private void Inspect()
     {
         Inspector.Children.Clear(); inspectorResultItems.Clear(); var node=Current;
+        if(LibraryHint is not null) LibraryHint.Text=node is null ? "برای مشاهدهٔ تنظیمات، یک ماژول را انتخاب کنید." : "انتخاب‌شده: "+Spec(node.Kind).name+" · برای ویرایش دوبار کلیک کنید.";
         if (node is null) { Inspector.Children.Add(Note("برای دیدن تنظیمات، یک گره را انتخاب کنید.")); return; }
         var spec=Spec(node.Kind);
         Inspector.Children.Add(BuildModuleSummary(node,spec));

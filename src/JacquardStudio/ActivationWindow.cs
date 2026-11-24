@@ -62,17 +62,19 @@ public sealed class ActivationWindow : Window
         var headerGrid = new Grid { FlowDirection = FlowDirection.RightToLeft };
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var logo = new Image
+        var logo = new Border
         {
-            Source = new BitmapImage(new Uri("pack://application:,,,/JacquardStudio;component/Assets/sam-emblem.png", UriKind.Absolute)),
             Width = 68,
             Height = 68,
-            Margin = new Thickness(0, 0, 0, 0),
+            CornerRadius = new CornerRadius(16),
+            Background = new SolidColorBrush(Color.FromRgb(0xED,0xF2,0xFF)),
+            Margin = new Thickness(0),
             VerticalAlignment = VerticalAlignment.Center,
+            Child = StudioIconCatalog.Create(ModuleKind.Weaves,48),
         };
         headerGrid.Children.Add(logo);
         var title = new StackPanel { Margin = new Thickness(16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        title.Children.Add(new TextBlock { Text = "فعال‌سازی نرم‌افزار سام", FontSize = 22, FontWeight = FontWeights.Bold });
+        title.Children.Add(new TextBlock { Text = "فعال‌سازی Jacquard Studio", FontSize = 22, FontWeight = FontWeights.Bold });
         title.Children.Add(new TextBlock { Text = "برای ادامه، مجوز معتبر را از سایت بررسی کنید یا کد فعال‌سازی را وارد کنید.", FontSize = 12, Foreground = BrushResource("Muted"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) });
         Grid.SetColumn(title, 1);
         headerGrid.Children.Add(title);

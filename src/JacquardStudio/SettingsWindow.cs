@@ -82,19 +82,21 @@ public sealed class SettingsWindow : Window
             tabs.Items.Add(new TabItem { Header = title, Content = scroll, Padding = new Thickness(12, 6, 12, 6) });
         }
 
-        var appearancePage = Page("ظاهر برنامه", "تم دلخواه را انتخاب کنید؛ ظاهر پنجره‌ها، بوم گراف و آیکون‌ها نیز هماهنگ می‌شود و انتخاب شما حفظ خواهد شد.");
+        var appearancePage = Page("ظاهر برنامه", "رابط Jacquard Studio با بستهٔ طراحی Vazir یکپارچه شده است؛ نسخهٔ جدید فقط همین ظاهر را ارائه می‌کند.");
         var names = ThemeManager.AvailableThemes.Select(item=>item.Name).ToArray();
         var keys = ThemeManager.AvailableThemes.Select(item=>item.Id).ToArray();
         var theme = new ComboBox
         {
             Name = "ThemeSelection",
             ItemsSource = names,
-            SelectedIndex = Math.Max(0, Array.IndexOf(keys, initial.Theme)),
+            SelectedIndex = Math.Max(0, Array.IndexOf(keys, ThemeManager.ThemeId)),
             MinWidth = 250,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Margin = new Thickness(0, 4, 0, 2),
+            IsEnabled = false,
+            ToolTip = "ظاهر فعلی مطابق طراحی Jacquard Studio Vazir است و تم قدیمی ارائه نمی‌شود.",
         };
-        appearancePage.Children.Add(Section("تم و رنگ‌بندی", "تغییر تم روی پنجره‌ها و فضای گراف اعمال می‌شود.", theme));
+        appearancePage.Children.Add(Section("طراحی Jacquard Vazir", "آبی کبالت، قلم Vazir، آیکون‌های SVG و سطح‌های روشن، ظاهر واحد این نسخه هستند.", theme));
         appearancePage.Children.Add(Section("زبان", "زبان محیط ماژولی در این نسخه فارسی است؛ ترجمهٔ کامل انگلیسی هنوز آماده نیست.", new TextBlock { Text = "فارسی", FontWeight = FontWeights.SemiBold }));
         AddTab("ظاهر", appearancePage);
 

@@ -2,305 +2,259 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-        Title="Jacquard Studio · Workspace" Icon="Assets/app.ico"
-        Width="1500" Height="900" MinWidth="1080" MinHeight="680"
+        Title="Jacquard Studio · پروژه جدید" Icon="Assets/app.ico"
+        Width="1540" Height="940" MinWidth="1120" MinHeight="700"
         WindowStartupLocation="CenterScreen" WindowState="Maximized"
         WindowStyle="None" ResizeMode="CanResize"
-        PreviewKeyDown="Workspace_KeyDown" Background="{DynamicResource GraphBackground}"
+        PreviewKeyDown="Workspace_KeyDown" Background="{DynamicResource AppBackground}"
         Foreground="{DynamicResource PrimaryText}" FontFamily="{StaticResource VazirFont}"
         Closing="Window_Closing">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/>
     </WindowChrome.WindowChrome>
     <Window.Resources>
-        <Style x:Key="GraphButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Style x:Key="StudioButton" TargetType="Button">
+            <Setter Property="FontFamily" Value="{StaticResource VazirFont}"/>
             <Setter Property="Background" Value="{DynamicResource ButtonBackground}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource ButtonBorder}"/>
             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,7"/>
-            <Setter Property="Margin" Value="3,0"/>
-        </Style>
-        <Style x:Key="RailButton" TargetType="Button" BasedOn="{StaticResource GraphButton}">
-            <Setter Property="Width" Value="82"/>
-            <Setter Property="Height" Value="56"/>
-            <Setter Property="MinWidth" Value="78"/>
-            <Setter Property="Padding" Value="4,3"/>
-            <Setter Property="Margin" Value="2,2"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="FontSize" Value="17"/>
-            <Setter Property="HorizontalAlignment" Value="Center"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="3,2"/>
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="RailSurface" Background="{TemplateBinding Background}"
+                        <Border x:Name="Surface" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8" Padding="{TemplateBinding Padding}">
-                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                  RecognizesAccessKey="True"/>
-                                <TextBlock Text="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=(AutomationProperties.Name)}"
-                                           FontFamily="{StaticResource VazirFont}" FontSize="9" TextAlignment="Center"
-                                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="23"
-                                           Margin="0,3,0,0" Foreground="{TemplateBinding Foreground}"
-                                           FlowDirection="RightToLeft"/>
-                            </StackPanel>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="RailSurface" Property="BorderBrush" Value="{DynamicResource Border}"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="RailSurface" Property="Opacity" Value="0.8"/>
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="RailSurface" Property="BorderBrush" Value="{DynamicResource Accent}"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="RailSurface" Property="Opacity" Value="0.45"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="RailToggleButton" TargetType="ToggleButton">
-            <Setter Property="Width" Value="82"/>
-            <Setter Property="Height" Value="56"/>
-            <Setter Property="MinWidth" Value="78"/>
-            <Setter Property="Padding" Value="4,3"/>
-            <Setter Property="Margin" Value="2,2"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
-            <Setter Property="FontSize" Value="17"/>
-            <Setter Property="HorizontalAlignment" Value="Center"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="RailSurface" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8" Padding="{TemplateBinding Padding}">
-                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <TextBlock Text="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=(AutomationProperties.Name)}"
-                                           FontFamily="{StaticResource VazirFont}" FontSize="9" TextAlignment="Center"
-                                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="23"
-                                           Margin="0,3,0,0" Foreground="{TemplateBinding Foreground}"
-                                           FlowDirection="RightToLeft"/>
-                            </StackPanel>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="RailSurface" Property="Background" Value="{DynamicResource ButtonBackground}"/>
-                                <Setter TargetName="RailSurface" Property="BorderBrush" Value="{DynamicResource Border}"/>
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="RailSurface" Property="Background" Value="{DynamicResource GraphSelectedItem}"/>
-                                <Setter TargetName="RailSurface" Property="BorderBrush" Value="{DynamicResource Accent}"/>
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="RailSurface" Property="BorderBrush" Value="{DynamicResource Accent}"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="RailSurface" Property="Opacity" Value="0.45"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="RailScrollButton" TargetType="Button" BasedOn="{StaticResource GraphButton}">
-            <Setter Property="Height" Value="26"/>
-            <Setter Property="MinHeight" Value="26"/>
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="Margin" Value="2,1"/>
-            <Setter Property="Background" Value="{DynamicResource GraphSurface}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
-            <Setter Property="FontSize" Value="14"/>
-        </Style>
-        <Style x:Key="ModuleTileButton" TargetType="Button" BasedOn="{StaticResource GraphButton}">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="7,8,7,5"/>
-            <Setter Property="Margin" Value="0"/>
-            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="TileSurface" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="12" Padding="{TemplateBinding Padding}">
+                                CornerRadius="9" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                                               RecognizesAccessKey="True"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="TileSurface" Property="BorderBrush" Value="{DynamicResource Accent}"/>
-                                <Setter TargetName="TileSurface" Property="Background" Value="{DynamicResource ButtonBackground}"/>
+                                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource GraphSelectedItem}"/>
                             </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="TileSurface" Property="Background" Value="{DynamicResource GraphSelectedItem}"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="TileSurface" Property="Opacity" Value="0.55"/>
-                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.78"/></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.45"/></Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
-        <Style x:Key="ModuleCornerButton" TargetType="Button" BasedOn="{StaticResource GraphButton}">
-            <Setter Property="Width" Value="25"/>
-            <Setter Property="Height" Value="25"/>
-            <Setter Property="MinWidth" Value="25"/>
-            <Setter Property="MinHeight" Value="25"/>
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="Margin" Value="4"/>
-            <Setter Property="Background" Value="{DynamicResource GraphHeader}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
-            <Setter Property="FontSize" Value="12"/>
+        <Style x:Key="RailButton" TargetType="Button" BasedOn="{StaticResource StudioButton}">
+            <Setter Property="Width" Value="48"/><Setter Property="MinWidth" Value="48"/>
+            <Setter Property="Height" Value="42"/><Setter Property="MinHeight" Value="42"/>
+            <Setter Property="Padding" Value="4"/><Setter Property="Margin" Value="3,2"/>
+            <Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="RailSurface" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="RailSurface" Property="Background" Value="{DynamicResource GraphSelectedItem}"/><Setter TargetName="RailSurface" Property="BorderBrush" Value="{DynamicResource Border}"/></Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="RailSurface" Property="Opacity" Value="0.78"/></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="RailSurface" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="RailSurface" Property="Opacity" Value="0.4"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="RailToggleButton" TargetType="ToggleButton">
+            <Setter Property="Width" Value="48"/><Setter Property="Height" Value="42"/>
+            <Setter Property="MinWidth" Value="48"/><Setter Property="MinHeight" Value="42"/>
+            <Setter Property="Padding" Value="4"/><Setter Property="Margin" Value="3,2"/>
+            <Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="RailSurface" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="RailSurface" Property="Background" Value="{DynamicResource GraphSelectedItem}"/></Trigger>
+                            <Trigger Property="IsChecked" Value="True"><Setter TargetName="RailSurface" Property="Background" Value="{DynamicResource GraphSelectedItem}"/><Setter TargetName="RailSurface" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="RailSurface" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ModuleTileButton" TargetType="Button" BasedOn="{StaticResource StudioButton}">
+            <Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="8,9"/><Setter Property="Margin" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="VerticalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="TileSurface" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="11" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="TileSurface" Property="Background" Value="{DynamicResource GraphSelectedItem}"/><Setter TargetName="TileSurface" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="TileSurface" Property="Opacity" Value="0.76"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="TileSurface" Property="Opacity" Value="0.48"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ModuleCornerButton" TargetType="Button" BasedOn="{StaticResource StudioButton}">
+            <Setter Property="Width" Value="26"/><Setter Property="Height" Value="26"/>
+            <Setter Property="MinWidth" Value="26"/><Setter Property="MinHeight" Value="26"/>
+            <Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="4"/>
+            <Setter Property="Background" Value="{DynamicResource HeaderBackground}"/>
+        </Style>
+        <Style x:Key="LibraryScrollButton" TargetType="Button" BasedOn="{StaticResource StudioButton}">
+            <Setter Property="MinHeight" Value="25"/><Setter Property="Height" Value="25"/>
+            <Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="2,1"/>
+            <Setter Property="Background" Value="{DynamicResource HeaderBackground}"/>
         </Style>
     </Window.Resources>
 
     <Grid FlowDirection="LeftToRight">
         <Grid.RowDefinitions>
-            <RowDefinition Height="36"/>
+            <RowDefinition Height="54"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="28"/>
+            <RowDefinition Height="30"/>
         </Grid.RowDefinitions>
 
         <Border x:Name="TitleBar" Grid.Row="0" Background="{DynamicResource HeaderBackground}"
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
                 MouseLeftButtonDown="TitleBar_MouseLeftButtonDown" MouseRightButtonUp="TitleBar_MouseRightButtonUp">
-            <Grid Margin="10,0" FlowDirection="LeftToRight">
+            <Grid Margin="14,0" FlowDirection="LeftToRight">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <Image Grid.Column="0" Source="Assets/sam-emblem.png" Width="24" Height="24" Stretch="Uniform" Margin="2,0,9,0" ToolTip="نشان سام"/>
-                <TextBlock x:Name="WindowTitleText" Grid.Column="1"
-                           Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}"
-                           VerticalAlignment="Center" HorizontalAlignment="Left" FontWeight="SemiBold"
-                           TextTrimming="CharacterEllipsis" FlowDirection="LeftToRight"/>
+                <Border Grid.Column="0" Width="34" Height="34" CornerRadius="10" Background="{DynamicResource GraphSelectedItem}" Margin="2,0,10,0">
+                    <Path Data="M4,5 H11 V19 H4 Z M13,5 H20 V19 H13 Z M6,8 H9 M6,11 H9 M6,14 H9 M15,8 H18 M15,11 H18 M15,14 H18"
+                          Stroke="{DynamicResource Accent}" StrokeThickness="1.5" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Stretch="Uniform" Margin="6"/>
+                </Border>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" FlowDirection="LeftToRight">
+                    <TextBlock Text="JACQUARD" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
+                    <TextBlock Text="  /  STUDIO" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Accent}" VerticalAlignment="Center" Margin="3,1,0,0"/>
+                    <Border Width="1" Height="20" Background="{DynamicResource Border}" Margin="14,0"/>
+                    <TextBlock x:Name="WindowTitleText" Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}"
+                               VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource Muted}"
+                               TextTrimming="CharacterEllipsis" FlowDirection="RightToLeft"/>
+                </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="MinimizeWindowButton" Content="−" ToolTip="کمینه کردن" AutomationProperties.Name="Minimize"
-                            Click="MinimizeWindow_Click" Width="44" Height="32" MinHeight="32" Padding="0" Background="Transparent" BorderBrush="Transparent"/>
+                            Click="MinimizeWindow_Click" Width="44" Height="36" MinHeight="32" Padding="0" Background="Transparent" BorderBrush="Transparent"/>
                     <Button x:Name="MaximizeWindowButton" Content="□" ToolTip="بزرگ‌نمایی / بازگردانی" AutomationProperties.Name="Maximize or restore"
-                            Click="MaximizeWindow_Click" Width="44" Height="32" MinHeight="32" Padding="0" Background="Transparent" BorderBrush="Transparent"/>
+                            Click="MaximizeWindow_Click" Width="44" Height="36" MinHeight="32" Padding="0" Background="Transparent" BorderBrush="Transparent"/>
                     <Button x:Name="CloseWindowButton" Content="✕" ToolTip="بستن" AutomationProperties.Name="Close"
-                            Click="CloseWindow_Click" Width="44" Height="32" MinHeight="32" Padding="0" Background="{DynamicResource DangerBackground}" BorderBrush="Transparent"/>
+                            Click="CloseWindow_Click" Width="44" Height="36" MinHeight="32" Padding="0" Background="Transparent" BorderBrush="Transparent"/>
                 </StackPanel>
             </Grid>
         </Border>
 
         <Grid Grid.Row="1" x:Name="WorkspaceColumns">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="200"/>
+                <ColumnDefinition Width="62"/>
+                <ColumnDefinition x:Name="LibraryColumn" Width="300"/>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition x:Name="LibraryColumn" Width="312"/>
+                <ColumnDefinition Width="350"/>
             </Grid.ColumnDefinitions>
 
-            <Border x:Name="NavigationRail" Grid.Column="0" Background="{DynamicResource GraphHeader}"
+            <Border x:Name="NavigationRail" Grid.Column="0" Background="{DynamicResource HeaderBackground}"
                     BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
-                <DockPanel Margin="8,7" LastChildFill="True">
-                    <UniformGrid x:Name="PinnedRailActions" DockPanel.Dock="Bottom" Columns="2"
-                                 HorizontalAlignment="Center" Margin="0,5,0,0">
-                        <Button x:Name="SettingsRailButton" Style="{StaticResource RailButton}" Content="&#xE713;"
-                                FontFamily="Segoe MDL2 Assets" ToolTip="تنظیمات" AutomationProperties.Name="تنظیمات" Click="Settings_Click"/>
-                        <Button x:Name="HelpRailButton" Style="{StaticResource RailButton}" Content="?"
-                                ToolTip="راهنما" AutomationProperties.Name="راهنما" Click="Guide_Click"/>
-                        <Button x:Name="AboutRailButton" Style="{StaticResource RailButton}" Content="&#xE946;"
-                                FontFamily="Segoe MDL2 Assets" ToolTip="دربارهٔ برنامه" AutomationProperties.Name="دربارهٔ برنامه" Click="About_Click"/>
-                    </UniformGrid>
-                    <StackPanel DockPanel.Dock="Top" Margin="5,1,5,8">
-                        <TextBlock Text="JACQUARD / WORKFLOW" FlowDirection="LeftToRight" FontSize="9" FontWeight="Bold"
-                                   Foreground="{DynamicResource Accent}"/>
-                        <TextBlock Text="فضای کار" FontSize="16" FontWeight="SemiBold" Margin="0,2,0,0"/>
-                        <Border Height="1" Background="{DynamicResource Border}" Margin="0,8,0,0"/>
-                    </StackPanel>
-                    <Grid>
-                        <Grid.RowDefinitions><RowDefinition Height="28"/><RowDefinition Height="*"/><RowDefinition Height="28"/></Grid.RowDefinitions>
-                        <Button x:Name="NavigationScrollUpButton" Grid.Row="0" Style="{StaticResource RailScrollButton}"
-                                Content="⌃" Visibility="Hidden" ToolTip="رفتن به آیکون‌های بالاتر"
-                                AutomationProperties.Name="رفتن به آیکون‌های بالاتر" Click="NavigationScrollUp_Click"/>
-                        <ScrollViewer x:Name="NavigationScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Hidden"
-                                      HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
-                                      ScrollChanged="NavigationRail_ScrollChanged">
-                            <StackPanel x:Name="RailActionGroups" HorizontalAlignment="Stretch">
-                                <UniformGrid x:Name="RailProjectActions" Columns="2" HorizontalAlignment="Stretch">
-                                    <Button x:Name="NewRailButton" Style="{StaticResource RailButton}" Content="&#xE710;"
-                                            FontFamily="Segoe MDL2 Assets" ToolTip="پروژهٔ جدید" AutomationProperties.Name="پروژهٔ جدید" Click="New_Click"/>
-                                    <Button x:Name="OpenRailButton" Style="{StaticResource RailButton}" Content="&#xE8E5;"
-                                            FontFamily="Segoe MDL2 Assets" ToolTip="باز کردن پروژه" AutomationProperties.Name="باز کردن پروژه" Click="Open_Click"/>
-                                    <Button x:Name="SaveRailButton" Style="{StaticResource RailButton}" Content="&#xE74E;"
-                                            FontFamily="Segoe MDL2 Assets" ToolTip="ذخیرهٔ پروژه" AutomationProperties.Name="ذخیرهٔ پروژه" Click="Save_Click"/>
-                                    <Button x:Name="SaveAsRailButton" Style="{StaticResource RailButton}" Content="&#xE792;"
-                                            FontFamily="Segoe MDL2 Assets" ToolTip="ذخیره با نام" AutomationProperties.Name="ذخیره با نام" Click="SaveAs_Click"/>
-                                </UniformGrid>
-                                <Border Height="1" Background="{DynamicResource Border}" Margin="5,5"/>
-                                <UniformGrid Columns="2" HorizontalAlignment="Stretch">
-                                    <Button x:Name="CheckUpdatesButton" Style="{StaticResource RailButton}" Content="&#xE72C;"
-                                            FontFamily="Segoe MDL2 Assets" ToolTip="بررسی و دریافت به‌روزرسانی"
-                                            AutomationProperties.Name="بررسی نسخهٔ جدید" Click="CheckUpdates_Click"/>
-                                    <Button x:Name="ThemeToggle" Style="{StaticResource RailButton}" Content="☼" Click="Theme_Click"
-                                            ToolTip="تغییر تم روشن یا تیره" AutomationProperties.Name="تغییر تم روشن یا تیره" FontSize="17"/>
-                                    <Button x:Name="RunRailButton" Style="{StaticResource RailButton}" Content="&#xE768;"
-                                            FontFamily="Segoe MDL2 Assets" Background="{DynamicResource ActionBackground}"
-                                            Foreground="{DynamicResource AccentForeground}" BorderBrush="{DynamicResource ActionBackground}"
-                                            ToolTip="اجرای ماژول انتخاب‌شده" AutomationProperties.Name="اجرای ماژول انتخاب‌شده" Click="Run_Click"/>
-                                </UniformGrid>
-                                <Border Height="1" Background="{DynamicResource Border}" Margin="5,5"/>
-                                <UniformGrid Columns="2" HorizontalAlignment="Stretch">
-                                    <Button x:Name="FitAllRailButton" Style="{StaticResource RailButton}" Content="⛶"
-                                            ToolTip="همهٔ ماژول‌ها در پنجره" AutomationProperties.Name="همهٔ ماژول‌ها در پنجره" Click="FitAll_Click"/>
-                                    <Button x:Name="AddTextRailButton" Style="{StaticResource RailButton}" Content="T+"
-                                            ToolTip="افزودن متن به فضای کار" AutomationProperties.Name="افزودن متن" Click="AddText_Click"/>
-                                    <Button x:Name="AddFrameRailButton" Style="{StaticResource RailButton}" Content="▣"
-                                            ToolTip="افزودن کادر به فضای کار" AutomationProperties.Name="افزودن کادر" Click="AddFrame_Click"/>
-                                    <Button x:Name="ArrangeRailButton" Style="{StaticResource RailButton}" Content="▦"
-                                            ToolTip="چیدمان ماژول‌ها در ردیف و ستون" AutomationProperties.Name="چیدمان ماژول‌ها" Click="Arrange_Click"/>
-                                    <Button x:Name="PresetRailButton" Style="{StaticResource RailButton}" Content="⛓"
-                                            ToolTip="ساخت زنجیرهٔ عمومی" AutomationProperties.Name="زنجیرهٔ عمومی" Click="Preset_Click"/>
-                                    <Button x:Name="CustomPresetsRailButton" Style="{StaticResource RailButton}" Content="★"
-                                            ToolTip="ذخیره و استفادهٔ دوباره از زنجیره‌های سفارشی" AutomationProperties.Name="زنجیره‌های سفارشی" Click="CustomPresets_Click"/>
-                                    <Button x:Name="ClearAllRailButton" Style="{StaticResource RailButton}" Content="&#xE74D;"
-                                            FontFamily="Segoe MDL2 Assets" ToolTip="حذف همهٔ ماژول‌ها" AutomationProperties.Name="حذف همهٔ ماژول‌ها" Click="ClearAll_Click"/>
-                                </UniformGrid>
-                                <Border Height="1" Background="{DynamicResource Border}" Margin="5,5"/>
-                                <UniformGrid Columns="2" HorizontalAlignment="Stretch">
-                                    <Button x:Name="ZoomOutRailButton" Style="{StaticResource RailButton}" Content="−"
-                                            ToolTip="کوچک‌نمایی" AutomationProperties.Name="کوچک‌نمایی" Click="ZoomOut_Click"/>
-                                    <Button x:Name="ZoomInRailButton" Style="{StaticResource RailButton}" Content="+"
-                                            ToolTip="بزرگ‌نمایی" AutomationProperties.Name="بزرگ‌نمایی" Click="ZoomIn_Click"/>
-                                    <Button x:Name="DeleteRailButton" Style="{StaticResource RailButton}" Content="⌫"
-                                            ToolTip="حذف مورد انتخاب‌شده" AutomationProperties.Name="حذف مورد انتخاب‌شده" Click="Delete_Click"/>
-                                    <ToggleButton x:Name="AlertAnimations" Style="{StaticResource RailToggleButton}" Content="⚠"
-                                                  IsChecked="True" ToolTip="چشمک هشدار را خاموش یا روشن کنید" AutomationProperties.Name="چشمک هشدار"/>
-                                </UniformGrid>
-                                <Border Height="1" Background="{DynamicResource Border}" Margin="5,5"/>
-                                <UniformGrid Columns="2" HorizontalAlignment="Stretch">
-                                    <Button x:Name="LegacyWorkspaceButton" Style="{StaticResource RailButton}" Content="&#xE80F;"
-                                            FontFamily="Segoe MDL2 Assets" ToolTip="محیط مرحله‌ای" AutomationProperties.Name="محیط مرحله‌ای" Click="Legacy_Click"/>
-                                    <Button x:Name="LibraryRailButton" Style="{StaticResource RailButton}" Content="&#xE8A5;"
-                                            FontFamily="Segoe MDL2 Assets" ToolTip="نمایش یا پنهان کردن فهرست ماژول‌ها"
-                                            AutomationProperties.Name="نمایش یا پنهان کردن فهرست ماژول‌ها" Click="LibraryToggle_Click"/>
-                                </UniformGrid>
+                <DockPanel Margin="5,8" LastChildFill="True">
+                    <Button x:Name="NavigationScrollUpButton" DockPanel.Dock="Top" Style="{StaticResource LibraryScrollButton}"
+                            Content="⌃" Visibility="Hidden" ToolTip="ابزارهای بالاتر" Click="NavigationScrollUp_Click"/>
+                    <Button x:Name="NavigationScrollDownButton" DockPanel.Dock="Bottom" Style="{StaticResource LibraryScrollButton}"
+                            Content="⌄" Visibility="Hidden" ToolTip="ابزارهای پایین‌تر" Click="NavigationScrollDown_Click"/>
+                    <ScrollViewer x:Name="NavigationScrollViewer" VerticalScrollBarVisibility="Hidden"
+                                  HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
+                                  ScrollChanged="NavigationRail_ScrollChanged">
+                        <StackPanel x:Name="RailActionGroups" HorizontalAlignment="Center">
+                            <StackPanel x:Name="RailProjectActions" HorizontalAlignment="Center">
+                                <Button x:Name="NewRailButton" Style="{StaticResource RailButton}" Content="+" ToolTip="پروژهٔ جدید" AutomationProperties.Name="پروژهٔ جدید" Click="New_Click"/>
+                                <Button x:Name="OpenRailButton" Style="{StaticResource RailButton}" Content="↗" ToolTip="باز کردن پروژه" AutomationProperties.Name="باز کردن پروژه" Click="Open_Click"/>
+                                <Button x:Name="SaveRailButton" Style="{StaticResource RailButton}" Content="✓" ToolTip="ذخیرهٔ پروژه" AutomationProperties.Name="ذخیرهٔ پروژه" Click="Save_Click"/>
+                                <Button x:Name="SaveAsRailButton" Style="{StaticResource RailButton}" Content="⇧" ToolTip="ذخیره با نام" AutomationProperties.Name="ذخیره با نام" Click="SaveAs_Click"/>
                             </StackPanel>
+                            <Border Height="1" Width="38" Background="{DynamicResource Border}" Margin="4,6"/>
+                            <Button x:Name="CheckUpdatesButton" Style="{StaticResource RailButton}" Content="↻" ToolTip="بررسی و دریافت به‌روزرسانی" AutomationProperties.Name="بررسی نسخهٔ جدید" Click="CheckUpdates_Click"/>
+                            <Button x:Name="RunRailButton" Style="{StaticResource RailButton}" Content="▶" Background="{DynamicResource ActionBackground}" Foreground="{DynamicResource AccentForeground}" BorderBrush="{DynamicResource ActionBackground}" ToolTip="اجرای ماژول انتخاب‌شده" AutomationProperties.Name="اجرای ماژول انتخاب‌شده" Click="Run_Click"/>
+                            <Border Height="1" Width="38" Background="{DynamicResource Border}" Margin="4,6"/>
+                            <Button x:Name="FitAllRailButton" Style="{StaticResource RailButton}" Content="□" ToolTip="همهٔ ماژول‌ها در پنجره" AutomationProperties.Name="همهٔ ماژول‌ها در پنجره" Click="FitAll_Click"/>
+                            <Button x:Name="AddTextRailButton" Style="{StaticResource RailButton}" Content="T" ToolTip="افزودن متن به فضای کار" AutomationProperties.Name="افزودن متن" Click="AddText_Click"/>
+                            <Button x:Name="AddFrameRailButton" Style="{StaticResource RailButton}" Content="▣" ToolTip="افزودن کادر به فضای کار" AutomationProperties.Name="افزودن کادر" Click="AddFrame_Click"/>
+                            <Button x:Name="ArrangeRailButton" Style="{StaticResource RailButton}" Content="▦" ToolTip="چیدمان ماژول‌ها در ردیف و ستون" AutomationProperties.Name="چیدمان ماژول‌ها" Click="Arrange_Click"/>
+                            <Button x:Name="PresetRailButton" Style="{StaticResource RailButton}" Content="⛓" ToolTip="ساخت زنجیرهٔ عمومی" AutomationProperties.Name="زنجیرهٔ عمومی" Click="Preset_Click"/>
+                            <Button x:Name="CustomPresetsRailButton" Style="{StaticResource RailButton}" Content="☆" ToolTip="ذخیره و استفادهٔ دوباره از زنجیره‌های سفارشی" AutomationProperties.Name="زنجیره‌های سفارشی" Click="CustomPresets_Click"/>
+                            <Button x:Name="ClearAllRailButton" Style="{StaticResource RailButton}" Content="×" ToolTip="حذف همهٔ ماژول‌ها" AutomationProperties.Name="حذف همهٔ ماژول‌ها" Click="ClearAll_Click"/>
+                            <Border Height="1" Width="38" Background="{DynamicResource Border}" Margin="4,6"/>
+                            <Button x:Name="ZoomOutRailButton" Style="{StaticResource RailButton}" Content="−" ToolTip="کوچک‌نمایی" AutomationProperties.Name="کوچک‌نمایی" Click="ZoomOut_Click"/>
+                            <Button x:Name="ZoomInRailButton" Style="{StaticResource RailButton}" Content="+" ToolTip="بزرگ‌نمایی" AutomationProperties.Name="بزرگ‌نمایی" Click="ZoomIn_Click"/>
+                            <Button x:Name="DeleteRailButton" Style="{StaticResource RailButton}" Content="⌫" ToolTip="حذف مورد انتخاب‌شده" AutomationProperties.Name="حذف مورد انتخاب‌شده" Click="Delete_Click"/>
+                            <ToggleButton x:Name="AlertAnimations" Style="{StaticResource RailToggleButton}" Content="!" IsChecked="True"
+                                          ToolTip="چشمک هشدار را خاموش یا روشن کنید" AutomationProperties.Name="چشمک هشدار"/>
+                            <Border Height="1" Width="38" Background="{DynamicResource Border}" Margin="4,6"/>
+                            <Button x:Name="LibraryRailButton" Style="{StaticResource RailButton}" Content="▥" ToolTip="نمایش یا پنهان کردن کتابخانهٔ ماژول‌ها" AutomationProperties.Name="نمایش یا پنهان کردن فهرست ماژول‌ها" Click="LibraryToggle_Click"/>
+                            <Button x:Name="SettingsRailButton" Style="{StaticResource RailButton}" Content="⚙" ToolTip="تنظیمات" AutomationProperties.Name="تنظیمات" Click="Settings_Click"/>
+                            <Button x:Name="HelpRailButton" Style="{StaticResource RailButton}" Content="?" ToolTip="راهنما" AutomationProperties.Name="راهنما" Click="Guide_Click"/>
+                            <Button x:Name="AboutRailButton" Style="{StaticResource RailButton}" Content="i" ToolTip="دربارهٔ برنامه" AutomationProperties.Name="دربارهٔ برنامه" Click="About_Click"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <Border x:Name="LibraryPanel" Grid.Column="1" Background="{DynamicResource GraphSurface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
+                <DockPanel Margin="12,13" FlowDirection="RightToLeft">
+                    <StackPanel DockPanel.Dock="Top" Margin="1,0,1,8">
+                        <TextBlock Text="JACQUARD / MODULES" FlowDirection="LeftToRight" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource Accent}"/>
+                        <TextBlock Text="کتابخانهٔ ماژول‌ها" FontSize="17" FontWeight="Bold" Margin="0,3,0,1"/>
+                        <TextBlock Text="افزودن به بوم با یک کلیک، یا کشیدن و رها کردن." TextWrapping="Wrap" Foreground="{DynamicResource Muted}" FontSize="10" Margin="0,2,0,9"/>
+                        <TextBox x:Name="ModuleSearchBox" MinHeight="36" Padding="9,6" FlowDirection="RightToLeft"
+                                 ToolTip="جست‌وجو در نام یا گروه ماژول‌ها" TextChanged="ModuleSearchBox_TextChanged"/>
+                        <Border Height="1" Background="{DynamicResource Border}" Margin="0,11,0,0"/>
+                    </StackPanel>
+                    <TextBlock x:Name="LibraryHint" DockPanel.Dock="Bottom" Text="برای مشاهدهٔ تنظیمات، یک ماژول را انتخاب کنید."
+                               TextWrapping="Wrap" Foreground="{DynamicResource Muted}" FontSize="10" Margin="2,9,2,0"/>
+                    <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="25"/><RowDefinition Height="*"/><RowDefinition Height="25"/></Grid.RowDefinitions>
+                        <Button x:Name="LibraryScrollUpButton" Grid.Row="0" Style="{StaticResource LibraryScrollButton}"
+                                Content="⌃" Visibility="Hidden" ToolTip="رفتن به ماژول‌های بالاتر"
+                                AutomationProperties.Name="رفتن به ماژول‌های بالاتر" Click="LibraryScrollUp_Click"/>
+                        <ScrollViewer x:Name="ModuleLibraryScroll" Grid.Row="1" VerticalScrollBarVisibility="Hidden"
+                                      HorizontalScrollBarVisibility="Disabled" CanContentScroll="False" ScrollChanged="ModuleLibrary_ScrollChanged">
+                            <UniformGrid x:Name="ModuleLibrary" Columns="2" FlowDirection="RightToLeft"/>
                         </ScrollViewer>
-                        <Button x:Name="NavigationScrollDownButton" Grid.Row="2" Style="{StaticResource RailScrollButton}"
-                                Content="⌄" Visibility="Hidden" ToolTip="نمایش آیکون‌های بیشتر در پایین"
-                                AutomationProperties.Name="نمایش آیکون‌های بیشتر در پایین" Click="NavigationScrollDown_Click"/>
+                        <Button x:Name="LibraryScrollDownButton" Grid.Row="2" Style="{StaticResource LibraryScrollButton}"
+                                Content="⌄" Visibility="Hidden" ToolTip="نمایش ماژول‌های بیشتر در پایین"
+                                AutomationProperties.Name="نمایش ماژول‌های بیشتر در پایین" Click="LibraryScrollDown_Click"/>
                     </Grid>
                 </DockPanel>
             </Border>
 
-            <Grid Grid.Column="1" x:Name="WorkspaceMain">
-                <Grid Background="{DynamicResource GraphBackground}">
+            <Grid Grid.Column="2" x:Name="WorkspaceMain" Background="{DynamicResource GraphBackground}">
+                <Grid.RowDefinitions><RowDefinition Height="46"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <Border Grid.Row="0" Background="{DynamicResource HeaderBackground}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                    <Grid Margin="15,0" FlowDirection="LeftToRight">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="WORKFLOW / CANVAS" FlowDirection="LeftToRight" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource Accent}" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="ماژول‌ها را به هم وصل کنید؛ برای جابه‌جایی بکشید، برای بازکردن تنظیمات دوبار کلیک کنید."
+                                   FlowDirection="RightToLeft" FontSize="10" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="12,0" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="2" Text="●" Foreground="{DynamicResource Accent}" FontSize="12" VerticalAlignment="Center" ToolTip="فضای کار آماده است"/>
+                    </Grid>
+                </Border>
+                <Grid Grid.Row="1" Background="{DynamicResource GraphBackground}">
                     <ScrollViewer x:Name="GraphScroll" PreviewMouseDown="GraphScroll_MouseDown"
                                   PreviewMouseMove="GraphScroll_MouseMove" PreviewMouseUp="GraphScroll_MouseUp"
                                   LostMouseCapture="GraphScroll_LostMouseCapture" PreviewMouseWheel="GraphScroll_MouseWheel"
@@ -310,16 +264,11 @@
                         <Canvas x:Name="GraphCanvas" Width="1" Height="1" FlowDirection="LeftToRight"
                                 AllowDrop="True" DragOver="GraphCanvas_DragOver" Drop="GraphCanvas_Drop">
                             <Canvas.Background>
-                                <DrawingBrush TileMode="Tile" Viewport="0,0,14,14" ViewportUnits="Absolute"
-                                              Viewbox="0,0,14,14" ViewboxUnits="Absolute">
+                                <DrawingBrush TileMode="Tile" Viewport="0,0,24,24" ViewportUnits="Absolute" Viewbox="0,0,24,24" ViewboxUnits="Absolute">
                                     <DrawingBrush.Drawing>
                                         <DrawingGroup>
-                                            <GeometryDrawing Brush="{DynamicResource GraphBackground}" Geometry="M0,0 H14 V14 H0 Z"/>
-                                            <GeometryDrawing Brush="{DynamicResource GraphGrid}">
-                                                <GeometryDrawing.Geometry>
-                                                    <GeometryGroup><EllipseGeometry Center="1,1" RadiusX="0.7" RadiusY="0.7"/></GeometryGroup>
-                                                </GeometryDrawing.Geometry>
-                                            </GeometryDrawing>
+                                            <GeometryDrawing Brush="{DynamicResource GraphBackground}" Geometry="M0,0 H24 V24 H0 Z"/>
+                                            <GeometryDrawing Brush="{DynamicResource GraphGrid}"><GeometryDrawing.Geometry><GeometryGroup><EllipseGeometry Center="3,3" RadiusX="0.8" RadiusY="0.8"/></GeometryGroup></GeometryDrawing.Geometry></GeometryDrawing>
                                         </DrawingGroup>
                                     </DrawingBrush.Drawing>
                                 </DrawingBrush>
@@ -329,67 +278,46 @@
                             <Canvas x:Name="NodeLayer" Width="1" Height="1"/>
                         </Canvas>
                     </ScrollViewer>
-                    <Image x:Name="WorkspaceEmblem" Source="Assets/sam-emblem.png" Width="440" Height="440"
-                           Stretch="Uniform" Opacity="0.045" HorizontalAlignment="Center" VerticalAlignment="Center"
-                           IsHitTestVisible="False"/>
+                    <Border HorizontalAlignment="Center" VerticalAlignment="Center" Background="{DynamicResource GraphSurface}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="14" Padding="18"
+                            IsHitTestVisible="False" Opacity="0.88" Visibility="Collapsed"/>
                 </Grid>
-
-                <!-- Settings are hosted in a modal editor on node double-click; keep a hidden parking host. -->
-                <Border x:Name="InspectorBorder" Visibility="Collapsed" IsHitTestVisible="False" Width="0" Height="0">
-                    <ContentControl x:Name="InspectorHost" Visibility="Collapsed">
-                        <ScrollViewer x:Name="InspectorScrollHost" HorizontalScrollBarVisibility="Disabled"
-                                      VerticalScrollBarVisibility="Auto" CanContentScroll="False">
-                            <StackPanel x:Name="Inspector" Orientation="Vertical" FlowDirection="RightToLeft" Margin="6,4"/>
-                        </ScrollViewer>
-                    </ContentControl>
-                </Border>
             </Grid>
 
-            <Border x:Name="LibraryPanel" Grid.Column="2" Background="{DynamicResource GraphSurface}"
+            <Border x:Name="InspectorPanel" Grid.Column="3" Background="{DynamicResource GraphSurface}"
                     BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
-                <DockPanel Margin="10,12" FlowDirection="RightToLeft">
+                <DockPanel Margin="12,13" FlowDirection="RightToLeft">
                     <StackPanel DockPanel.Dock="Top" Margin="2,0,2,8">
-                        <TextBlock Text="MODULE LIBRARY" FlowDirection="LeftToRight" FontSize="9" FontWeight="Bold"
-                                   Foreground="{DynamicResource Accent}"/>
-                        <TextBlock Text="ماژول‌ها" FontSize="16" FontWeight="SemiBold" Margin="0,2,0,0"/>
-                        <TextBlock Text="برای افزودن کلیک کنید یا ماژول را به بوم بکشید."
-                                   TextWrapping="Wrap" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,4,0,8"/>
+                        <TextBlock Text="MODULE / INSPECTOR" FlowDirection="LeftToRight" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource Accent}"/>
+                        <TextBlock Text="بازرس و تنظیمات" FontSize="17" FontWeight="Bold" Margin="0,3,0,1"/>
+                        <TextBlock Text="انتخاب یک گره، مشخصات و ورودی‌های آن را اینجا نشان می‌دهد." TextWrapping="Wrap" Foreground="{DynamicResource Muted}" FontSize="10" Margin="0,2,0,8"/>
                         <Border Height="1" Background="{DynamicResource Border}"/>
                     </StackPanel>
-                    <TextBlock DockPanel.Dock="Bottom" Text="راهنما ؟  ·  تنظیمات ⚙  ·  دوبار کلیک روی گره برای ویرایش"
-                               TextWrapping="Wrap" Foreground="{DynamicResource Muted}" FontSize="10" Margin="2,8,2,0"/>
-                    <Grid>
-                        <Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions>
-                        <Button x:Name="LibraryScrollUpButton" Grid.Row="0" Style="{StaticResource RailScrollButton}"
-                                Content="⌃" Visibility="Hidden" ToolTip="رفتن به ماژول‌های بالاتر"
-                                AutomationProperties.Name="رفتن به ماژول‌های بالاتر" Click="LibraryScrollUp_Click"/>
-                        <ScrollViewer x:Name="ModuleLibraryScroll" Grid.Row="1" VerticalScrollBarVisibility="Hidden"
-                                      HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
-                                      ScrollChanged="ModuleLibrary_ScrollChanged">
-                            <UniformGrid x:Name="ModuleLibrary" Columns="2" FlowDirection="RightToLeft"/>
+                    <TextBlock DockPanel.Dock="Bottom" Text="برای اجرای ماژول، از دکمهٔ ▶ در نوار ابزار استفاده کنید."
+                               TextWrapping="Wrap" Foreground="{DynamicResource Muted}" FontSize="10" Margin="2,9,2,0"/>
+                    <ContentControl x:Name="InspectorHost">
+                        <ScrollViewer x:Name="InspectorScrollHost" HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto" CanContentScroll="False" Margin="0,4,0,0">
+                            <StackPanel x:Name="Inspector" Orientation="Vertical" FlowDirection="RightToLeft" Margin="2,3"/>
                         </ScrollViewer>
-                        <Button x:Name="LibraryScrollDownButton" Grid.Row="2" Style="{StaticResource RailScrollButton}"
-                                Content="⌄" Visibility="Hidden" ToolTip="نمایش ماژول‌های بیشتر در پایین"
-                                AutomationProperties.Name="نمایش ماژول‌های بیشتر در پایین" Click="LibraryScrollDown_Click"/>
-                    </Grid>
+                    </ContentControl>
                 </DockPanel>
             </Border>
         </Grid>
 
-        <Border Grid.Row="2" Background="{DynamicResource GraphHeader}"
+        <Border Grid.Row="2" Background="{DynamicResource HeaderBackground}"
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
             <Grid Margin="12,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBlock x:Name="Status" Grid.Column="0" Text="برای شروع ماژول بارگذاری را باز کنید."
+                <TextBlock x:Name="Status" Grid.Column="0" Text="برای شروع، یک ماژول را از کتابخانه اضافه کنید."
                            VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0,0,12,0"
-                           Foreground="{DynamicResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                           Foreground="{DynamicResource Muted}" FontSize="10" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="StatusMetadata" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
                            FlowDirection="RightToLeft" Foreground="{DynamicResource Muted}" FontSize="10"
                            TextTrimming="CharacterEllipsis" AutomationProperties.Name="نسخه، ماژول‌های فعال و مالک نرم‌افزار"/>
             </Grid>
         </Border>
-        <ui:SnackbarPresenter x:Name="SnackbarPresenter" Grid.Row="1" Width="600" MaxWidth="820"
-                              HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="12,0,12,20"
-                              Panel.ZIndex="100"/>
+        <ui:SnackbarPresenter x:Name="SnackbarPresenter" Grid.Row="1" Grid.ColumnSpan="1" Width="600" MaxWidth="820"
+                              HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="12,0,12,20" Panel.ZIndex="100"/>
     </Grid>
 </ui:FluentWindow>

@@ -14,7 +14,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private enum Stage { Size, Colors, Patterns, Machine, Analysis, Floats, Selvedge, Weft, Simulation }
     private Stage stage = Stage.Size;
-    private bool english, busy, bankOpen, lightTheme, projectDirty, allowClose, closePromptActive;
+    private bool english, busy, bankOpen, projectDirty, allowClose, closePromptActive;
     private ModuleKind? moduleEditorKind;
     public WorkflowSession? ModuleEditorResult { get; private set; }
     public WeavePattern? ModuleWeaveResult { get; private set; }
@@ -63,7 +63,43 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private sealed record HistoryState(WorkflowSession Session, Stage Stage, string?[] Names, string?[] Paths);
     private readonly List<HistoryState> undoHistory = new(), redoHistory = new();
 
-    public MainWindow() { InitializeComponent(); SimulationWarpYarn.ItemsSource = FabricSimulation.YarnNames; SimulationWarpUnit.ItemsSource = YarnGeometry.Units; SimulationWarpColorHost.Children.Add(warpSwatch); warpSwatch.ColorChanged += (_, _) => SimulationSettingsChanged(); LoadSimulationSettings(new SimulationSettings()); selvedgeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) }; selvedgeTimer.Tick += async (_, _) => { selvedgeTimer.Stop(); if (!busy && !bankOpen) { if (stage == Stage.Selvedge) await PreviewSelvedgesAsync(false); else if (stage is Stage.Weft or Stage.Machine) await ComposeMachineAsync(false); } }; WeaveCanvas.Changed += (_, _) => { WeaveCanvas.SizeForScrolling(); RefreshControls(); }; WeaveCanvas.SizeForScrolling(); lightTheme = ThemeManager.IsLight; ThemeManager.Apply(ThemeManager.Current, false); VersionText.Text = AppVersion.Display; LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); UpdateLabels(); RefreshControls(); UpdateWindowTitle(); ThemeManager.Changed += OnThemeChanged; Closed += (_, _) => ThemeManager.Changed -= OnThemeChanged; }
+    public MainWindow() { InitializeComponent(); ApplyStudioToolbarIcons(); SimulationWarpYarn.ItemsSource = FabricSimulation.YarnNames; SimulationWarpUnit.ItemsSource = YarnGeometry.Units; SimulationWarpColorHost.Children.Add(warpSwatch); warpSwatch.ColorChanged += (_, _) => SimulationSettingsChanged(); LoadSimulationSettings(new SimulationSettings()); selvedgeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) }; selvedgeTimer.Tick += async (_, _) => { selvedgeTimer.Stop(); if (!busy && !bankOpen) { if (stage == Stage.Selvedge) await PreviewSelvedgesAsync(false); else if (stage is Stage.Weft or Stage.Machine) await ComposeMachineAsync(false); } }; WeaveCanvas.Changed += (_, _) => { WeaveCanvas.SizeForScrolling(); RefreshControls(); }; WeaveCanvas.SizeForScrolling(); ThemeManager.Apply(ThemeManager.Current, false); VersionText.Text = AppVersion.Display; LoadMachineSettings(new MachineSetup(AbsoluteLayout: true)); UpdateLabels(); RefreshControls(); UpdateWindowTitle(); ThemeManager.Changed += OnThemeChanged; Closed += (_, _) => ThemeManager.Changed -= OnThemeChanged; }
+    private void ApplyStudioToolbarIcons()
+    {
+        var iconBrush=(Brush)FindResource("IconGlyph");
+        void Tool(Button button,string glyph)
+        {
+            var path=StudioIconCatalog.CreateTool(glyph,20,iconBrush);
+            button.Content=path;
+            button.Foreground=iconBrush;
+        }
+        Tool(SaveProjectButton,"save");Tool(SaveProjectAsButton,"save-as");
+        Tool(UndoButton,"undo");Tool(RedoButton,"redo");
+        ReportButton.Content=ModuleIcons.Create(ModuleKind.Report,20);BankButton.Content=ModuleIcons.Create(ModuleKind.Weaves,20);
+        Tool(CheckUpdatesButton,"refresh");Tool(HelpButton,"help");Tool(AboutButton,"help");
+        VectorDesignButton.Content=ModuleIcons.Create(ModuleKind.VectorDesign,20);
+        void StageIcon(Button button,string glyph)
+        {
+            if(button.Content is not Grid grid)return;
+            var old=grid.Children.OfType<FrameworkElement>().FirstOrDefault(child=>Grid.GetColumn(child)==0);
+            if(old is not null)grid.Children.Remove(old);
+            var path=StudioIconCatalog.CreateTool(glyph,20,iconBrush);path.Width=21;path.Height=21;
+            Grid.SetColumn(path,0);grid.Children.Insert(0,path);
+        }
+        void StageModule(Button button,ModuleKind kind)
+        {
+            if(button.Content is not Grid grid)return;
+            var old=grid.Children.OfType<FrameworkElement>().FirstOrDefault(child=>Grid.GetColumn(child)==0);
+            if(old is not null)grid.Children.Remove(old);
+            var path=ModuleIcons.Create(kind,21);Grid.SetColumn(path,0);grid.Children.Insert(0,path);
+        }
+        StageIcon(OpenButton,"open");StageModule(SizeStepButton,ModuleKind.Resize);StageModule(ColorStepButton,ModuleKind.Colors);
+        StageModule(PatternStepButton,ModuleKind.ApplyWeaves);StageModule(SelvedgeStepButton,ModuleKind.Selvedge);
+        StageModule(WeftStepButton,ModuleKind.Weft);StageModule(FloatStepButton,ModuleKind.Floats);
+        StageModule(AnalysisStepButton,ModuleKind.Tension);StageModule(SimulationStepButton,ModuleKind.Simulation);
+        StageModule(MachineStepButton,ModuleKind.Machine);
+    }
+
     /// <summary>Use the existing stage UI on an isolated snapshot; no graph state changes before Apply.</summary>
     public void ConfigureModuleEditor(ModuleKind kind, WorkflowSession prepared, IReadOnlyList<BankItem>? projectWeaves=null)
     {
@@ -213,7 +249,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         PreviousPage.IsEnabled = !busy && current is not null && current.PageIndex > 0;
         NextPage.IsEnabled = !busy && current is not null && current.PageIndex + 1 < current.PageCount;
         PageValue.Text = current is null ? "—" : $"{current.PageIndex + 1} / {current.PageCount}";
-        Color activeColor = lightTheme ? Color.FromRgb(0x20,0x24,0x28) : Color.FromRgb(0x31,0x57,0x4F);
+        Color activeColor = ((SolidColorBrush)FindResource("Accent")).Color;
         var activeBrush = new SolidColorBrush(activeColor);
         void StyleStage(Button button, bool active)
         {
@@ -1443,9 +1479,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
     }
     private void About_Click(object sender, RoutedEventArgs e) => new AboutWindow(english) { Owner = this }.ShowDialog();
-    private void OnThemeChanged(object? sender, EventArgs e) { lightTheme = ThemeManager.IsLight; RefreshControls(); }
+    private void OnThemeChanged(object? sender, EventArgs e) { RefreshControls(); }
     private void Language_Click(object sender, RoutedEventArgs e) { english = !english; MarkProjectDirty(); UpdateLabels(); ShowStage(); }
-    private void Theme_Click(object sender, RoutedEventArgs e) { lightTheme = !ThemeManager.IsLight; ThemeManager.Apply(lightTheme, true); RefreshControls(); }
     private void UpdateLabels()
     {
         FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
@@ -1468,7 +1503,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             label.TextAlignment = english ? TextAlignment.Left : TextAlignment.Right;
             label.FlowDirection = english ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
         }
-        LanguageButton.Content = english ? "FA" : "EN"; LanguageButton.ToolTip = T("تغییر زبان", "Change language"); AboutButton.ToolTip = T("درباره", "About"); HelpButton.ToolTip = T("راهنمای برنامه (F1)", "Help (F1)"); SaveProjectButton.ToolTip = T("ذخیره پروژه", "Save project"); SaveProjectAsButton.ToolTip = T("ذخیره با نام دیگر", "Save project as"); ThemeButton.ToolTip = T("تغییر تم", "Change theme"); BankButton.ToolTip = T("بانک و طراحی بافت", "Weave bank and editor"); VectorDesignButton.ToolTip = T("استودیو طراحی برداری و رسم منحنی", "Vector design studio and Bezier drawing"); UndoButton.ToolTip = T("بازگشت (Ctrl+Z)", "Undo (Ctrl+Z)"); RedoButton.ToolTip = T("بازانجام (Ctrl+Y)", "Redo (Ctrl+Y)"); ReportButton.ToolTip = T("گزارش PDF و چاپ", "PDF report and print"); InfoButton.Content = T("اطلاعات طرح", "Design info"); InfoButton.ToolTip = T("طراح، کاربرد و توضیحات", "Designer, use and description");
+        LanguageButton.Content = english ? "FA" : "EN"; LanguageButton.ToolTip = T("تغییر زبان", "Change language"); AboutButton.ToolTip = T("درباره", "About"); HelpButton.ToolTip = T("راهنمای برنامه (F1)", "Help (F1)"); SaveProjectButton.ToolTip = T("ذخیره پروژه", "Save project"); SaveProjectAsButton.ToolTip = T("ذخیره با نام دیگر", "Save project as"); BankButton.ToolTip = T("بانک و طراحی بافت", "Weave bank and editor"); VectorDesignButton.ToolTip = T("استودیو طراحی برداری و رسم منحنی", "Vector design studio and Bezier drawing"); UndoButton.ToolTip = T("بازگشت (Ctrl+Z)", "Undo (Ctrl+Z)"); RedoButton.ToolTip = T("بازانجام (Ctrl+Y)", "Redo (Ctrl+Y)"); ReportButton.ToolTip = T("گزارش PDF و چاپ", "PDF report and print"); InfoButton.Content = T("اطلاعات طرح", "Design info"); InfoButton.ToolTip = T("طراح، کاربرد و توضیحات", "Designer, use and description");
         SimulationStepButton.ToolTip = T("شبیه‌سازی پارچه", "Fabric simulation");
         SimulationWeftsLabel.Text = T("نخ و رنگ هر پود اعمال‌شده", "Yarn and color for each applied weft");
         SimulationModeLabel.Text = T("حالت نمایش", "Appearance"); SimulationTitle.Text = T("شبیه‌سازی پارچه", "Fabric simulation"); SimulationHint.Text = T("نمای تصویری تقریبی؛ رفتار واقعی پارچه نیست و بر خروجی ماشین اثر ندارد.", "Stylized preview, not a physical simulation; it does not change loom output."); SimulationReferencePreset.Content = T("پیش‌نمایش نمونه: چهارخانه قرمز و سفید", "Load red and ivory reference preset"); SimulationRenderButton.Content = T("ساخت پیش‌نمایش", "Render preview"); SimulationSaveButton.Content = T("ذخیره تصویر شبیه‌سازی", "Save preview image");

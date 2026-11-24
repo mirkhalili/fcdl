@@ -183,7 +183,7 @@ public sealed class VectorEditorWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var logo = new Image { Source = new BitmapImage(new Uri("pack://application:,,,/JacquardStudio;component/Assets/sam-emblem.png")), Width = 23, Height = 23, Stretch = Stretch.Uniform, Margin = new Thickness(2, 0, 9, 0), VerticalAlignment = VerticalAlignment.Center };
+        var logo = ModuleIcons.Create(ModuleKind.VectorDesign,23); logo.Margin=new Thickness(2,0,9,0); logo.VerticalAlignment=VerticalAlignment.Center;
         Grid.SetColumn(logo, 0); grid.Children.Add(logo);
         var title = new TextBlock { Text = "JACQUARD  /  VECTOR DESIGN", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left, FlowDirection = FlowDirection.LeftToRight };
         Grid.SetColumn(title, 1); grid.Children.Add(title);

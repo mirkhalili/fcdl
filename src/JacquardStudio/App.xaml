@@ -5,35 +5,36 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ui:ThemesDictionary Theme="Dark" />
+                <ui:ThemesDictionary Theme="Light" />
                 <ui:ControlsDictionary />
             </ResourceDictionary.MergedDictionaries>
-        <!-- Neutral charcoal workspace with a restrained, warm highlight. -->
-        <SolidColorBrush x:Key="AppBackground" Color="#1A1A1A"/>
-        <SolidColorBrush x:Key="HeaderBackground" Color="#202020"/>
-        <SolidColorBrush x:Key="CanvasBackground" Color="#1D1D1D"/>
-        <SolidColorBrush x:Key="PrimaryText" Color="#E9E5E0"/>
-        <SolidColorBrush x:Key="ButtonBackground" Color="#30302F"/>
-        <SolidColorBrush x:Key="ButtonBorder" Color="#464341"/>
-        <SolidColorBrush x:Key="GalleryBackground" Color="#292827"/>
-        <SolidColorBrush x:Key="ListBackground" Color="#1F1F1F"/>
-        <SolidColorBrush x:Key="Surface" Color="#252525"/>
-        <SolidColorBrush x:Key="Border" Color="#3C3A38"/>
-        <SolidColorBrush x:Key="Muted" Color="#ABA59F"/>
-        <SolidColorBrush x:Key="Accent" Color="#C9A58B"/>
-        <SolidColorBrush x:Key="AccentForeground" Color="#211D19"/>
-        <SolidColorBrush x:Key="SelectionFill" Color="#33C9A58B"/>
-        <SolidColorBrush x:Key="ActionBackground" Color="#C9A58B"/>
-        <SolidColorBrush x:Key="DangerBackground" Color="#563638"/>
-        <SolidColorBrush x:Key="GraphBackground" Color="#222222"/>
-        <SolidColorBrush x:Key="GraphGrid" Color="#31302F"/>
-        <SolidColorBrush x:Key="GraphHeader" Color="#1F1F1F"/>
-        <SolidColorBrush x:Key="GraphSurface" Color="#252525"/>
-        <SolidColorBrush x:Key="GraphNode" Color="#343332"/>
-        <SolidColorBrush x:Key="GraphNodeHeader" Color="#2B2A29"/>
-        <SolidColorBrush x:Key="GraphPreview" Color="#202020"/>
-        <SolidColorBrush x:Key="GraphSelection" Color="#C9A58B"/>
-        <SolidColorBrush x:Key="GraphSelectedItem" Color="#3C3936"/>
+        <!-- Jacquard Vazir design system: light surfaces, RTL layout, and the reference cobalt accent. -->
+        <SolidColorBrush x:Key="AppBackground" Color="#F4F6FA"/>
+        <SolidColorBrush x:Key="HeaderBackground" Color="#FBFCFE"/>
+        <SolidColorBrush x:Key="CanvasBackground" Color="#F8FAFD"/>
+        <SolidColorBrush x:Key="PrimaryText" Color="#181F2B"/>
+        <SolidColorBrush x:Key="ButtonBackground" Color="#F1F4F8"/>
+        <SolidColorBrush x:Key="ButtonBorder" Color="#D8E0EA"/>
+        <SolidColorBrush x:Key="GalleryBackground" Color="#F1F5FA"/>
+        <SolidColorBrush x:Key="ListBackground" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="Surface" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="Border" Color="#E1E5EC"/>
+        <SolidColorBrush x:Key="Muted" Color="#707887"/>
+        <SolidColorBrush x:Key="Accent" Color="#2C60F6"/>
+        <SolidColorBrush x:Key="IconGlyph" Color="#2C60F6"/>
+        <SolidColorBrush x:Key="AccentForeground" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="SelectionFill" Color="#332C60F6"/>
+        <SolidColorBrush x:Key="ActionBackground" Color="#2C60F6"/>
+        <SolidColorBrush x:Key="DangerBackground" Color="#FCEBED"/>
+        <SolidColorBrush x:Key="GraphBackground" Color="#F8FAFD"/>
+        <SolidColorBrush x:Key="GraphGrid" Color="#E5EBF3"/>
+        <SolidColorBrush x:Key="GraphHeader" Color="#FBFCFE"/>
+        <SolidColorBrush x:Key="GraphSurface" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="GraphNode" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="GraphNodeHeader" Color="#F2F5FA"/>
+        <SolidColorBrush x:Key="GraphPreview" Color="#F4F6FA"/>
+        <SolidColorBrush x:Key="GraphSelection" Color="#2C60F6"/>
+        <SolidColorBrush x:Key="GraphSelectedItem" Color="#EDF2FF"/>
 
         <ItemsPanelTemplate x:Key="WeaveGalleryPanel"><WrapPanel IsItemsHost="True"/></ItemsPanelTemplate>
         <DataTemplate x:Key="WeaveGalleryItem">

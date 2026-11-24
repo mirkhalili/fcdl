@@ -35,9 +35,9 @@
     <Content Include="../../Docs/THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Resource Include="Assets/Fonts/*.ttf" />
     <Resource Include="Assets/app.ico" />
-    <Resource Include="Assets/sam-emblem.png" />
+    <Resource Include="Assets/Studio/jacquard-mark.png" />
     <Resource Include="Assets/Brands/*" />
-    <Resource Include="Assets/UserIcons/*.jpg" />
+    <Resource Include="Assets/Studio/*.json" />
     <Resource Include="Help.fa.txt" />
     <Content Include="Assets/Fonts/OFL.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

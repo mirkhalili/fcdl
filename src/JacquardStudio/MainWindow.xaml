@@ -58,7 +58,10 @@
                     <Button x:Name="CloseWindowButton" Content="✕" ToolTip="بستن" AutomationProperties.Name="Close" Click="CloseWindow_Click" Width="44" Height="32" Background="{DynamicResource DangerBackground}" Padding="0"/>
                 </StackPanel>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                    <Image Source="Assets/sam-emblem.png" Width="20" Height="20" Stretch="Uniform" Margin="0,0,8,0"/>
+                    <Border Width="22" Height="22" CornerRadius="6" Background="{DynamicResource GraphSelectedItem}" Margin="0,0,8,0">
+                        <Path Data="M4,5 H11 V19 H4 Z M13,5 H20 V19 H13 Z M6,8 H9 M6,11 H9 M6,14 H9 M15,8 H18 M15,11 H18 M15,14 H18"
+                              Stroke="{DynamicResource Accent}" StrokeThickness="1.35" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Stretch="Uniform" Margin="4"/>
+                    </Border>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock x:Name="WindowTitleText" Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}"
                                    FontWeight="SemiBold" FontSize="12" TextTrimming="CharacterEllipsis" FlowDirection="LeftToRight"/>
@@ -73,18 +76,17 @@
                 <Button x:Name="ModuleApplyButton" Content="اعمال تنظیمات و بستن" Click="ModuleApply_Click" Visibility="Collapsed" Height="42" Padding="10,4" Margin="3" Background="{DynamicResource ActionBackground}" Foreground="{DynamicResource AccentForeground}" BorderBrush="{DynamicResource Accent}"/>
                 <Button x:Name="ModuleCancelButton" Content="انصراف" Click="ModuleCancel_Click" Visibility="Collapsed" Height="42" Padding="10,4" Margin="3"/>
                 <Button x:Name="LanguageButton" Content="EN" ToolTip="تغییر زبان" AutomationProperties.Name="Change language" Click="Language_Click" Width="48" Height="42" Padding="4" Margin="3"/>
-                <Button x:Name="ThemeButton" Content="☼" ToolTip="تغییر تم" AutomationProperties.Name="Change theme" Click="Theme_Click" Width="48" Height="42" Padding="4" Margin="3"/>
-                <Button x:Name="SaveProjectButton" Content="&#xE74E;" FontFamily="Segoe MDL2 Assets" ToolTip="ذخیره پروژه" AutomationProperties.Name="Save project" Click="SaveProject_Click" Width="48" Height="42" Padding="4" Margin="3" IsEnabled="False"/>
-                <Button x:Name="SaveProjectAsButton" Content="&#xE792;" FontFamily="Segoe MDL2 Assets" ToolTip="ذخیره با نام دیگر" AutomationProperties.Name="Save project as" Click="SaveProjectAs_Click" Width="48" Height="42" Padding="4" Margin="3" IsEnabled="False"/>
+                <Button x:Name="SaveProjectButton" Content="" ToolTip="ذخیره پروژه" AutomationProperties.Name="Save project" Click="SaveProject_Click" Width="48" Height="42" Padding="4" Margin="3" IsEnabled="False"/>
+                <Button x:Name="SaveProjectAsButton" Content="" ToolTip="ذخیره با نام دیگر" AutomationProperties.Name="Save project as" Click="SaveProjectAs_Click" Width="48" Height="42" Padding="4" Margin="3" IsEnabled="False"/>
                 <Button x:Name="UndoButton" Content="↶" ToolTip="بازگشت (Ctrl+Z)" AutomationProperties.Name="Undo" Click="Undo_Click" Width="48" Height="42" Padding="4" Margin="3" FontSize="20"/>
                 <Button x:Name="RedoButton" Content="↷" ToolTip="بازانجام (Ctrl+Y)" AutomationProperties.Name="Redo" Click="Redo_Click" Width="48" Height="42" Padding="4" Margin="3" FontSize="20"/>
                 <Button x:Name="InfoButton" Content="اطلاعات طرح" ToolTip="طراح، کاربرد و توضیحات" AutomationProperties.Name="Design information" Click="Info_Click" Height="42" Padding="10,4" Margin="3"/>
-                <Button x:Name="ReportButton" Content="&#xE749;" FontFamily="Segoe MDL2 Assets" ToolTip="گزارش PDF و چاپ" AutomationProperties.Name="PDF report and printing" Click="Report_Click" Width="48" Height="42" Padding="4" Margin="3"/>
+                <Button x:Name="ReportButton" Content="" ToolTip="گزارش PDF و چاپ" AutomationProperties.Name="PDF report and printing" Click="Report_Click" Width="48" Height="42" Padding="4" Margin="3"/>
                 <Button x:Name="BankButton" Content="▦" ToolTip="بانک و طراحی بافت" AutomationProperties.Name="Weave bank" Click="Bank_Click" Width="48" Height="42" Padding="4" Margin="3" FontSize="24"/>
                 <Button x:Name="VectorDesignButton" ToolTip="استودیو طراحی برداری و رسم منحنی" AutomationProperties.Name="Vector design studio" Click="VectorDesign_Click" Width="48" Height="42" Padding="4" Margin="3"><Viewbox Width="25" Height="25"><Canvas Width="24" Height="24"><Path Data="M4,19 C4,5 20,5 20,19 M4,19 L20,19 M4,19 L4,16 M20,19 L20,16" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.7" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
-                <Button x:Name="CheckUpdatesButton" Content="&#xE777;" FontFamily="Segoe MDL2 Assets" ToolTip="بررسی به‌روزرسانی" AutomationProperties.Name="Check for updates" Click="CheckUpdates_Click" Width="48" Height="42" Padding="4" Margin="3"/>
+                <Button x:Name="CheckUpdatesButton" Content="" ToolTip="بررسی به‌روزرسانی" AutomationProperties.Name="Check for updates" Click="CheckUpdates_Click" Width="48" Height="42" Padding="4" Margin="3"/>
                 <Button x:Name="HelpButton" Content="?" ToolTip="راهنمای برنامه (F1)" AutomationProperties.Name="Help" Click="Help_Click" Width="48" Height="42" Padding="4" Margin="3" FontSize="20"/>
-                <Button x:Name="AboutButton" Content="&#xE946;" FontFamily="Segoe MDL2 Assets" ToolTip="درباره" AutomationProperties.Name="About" Click="About_Click" Width="48" Height="42" Padding="4" Margin="3"/>
+                <Button x:Name="AboutButton" Content="" ToolTip="درباره" AutomationProperties.Name="About" Click="About_Click" Width="48" Height="42" Padding="4" Margin="3"/>
             </StackPanel>
         </Border>
         <Grid x:Name="WorkflowRoot" Grid.Row="2" Margin="16,14" FlowDirection="LeftToRight">

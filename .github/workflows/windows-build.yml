@@ -155,7 +155,7 @@ jobs:
           Copy-Item 'artifacts/installer/MD5.txt' "$release/MD5.txt"
           Copy-Item 'artifacts/installer/SHA256.txt' "$release/SHA256.txt"
           Copy-Item 'artifacts/license-issuer/LicenseIssuer.exe' "$release/Jacquard-LicenseIssuer.exe"
-          Copy-Item 'src/JacquardStudio/Assets/sam-emblem.png' "$release/sam-emblem-high-resolution.png"
+          Copy-Item 'src/JacquardStudio/Assets/Studio/jacquard-mark.png' "$release/JacquardStudio-Mark.png"
           $site = Join-Path $env:RUNNER_TEMP 'JacquardStudio-website'
           New-Item -ItemType Directory -Force -Path "$site/public", "$site/private" | Out-Null
           Copy-Item 'website/public/*' "$site/public" -Recurse
@@ -181,4 +181,4 @@ jobs:
             artifacts/release/SHA256.txt
             artifacts/release/Jacquard-LicenseIssuer.exe
             artifacts/release/JacquardStudio-website-updated.zip
-            artifacts/release/sam-emblem-high-resolution.png
+            artifacts/release/JacquardStudio-Mark.png
